@@ -1219,9 +1219,10 @@ select.input { appearance: none; -webkit-appearance: none; }
   flex-direction: column;
   gap: 1px;
   padding: 5px 3px;
-  /* It behaves like a scrollbar, so it never scrolls itself — the rows
-     share the height and shrink until the whole span fits on screen. */
-  overflow: hidden;
+  /* Every year keeps its label, so the rail carries its own scroll — and a
+     drag that reaches either end keeps it moving (see creep() in views.js). */
+  overflow-y: auto;
+  scrollbar-width: none;
   border-radius: var(--r-lg);
   border: 1px solid var(--line-soft);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
@@ -1231,6 +1232,7 @@ select.input { appearance: none; -webkit-appearance: none; }
   touch-action: none;
   cursor: pointer;
 }
+.yearmap::-webkit-scrollbar { display: none; }
 .yearmap.scrubbing { cursor: grabbing; }
 
 /* Give the list back the space the rail is standing on. */
@@ -1238,9 +1240,8 @@ body.has-map .library { padding-right: calc(var(--pad) + var(--safe-r) + 50px); 
 body.has-map .fab-dock { right: calc(var(--pad) + var(--safe-r) + 50px); }
 
 .ym-item {
-  /* 21px each when there is room; squeezed to a tick when there is not. */
-  flex: 0 1 21px;
-  min-height: 3px;
+  flex: none;
+  height: 21px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1259,8 +1260,6 @@ body.has-map .fab-dock { right: calc(var(--pad) + var(--safe-r) + 50px); }
 /* Pointer events bubble to the rail, which handles the drag as one surface —
    the rows keep theirs so hover and a plain click still work. */
 .yearmap:not(.scrubbing) .ym-item:hover { background: var(--surface-2); color: var(--text-2); }
-/* At tick size a hover highlight is just noise; the bubble does the work. */
-.yearmap.dense .ym-item:hover { background: none; }
 
 /* How full a year is, at a glance. */
 .ym-dot {
@@ -1282,26 +1281,6 @@ body.has-map .fab-dock { right: calc(var(--pad) + var(--safe-r) + 50px); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* ---- too many years for labels: the rail becomes tick marks ---- */
-
-.yearmap.dense { padding: 4px 4px; gap: 0; }
-.yearmap.dense .ym-item { padding: 0; justify-content: flex-end; border-radius: 2px; }
-.yearmap.dense .ym-label { display: none; }
-.yearmap.dense .ym-dot {
-  /* Now a horizontal tick whose length is how much sits under that year. */
-  height: 2px;
-  width: calc(7px + (var(--n) / 24) * 15px);
-  opacity: .4;
-}
-.yearmap.dense .ym-item.decade .ym-dot { opacity: .75; }
-.yearmap.dense .ym-item.here { background: none; }
-.yearmap.dense .ym-item.here .ym-dot {
-  height: 3px;
-  width: 24px;
-  opacity: 1;
-  background: var(--accent);
 }
 
 /* The year under the pointer, read out beside the rail. */

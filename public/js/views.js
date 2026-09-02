@@ -630,12 +630,6 @@ export function renderYearMap(node, groups, { onJump }) {
     node.append(button);
   }
 
-  /* The rail is a scrollbar, so it never scrolls itself: the rows share the
-     height available and shrink until they all fit. Past the point where a
-     year label fits, they become tick marks and the bubble does the reading. */
-  const first = node.firstElementChild;
-  node.classList.toggle('dense', !!first && first.getBoundingClientRect().height < 15);
-
   /* Which section you are actually looking at. An observer rather than a
      scroll handler: sections collapse and open, so measured offsets go stale
      the moment you touch one. */
@@ -650,7 +644,16 @@ export function renderYearMap(node, groups, { onJump }) {
     if (was) was.classList.remove('here');
     current = next;
     const now = buttons.get(current);
-    if (now) now.classList.add('here');
+    if (!now) return;
+    now.classList.add('here');
+    // Keep the marker in view as the page moves — but never yank the rail
+    // out from under a finger that is already dragging it.
+    if (node.classList.contains('scrubbing') || node.matches(':hover')) return;
+    const box = node.getBoundingClientRect();
+    const pin = now.getBoundingClientRect();
+    if (pin.top < box.top + 24 || pin.bottom > box.bottom - 24) {
+      node.scrollTo({ top: now.offsetTop - node.clientHeight / 2, behavior: 'smooth' });
+    }
   };
 
   // Following the list is a nicety. Somewhere without an observer still gets
@@ -683,66 +686,79 @@ export function renderYearMap(node, groups, { onJump }) {
    and listeners bound here sit on the rail itself, so they survive that. */
 
 export function wireYearMap(node, bubble, { onJump }) {
-  let slices = [];
   let scrubbing = false;
   let frame = 0;
   let latestY = 0;
+  let lastKey = '';
 
-  const measure = () => {
-    slices = [...node.children]
-      .filter((row) => row.dataset && row.dataset.key)
-      .map((row) => {
-        const box = row.getBoundingClientRect();
-        return { key: row.dataset.key, label: row.dataset.label, top: box.top, bottom: box.bottom };
-      });
+  /* Rows are identical in height, so the one under the pointer is arithmetic
+     rather than a hundred rect reads a frame. Measured fresh each time: the
+     rail scrolls under the finger, which moves every row. */
+  const rowAt = (clientY) => {
+    const rows = [...node.children].filter((row) => row.dataset && row.dataset.key);
+    if (!rows.length) return null;
+    const first = rows[0].getBoundingClientRect();
+    const stride = rows.length > 1
+      ? rows[1].getBoundingClientRect().top - first.top
+      : first.height;
+    if (!stride) return rows[0];
+    const index = Math.floor((clientY - first.top) / stride);
+    return rows[Math.max(0, Math.min(rows.length - 1, index))];
   };
 
-  /* Past either end, stick to the first or last row rather than losing the
-     drag — a finger that runs off the bottom still means "the end". */
-  const sliceAt = (clientY) => {
-    if (!slices.length) return null;
-    if (clientY <= slices[0].top) return slices[0];
-    const last = slices[slices.length - 1];
-    if (clientY >= last.bottom) return last;
-    return slices.find((s) => clientY >= s.top && clientY <= s.bottom) || null;
-  };
-
-  const showBubble = (slice) => {
-    if (!slice) { bubble.hidden = true; return; }
-    bubble.textContent = slice.label || slice.key;
-    bubble.style.setProperty('top', `${Math.round((slice.top + slice.bottom) / 2)}px`);
+  const showBubble = (row) => {
+    if (!row) { bubble.hidden = true; return; }
+    const box = row.getBoundingClientRect();
+    bubble.textContent = row.dataset.label || row.dataset.key;
+    bubble.style.setProperty('top', `${Math.round(box.top + box.height / 2)}px`);
     bubble.hidden = false;
   };
 
-  const scrubTo = (clientY) => {
-    const slice = sliceAt(clientY);
-    if (!slice) return;
-    showBubble(slice);
+  /* Held at the top or bottom of the rail, the rail itself keeps moving, so
+     a drag can reach years that are not currently on screen. */
+  const EDGE = 26;
+  const creep = (clientY) => {
+    const box = node.getBoundingClientRect();
+    let step = 0;
+    if (clientY < box.top + EDGE) step = -Math.ceil((box.top + EDGE - clientY) / 2.5);
+    else if (clientY > box.bottom - EDGE) step = Math.ceil((clientY - (box.bottom - EDGE)) / 2.5);
+    if (step) node.scrollTop += step;
+  };
+
+  const settle = () => {
+    const row = rowAt(latestY);
+    if (!row) return;
+    showBubble(row);
+    if (row.dataset.key === lastKey) return;
+    lastKey = row.dataset.key;
     // Instant, not smooth: a smooth scroll would still be catching up with
     // the last position while the finger is already somewhere else.
-    onJump(slice.key, { smooth: false });
+    onJump(row.dataset.key, { smooth: false });
+  };
+
+  const tick = () => {
+    if (!scrubbing) { frame = 0; return; }
+    creep(latestY);
+    settle();
+    frame = requestAnimationFrame(tick);
   };
 
   node.addEventListener('pointerdown', (event) => {
     if (event.button > 0) return;
     event.preventDefault();
-    measure();
     scrubbing = true;
+    lastKey = '';
+    latestY = event.clientY;
     node.classList.add('scrubbing');
     try { node.setPointerCapture(event.pointerId); } catch { /* older browser */ }
-    scrubTo(event.clientY);
+    settle();
+    if (!frame) frame = requestAnimationFrame(tick);
   });
 
   node.addEventListener('pointermove', (event) => {
-    if (!scrubbing) {
-      if (!slices.length) measure();
-      showBubble(sliceAt(event.clientY));      // hover preview, no scrolling
-      return;
-    }
-    event.preventDefault();
     latestY = event.clientY;
-    if (frame) return;
-    frame = requestAnimationFrame(() => { frame = 0; scrubTo(latestY); });
+    if (scrubbing) { event.preventDefault(); return; }
+    showBubble(rowAt(event.clientY));          // hover preview, no scrolling
   });
 
   const release = (event) => {
@@ -756,12 +772,7 @@ export function wireYearMap(node, bubble, { onJump }) {
   };
   node.addEventListener('pointerup', release);
   node.addEventListener('pointercancel', release);
-
-  node.addEventListener('pointerenter', measure);
   node.addEventListener('pointerleave', () => { if (!scrubbing) bubble.hidden = true; });
-
-  // The rows move when the window resizes; anything cached about them is stale.
-  addEventListener('resize', () => { slices = []; });
 }
 
 export function renderEmpty(node, {
