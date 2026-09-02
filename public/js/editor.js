@@ -3,7 +3,7 @@
 
 import {
   state, api, TYPES, STATUSES, TYPE_LABEL, addItem, patchItem, removeItem,
-  checkpoint, undo, nowISO,
+  checkpoint, undo, nowISO, genreLabels,
 } from './store.js';
 import {
   el, icon, field, openSheet, toast, confirmSheet, segmented, select,
@@ -83,7 +83,7 @@ export function openItem(item, { onChange, onDeleted }) {
       draft.creator ? el('span', { text: draft.creator }) : null,
       draft.certification
         ? el('span', null, [el('b', { text: 'Rated ' }), draft.certification]) : null,
-      draft.genres && draft.genres.length ? el('span', { text: draft.genres.join(', ') }) : null,
+      genreLabels(draft).length ? el('span', { text: genreLabels(draft).join(', ') }) : null,
       draft.extRating
         ? el('span', null, [el('b', { text: (draft.extRating / 10).toFixed(1) }), ' elsewhere'])
         : null,

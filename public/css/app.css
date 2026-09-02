@@ -453,6 +453,18 @@ a { color: var(--accent-2); }
 .tag-badge.st-watching { color: var(--warn); }
 .tag-badge.st-watched  { color: var(--ok); }
 .tag-badge.st-dropped  { color: var(--danger); }
+/* Genres come from the providers rather than from you, so they sit a shade
+   quieter than a tag you typed — legible, but not competing with it. */
+.tag-badge.genre {
+  cursor: pointer;
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-3);
+}
+.tag-badge.genre:hover { color: var(--text-2); border-style: solid; }
+/* The age rating filters on tap, the same as the chip in the filter sheet. */
+.tag-badge.cert { cursor: pointer; }
+.tag-badge.cert:hover { border-color: var(--line); color: var(--text-1); }
 
 .card-links { display: flex; gap: 6px; flex-wrap: wrap; }
 .link-chip {

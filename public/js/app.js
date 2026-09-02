@@ -67,6 +67,24 @@ const handlers = {
     saveView();
     render();
   },
+  genre: (genre) => {
+    /* Genres are not a saved facet the way tags are — they come from the
+       providers, not from you — so this goes through the search box, where
+       it is visible and one tap on the × undoes it. The whole token is
+       quoted because "Romantic Comedy" has a space in it. */
+    dom.q.value = `"genre:${genre.toLowerCase()}"`;
+    filters.q = dom.q.value;
+    render();
+  },
+  cert: (cert) => {
+    /* Unlike a genre, this one is a real saved facet — the very chip the
+       filter sheet draws — so tapping the badge ticks it, and tapping the
+       same badge again unticks it. */
+    const index = filters.certs.indexOf(cert);
+    if (index === -1) filters.certs.push(cert); else filters.certs.splice(index, 1);
+    saveView();
+    render();
+  },
   year: (item, year) => {
     patchItem(item.id, { year });
     render();
@@ -289,6 +307,8 @@ function openEnrich() {
     missing: rows.filter((i) => !i.poster || !i.year || !(i.cast || []).length).length,
     artwork: rows.filter((i) => !i.poster).length,
     year: rows.filter((i) => !i.year).length,
+    genres: rows.filter((i) => !(i.genres || []).length).length,
+    wiki: rows.filter((i) => !i.wikiUrl).length,
     upgrade: rows.filter(notBest).length,
     refresh: rows.length,
   };
@@ -301,6 +321,12 @@ function openEnrich() {
     missing: 'Fills any blank it can — artwork, cast, ages, years, IMDb ids.',
     artwork: 'Only titles with no artwork at all.',
     year: 'Only titles with no year. Years you typed yourself are never touched.',
+    genres: 'Only titles with no genre yet. Keeps asking each provider in turn until '
+          + 'one of them names a genre, rather than stopping at the first that '
+          + 'answered everything else.',
+    wiki: 'Only titles with no Wikipedia link. Looks the article up by IMDb id rather '
+        + 'than by name, which is what finally finds the ones called "Giant (1956 film)" '
+        + 'on Wikipedia and just "Giant" here.',
     upgrade: 'Replaces artwork that came from somewhere weaker with the best available. '
            + 'Nothing else about the title changes.',
     refresh: 'Re-fetches every title and replaces artwork, cast, ages, runtimes, genres '
@@ -312,6 +338,8 @@ function openEnrich() {
       { id: 'missing', label: `Missing (${counts.missing})` },
       { id: 'artwork', label: `No artwork (${counts.artwork})` },
       { id: 'year', label: `No year (${counts.year})` },
+      { id: 'genres', label: `No genre (${counts.genres})` },
+      { id: 'wiki', label: `No Wikipedia link (${counts.wiki})` },
     ];
     if (counts.upgrade) list.push({ id: 'upgrade', label: `Better artwork (${counts.upgrade})` });
     list.push({ id: 'refresh', label: `Re-fetch all (${counts.refresh})` });
@@ -552,9 +580,9 @@ function openMenu() {
       () => { handle.close(); openSources(); }),
     entry('refresh', 'Sync & storage', state.online ? 'Connected' : 'Offline — changes are queued',
       () => { handle.close(); openSync(); }),
-    entry('note', 'Search tips', 'tag:, year:, is:loved, -exclude',
+    entry('note', 'Search tips', 'tag:, genre:, cert:, year:, -exclude',
       () => { handle.close(); openHelp(); }),
-    entry('sparkle', 'Fill in the details', 'Artwork, cast, ages and IMDb ids',
+    entry('sparkle', 'Fill in the details', 'Artwork, cast, genres, ages and IMDb ids',
       () => { handle.close(); openEnrich(); }),
     entry('map', filters.map ? 'Hide the year rail' : 'Show the year rail',
       filters.map ? 'The list of years down the right' : 'Jump straight to a year',
@@ -773,6 +801,8 @@ function openHelp() {
     row('-remake', 'exclude'),
     row('#noir', 'tagged noir'),
     row('tag:staged', 'same thing, spelled out'),
+    row('"genre:romantic comedy"', 'by genre — quote it if it has a space'),
+    row('cert:pg-13', 'by age rating — cert:none for the unrated'),
     row('year:1949', 'released that year'),
     row('type:tv', 'movies, tv, anime, doc, book, game, podcast'),
     row('status:watched', 'queue, watching, watched, dropped'),

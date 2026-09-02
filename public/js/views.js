@@ -1,6 +1,6 @@
 /* Rendering: stat strip, year sections, and the item cards themselves. */
 
-import { TYPE_LABEL, STATUS_LABEL } from './store.js';
+import { TYPE_LABEL, STATUS_LABEL, genreLabels } from './store.js';
 import { el, icon, clear, fmtAgo, hostOf } from './ui.js';
 
 const COLLAPSE_KEY = 'mt.collapsed.v1';
@@ -49,7 +49,10 @@ export function card(item, on) {
   });
   if (item.poster) {
     poster.append(el('img', {
+      // Stated so the box is reserved before the file arrives, and so the
+      // browser never decodes more pixels than the 52x78 slot can show.
       src: item.poster, alt: '', loading: 'lazy', decoding: 'async',
+      width: '52', height: '78',
       onerror: (event) => { event.target.remove(); poster.append(placeholder(item)); },
     }));
   } else {
@@ -71,7 +74,17 @@ export function card(item, on) {
     item.status === 'watched' && item.watchedAt
       ? el('span', { text: `watched ${fmtAgo(item.watchedAt)}` })
       : el('span', { text: `added ${fmtAgo(item.addedAt)}` }),
-    item.certification ? el('span.tag-badge.cert', { text: item.certification }) : null,
+    item.certification ? el('span.tag-badge.cert', {
+      text: item.certification,
+      title: `Show everything rated ${item.certification}`,
+      onclick: (event) => { event.stopPropagation(); on.cert(item.certification); },
+    }) : null,
+    /* Two is what fits beside the rest of the row; the editor lists them all. */
+    ...genreLabels(item).slice(0, 2).map((genre) => el('span.tag-badge.genre', {
+      text: genre,
+      title: `Show everything in ${genre}`,
+      onclick: (event) => { event.stopPropagation(); on.genre(genre); },
+    })),
     ...item.tags.slice(0, 3).map((tag) => el('span.tag-badge', {
       text: `#${tag}`,
       onclick: (event) => { event.stopPropagation(); on.tag(tag); },
@@ -214,6 +227,17 @@ const REFS = [
     url: (item) => (item.imdbId ? `https://www.imdb.com/title/${item.imdbId}/` : ''),
   },
   {
+    /* IMDb's own Parents Guide. Their API is an AWS Data Exchange product
+       priced for studios and the guide is a paid add-on to it, but the web
+       page is open and the URL is only ever the id with /parentalguide on
+       the end — so knowing the id is the whole job. */
+    id: 'guide',
+    icon: 'shield',
+    label: 'Parents Guide',
+    hint: (item) => `Parents Guide for ${item.title}`,
+    url: (item) => (item.imdbId ? `https://www.imdb.com/title/${item.imdbId}/parentalguide/` : ''),
+  },
+  {
     id: 'wiki',
     icon: 'wiki',
     label: 'Wikipedia',
@@ -262,7 +286,73 @@ function placeholder(item) {
 
 let renderToken = 0;
 
+/* A rebuild empties the page before it refills it. That is invisible when you
+ * asked for it — a new search, a different sort — but the enricher's poll
+ * pulls fresh data every three seconds, and rebuilding under a reader drags
+ * the scroll position out from under them. So a render that would produce the
+ * same cards in the same order swaps only the cards whose content actually
+ * changed, and the page does not move at all. When the order really has
+ * changed, the rebuild stands, but the card you were looking at is put back
+ * where it was. */
+
+/** Everything `card` draws, so two renders can be compared without drawing. */
+function cardSig(item) {
+  return JSON.stringify([
+    item.title, item.year, item.type, item.status, item.watchedAt, item.addedAt,
+    item.certification, item.genres, item.tags, item.runtime, item.cast,
+    item.poster, item.rating, item.heart, item.imdbId, item.wikiUrl, item.links,
+  ]);
+}
+
+/* What is drawn right now: the shape of it, and every card by id. */
+let shown = { key: '', head: null, nodes: new Map(), sigs: new Map(),
+              groups: [], settled: false };
+
+const track = (item, node) => {
+  shown.nodes.set(item.id, node);
+  shown.sigs.set(item.id, cardSig(item));
+  return node;
+};
+
+/* The card under the top of the reading area, and where it sits. Sampled with
+ * one hit test rather than measuring every card, which at a thousand of them
+ * would cost more than the render. */
+function anchorOf(root) {
+  const node = document.elementFromPoint(Math.min(48, window.innerWidth / 2), 150);
+  const found = node && node.closest ? node.closest('.card') : null;
+  if (!found || !root.contains(found)) return null;
+  return { id: found.dataset.id, top: found.getBoundingClientRect().top };
+}
+
+function restore(anchor) {
+  if (!anchor) return;
+  const node = shown.nodes.get(anchor.id);
+  if (!node || !node.isConnected) return;
+  const drift = node.getBoundingClientRect().top - anchor.top;
+  if (Math.abs(drift) > 1) window.scrollBy(0, drift);
+}
+
 export function renderGroups(root, groups, on) {
+  const key = groups.map((g) => `${g.key}#${g.items.map((i) => i.id).join(',')}`).join('|');
+
+  // Same cards, same order: swap what changed and leave the page alone.
+  if (key === shown.key && shown.settled && shown.head === root.firstElementChild) {
+    shown.groups = groups;               // a section opened later reads the latest
+    for (const group of groups) {
+      for (const item of group.items) {
+        if (shown.sigs.get(item.id) === cardSig(item)) continue;
+        const old = shown.nodes.get(item.id);
+        if (!old || !old.isConnected) continue;
+        old.replaceWith(track(item, card(item, on)));
+      }
+    }
+    return;
+  }
+
+  const anchor = shown.key ? anchorOf(root) : null;
+  shown = { key, head: null, nodes: new Map(), sigs: new Map(),
+            groups, settled: false };
+
   const token = ++renderToken;
   const fragment = document.createDocumentFragment();
   const queue = [];
@@ -290,8 +380,11 @@ export function renderGroups(root, groups, on) {
         if (nowCollapsed) collapsed.add(group.key); else collapsed.delete(group.key);
         saveCollapsed();
         // Opening a section that was never built: build it now.
-        if (!nowCollapsed && !list.childElementCount && group.items.length) {
-          for (const item of group.items) list.append(card(item, on));
+        if (!nowCollapsed && !list.childElementCount) {
+          // Whatever this section holds *now* — renders since this handler was
+          // made may have patched the data without rebuilding the page.
+          const latest = shown.groups.find((g) => g.key === group.key) || group;
+          for (const item of latest.items) list.append(track(item, card(item, on)));
         }
       });
       section.append(head);
@@ -303,6 +396,7 @@ export function renderGroups(root, groups, on) {
   }
 
   clear(root).append(fragment);
+  shown.head = root.firstElementChild;
 
   let groupIndex = 0;
   let itemIndex = 0;
@@ -313,7 +407,7 @@ export function renderGroups(root, groups, on) {
     while (groupIndex < queue.length) {
       const [list, items] = queue[groupIndex];
       while (itemIndex < items.length) {
-        list.append(card(items[itemIndex], on));
+        list.append(track(items[itemIndex], card(items[itemIndex], on)));
         itemIndex += 1;
         if (itemIndex % 16 === 0 && performance.now() - start > budgetMs) return false;
       }
@@ -323,11 +417,13 @@ export function renderGroups(root, groups, on) {
     return true;
   };
 
-  if (fill(28)) return;                    // small library: all in one go
+  const done = () => { shown.settled = true; restore(anchor); };
+
+  if (fill(28)) { done(); return; }        // small library: all in one go
 
   const pump = () => {
     if (token !== renderToken) return;     // a newer render superseded this one
-    if (fill(14)) return;
+    if (fill(14)) { done(); return; }
     setTimeout(pump, 0);
   };
   setTimeout(pump, 0);
@@ -368,6 +464,12 @@ function queueRow(item, index, on) {
 
   const meta = el('span.qmeta', null, [
     item.status === 'watching' ? el('span.tag-badge.st-watching', { text: 'Watching' }) : null,
+    /* One only: the queue row is a single line and the title has to win it. */
+    ...genreLabels(item).slice(0, 1).map((genre) => el('span.tag-badge.genre', {
+      text: genre,
+      title: `Show everything in ${genre}`,
+      onclick: (event) => { event.stopPropagation(); on.genre(genre); },
+    })),
     ...item.tags.slice(0, 2).map((tag) => el('span.tag-badge', {
       text: `#${tag}`,
       onclick: (event) => { event.stopPropagation(); on.tag(tag); },
@@ -419,7 +521,16 @@ function renumber(list) {
   }
 }
 
+let queueKey = '';
+
 export function renderQueue(root, items, on) {
+  /* Same reason the grouped list patches in place: the poll must not yank the
+     queue out from under a reader. Rows here carry their position, so an
+     order that has not changed is left exactly as it is. */
+  const key = items.map((i) => `${i.id}:${cardSig(i)}`).join('|');
+  if (key === queueKey && root.querySelector('.qlist')) return;
+  queueKey = key;
+
   clear(root);
   const list = el('div.qlist');
   items.forEach((item, index) => list.append(queueRow(item, index, on)));

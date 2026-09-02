@@ -98,6 +98,35 @@ export function titleKey(title, year) {
   return year ? `${base}|${year}` : base;
 }
 
+/* ------------------------------------------------------------------ genres */
+
+/* Providers hand back the ingredients, not the dish: a romantic comedy comes
+ * from every one of them as "Comedy" and "Romance" side by side, because no
+ * film database carries the compound as a genre of its own. It is the name
+ * anyone would actually use for the film, so the pair is shown as one. The
+ * stored genres stay as the providers gave them — this is only how they read. */
+const GENRE_PAIRS = [
+  { parts: ['romance', 'comedy'], label: 'Romantic Comedy' },
+];
+
+/** An item's genres as they should be read, compounds folded together. */
+export function genreLabels(item) {
+  const list = (item && item.genres) || [];
+  const have = new Set(list.map((g) => g.toLowerCase()));
+  const used = new Set();
+  const out = [];
+
+  for (const pair of GENRE_PAIRS) {
+    if (!pair.parts.every((p) => have.has(p))) continue;
+    pair.parts.forEach((p) => used.add(p));
+    out.push(pair.label);
+  }
+  for (const genre of list) {
+    if (!used.has(genre.toLowerCase())) out.push(genre);
+  }
+  return out;
+}
+
 /* --------------------------------------------------------------- listeners */
 
 const listeners = new Set();
@@ -442,6 +471,29 @@ export function allTags() {
     for (const tag of item.tags) counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+/* The age ratings the library actually holds, the ones anyone recognises
+ * first. Providers return whatever board rated the release they know about,
+ * so past the familiar names there is a long tail of one-offs — AL, Btl,
+ * IIA, 6+ — worth listing only because a title here carries them. */
+const CERT_ORDER = ['G', 'PG', 'PG-13', 'R', 'NC-17',
+  'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'];
+
+/** [certification, count], familiar ratings first, "not rated" last. */
+export function allCerts() {
+  const counts = new Map();
+  for (const item of live()) {
+    const cert = item.certification || '';
+    counts.set(cert, (counts.get(cert) || 0) + 1);
+  }
+  const rank = (cert) => {
+    if (!cert) return 999;
+    const at = CERT_ORDER.indexOf(cert);
+    return at === -1 ? 500 : at;
+  };
+  return [...counts.entries()]
+    .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
 }
 
 export function stats(rows = live()) {

@@ -1,7 +1,9 @@
 /* View state: search, filters, sort, grouping. Persisted locally so the
  * phone remembers how you last left the list. */
 
-import { TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, live } from './store.js';
+import {
+  TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, live, genreLabels,
+} from './store.js';
 import { el, field, openSheet, toast } from './ui.js';
 
 const VIEW_KEY = 'mt.view.v2';
@@ -46,6 +48,7 @@ export const filters = {
   types: [],
   statuses: [],
   tags: [],
+  certs: [],
   hideWatched: false,
   heartsOnly: false,
   unratedOnly: false,
@@ -76,6 +79,7 @@ export function activeCount() {
   if (filters.types.length) n += 1;
   if (filters.statuses.length) n += 1;
   if (filters.tags.length) n += 1;
+  if (filters.certs.length) n += 1;
   if (filters.heartsOnly) n += 1;
   if (filters.unratedOnly) n += 1;
   if (filters.hideWatched) n += 1;
@@ -87,7 +91,7 @@ export function activeCount() {
 
 export function resetFilters() {
   Object.assign(filters, {
-    types: [], statuses: [], tags: [],
+    types: [], statuses: [], tags: [], certs: [],
     hideWatched: false, heartsOnly: false, unratedOnly: false,
     minRating: 0, yearFrom: null, yearTo: null, hasLinks: false, noLinks: false,
   });
@@ -120,10 +124,19 @@ function parseQuery(raw) {
   return { terms, fields, negatives };
 }
 
+/** Every word a genre search should answer to: the folded labels and the
+ * provider genres they were folded from, lowercased. */
+function genreTerms(item) {
+  const seen = new Set();
+  for (const g of genreLabels(item)) seen.add(g.toLowerCase());
+  for (const g of item.genres || []) seen.add(g.toLowerCase());
+  return [...seen];
+}
+
 function haystack(item) {
   return [
     item.title, item.year, item.notes, item.overview, item.creator,
-    item.tags.join(' '), item.genres.join(' '),
+    item.tags.join(' '), genreTerms(item).join(' '), item.certification,
     item.links.map((l) => `${l.label} ${l.url}`).join(' '),
     TYPE_LABEL[item.type], STATUS_LABEL[item.status],
   ].filter(Boolean).join('  ').toLowerCase();
@@ -141,7 +154,21 @@ function matchesQuery(item, parsed) {
       case 'status': if (!item.status.startsWith(value)) return false; break;
       case 'year': if (String(item.year || '') !== value) return false; break;
       case 'rating': if (String(item.rating || '') !== value) return false; break;
-      case 'genre': if (!item.genres.some((g) => g.toLowerCase().includes(value))) return false; break;
+      /* Matched against the labels as shown *and* the genres underneath, so
+         `genre:romantic comedy` finds what the card calls a romantic comedy
+         while `genre:romance` still finds the same film by the Romance the
+         providers actually stored. Folding the pair must not hide either half. */
+      case 'genre':
+        if (!genreTerms(item).some((g) => g.includes(value))) return false;
+        break;
+      /* The board's rating, not yours — `rating:` is already the score you
+         gave it. Exact, because a parent asking for PG does not mean PG-13. */
+      case 'cert': case 'age': {
+        const cert = (item.certification || '').toLowerCase();
+        if (value === 'none' || value === 'unrated') { if (cert) return false; break; }
+        if (cert !== value) return false;
+        break;
+      }
       case 'note': case 'notes': if (!(item.notes || '').toLowerCase().includes(value)) return false; break;
       case 'link': if (!item.links.some((l) => l.url.toLowerCase().includes(value))) return false; break;
       case 'is':
@@ -173,6 +200,7 @@ export function apply(items = live()) {
     if (filters.types.length && !filters.types.includes(item.type)) return false;
     if (filters.statuses.length && !filters.statuses.includes(item.status)) return false;
     if (filters.tags.length && !filters.tags.every((t) => item.tags.includes(t))) return false;
+    if (filters.certs.length && !filters.certs.includes(item.certification || '')) return false;
     if (filters.minRating > 0 && (item.rating || 0) < filters.minRating) return false;
     if (filters.yearFrom && (item.year || 0) < filters.yearFrom) return false;
     if (filters.yearTo && (item.year || 9999) > filters.yearTo) return false;
@@ -320,6 +348,16 @@ export function openFilterSheet(onApply) {
       'Tags',
       multiChips(tags.slice(0, 60).map(([tag, count]) => ({ id: tag, label: `${tag} ${count}` })), draft.tags),
       tags.length > 60 ? 'Showing the 60 most used tags - search #tag for the rest.' : null,
+    ));
+  }
+
+  const certs = allCerts();
+  if (certs.length > 1) {
+    body.append(field(
+      'Age rating',
+      multiChips(certs.map(([cert, count]) => (
+        { id: cert, label: `${cert || 'Not rated'} ${count}` })), draft.certs),
+      'What the ratings board gave it — separate from the score you give it.',
     ));
   }
 
