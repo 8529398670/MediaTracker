@@ -1,0 +1,12 @@
+data/
+.git/
+.DS_Store
+node_modules/
+*.log
+__pycache__/
+*.pyc
+backups/
+# never bake secrets into the image
+.env
+.env.*
+!.env.example

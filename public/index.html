@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Media Tracker</title>
+<meta name="description" content="Personal media queue, tracker and organizer.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7fb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Media">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/css/app.css">
+<script type="module" src="/js/app.js"></script>
+</head>
+<body>
+
+<a class="skip-link" href="#library">Skip to library</a>
+
+<header class="topbar" id="topbar">
+  <div class="bar bar-main">
+    <div class="brand">
+      <svg class="brand-mark" aria-hidden="true"><use href="#i-brand"></use></svg>
+      <span class="brand-name">Media Tracker</span>
+    </div>
+
+    <div class="search-field">
+      <svg class="ico search-field-ico" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="q" type="search" placeholder="Search everything…" autocomplete="off"
+             autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search library">
+      <button class="icon-btn tiny" id="q-clear" type="button" aria-label="Clear search" hidden>
+        <svg class="ico" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+
+    <button class="icon-btn" id="btn-filters" type="button" aria-label="Filters">
+      <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
+      <span class="dot-badge" id="filter-badge" hidden></span>
+    </button>
+    <button class="icon-btn" id="btn-menu" type="button" aria-label="Menu">
+      <svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg>
+    </button>
+  </div>
+
+  <div class="bar bar-sections">
+    <div class="seg seg-sections" id="seg-sections" role="tablist" aria-label="Section"></div>
+  </div>
+
+  <div class="bar bar-tools" id="toolbar">
+    <div class="viewtabs" id="viewtabs" role="tablist" aria-label="List"></div>
+    <span class="bar-sep" aria-hidden="true"></span>
+    <button class="chip chip-toggle" id="t-hide-watched" type="button" aria-pressed="false">
+      <svg class="ico" aria-hidden="true"><use href="#i-eye-off"></use></svg>
+      <span>Hide watched</span>
+    </button>
+    <button class="chip chip-toggle" id="t-hearts" type="button" aria-pressed="false">
+      <svg class="ico" aria-hidden="true"><use href="#i-heart"></use></svg>
+      <span>Loved</span>
+    </button>
+    <button class="chip chip-toggle" id="t-unrated" type="button" aria-pressed="false">
+      <span>Unrated</span>
+    </button>
+    <label class="chip chip-select" id="wrap-sort">
+      <svg class="ico" aria-hidden="true"><use href="#i-sort"></use></svg>
+      <select id="sel-sort" aria-label="Sort by">
+        <option value="added-desc">Newest added</option>
+        <option value="added-asc">Oldest added</option>
+        <option value="watched-desc">Recently watched</option>
+        <option value="title-asc">Title A→Z</option>
+        <option value="title-desc">Title Z→A</option>
+        <option value="year-desc">Year, new→old</option>
+        <option value="year-asc">Year, old→new</option>
+        <option value="rating-desc">Rating, high→low</option>
+        <option value="rating-asc">Rating, low→high</option>
+        <option value="updated-desc">Recently changed</option>
+      </select>
+    </label>
+    <label class="chip chip-select" id="wrap-group">
+      <select id="sel-group" aria-label="Group by">
+        <option value="year">By year</option>
+        <option value="decade">By decade</option>
+        <option value="status">By status</option>
+        <option value="type">By type</option>
+        <option value="rating">By rating</option>
+        <option value="added">By month added</option>
+        <option value="none">No grouping</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<main id="library" class="library" tabindex="-1">
+  <div class="stats" id="stats" hidden></div>
+  <div class="active-filters" id="active-filters" hidden></div>
+  <div id="list" class="list"></div>
+  <div id="empty" class="empty-state" hidden></div>
+</main>
+
+<nav class="yearmap" id="yearmap" aria-label="Jump to a section" hidden></nav>
+<div class="ym-bubble" id="ym-bubble" aria-hidden="true" hidden></div>
+
+<div class="fab-dock">
+  <button class="fab" id="btn-add" type="button" aria-label="Add something">
+    <svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg>
+  </button>
+</div>
+
+<div class="sheet-host" id="sheet-host" hidden></div>
+<div class="toast-host" id="toast-host" aria-live="polite"></div>
+
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M4 7h10M4 12h7M4 17h4M17 5v14M17 19l3-3M17 19l-3-3"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.5-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7-2.5c0 5-7 14.5-7 14.5z"/></symbol>
+  <symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20.5S4 15.6 4 10.3A4.5 4.5 0 0 1 12 7.6a4.5 4.5 0 0 1 8 2.7c0 5.3-8 10.2-8 10.2z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M6.7 6.8C4.6 8.2 3 10.4 2.5 12c1 2.6 4.6 6 9.5 6 1.6 0 3-.4 4.3-1M19.4 15.7c1.1-1 1.8-2.2 2.1-3.2-1-2.6-4.6-6-9.5-6-.7 0-1.4.1-2 .2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 1 0-5.7-5.7L11.6 6.7"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 1 0 5.7 5.7l1.4-1.4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16v4zM14 6l4 4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M4 19h16"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 19V8M8 12l4-4 4 4M4 4h16"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.6.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.6-.8z"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18 15l.9 2.1 2.1.9-2.1.9L18 21l-.9-2.1-2.1-.9 2.1-.9z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l9 9-8 8-9-9z"/><circle cx="7.5" cy="7.5" r="1.4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-brand" viewBox="0 0 24 24"><rect class="bm-box" x="2" y="3.5" width="20" height="17" rx="4.5"/><path class="bm-play" d="M9.9 9.1l5.6 3.4-5.6 3.4z"/></symbol>
+  <symbol id="i-imdb" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="3"/><path d="M6 9.6v4.8M8.9 14.4V9.6l1.7 3 1.7-3v4.8M15.4 14.4V9.6h1a2 2 0 0 1 2 2v.8a2 2 0 0 1-2 2z"/></symbol>
+  <symbol id="i-wiki" viewBox="0 0 24 24"><path d="M2.5 7.5h5.5M16 7.5h5.5M9.5 7.5h5"/><path d="M4.5 7.5l4 9 3.5-7 3.5 7 4-9"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M10.2 8.6l5.4 3.4-5.4 3.4z"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M4 6h9M4 12h13M4 18h7M19 5v14"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M4 6h4l8 12h4M4 18h4l2-3M16 6h4M18 4l2 2-2 2M18 16l2 2-2 2"/></symbol>
+</svg>
+
+</body>
+</html>
