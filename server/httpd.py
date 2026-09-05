@@ -17,14 +17,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from config import (BASE_HEADERS, COMPRESSIBLE, EXTRA_TYPES, IMG_ALLOW_ANY,
-                    LIBRARY_PATH, MAX_BODY, NET_ENABLED, OMDB_KEY, PUBLIC_DIR,
-                    SCHEMA, TMDB_KEY, TOKEN, UA, VERSION, env_flag, log)
+                    ITEM_TYPES, LIBRARY_PATH, MAX_BODY, NET_ENABLED, OMDB_KEY,
+                    PUBLIC_DIR, SCHEMA, TMDB_KEY, TOKEN, UA, VERSION,
+                    env_flag, log)
 from enrich import ENRICHER, Enricher
 from library import LIBRARY
 import imgcache
 from netio import IMG_HOSTS, OUTBOUND_LIMIT, smaller_img
 from normalize import _int, _s
 from providers import lookup, lookup_detail
+from resolve import identify, resolve
 
 
 # --------------------------------------------------------------------------
@@ -210,9 +212,50 @@ class Handler(BaseHTTPRequestHandler):
                 scope = _s(body.get("scope"), 16) or "missing"
                 if scope not in Enricher.SCOPES:
                     scope = "missing"
-                self._json(200, ENRICHER.start(scope, _int(body.get("limit"), 0, 100000) or 0))
+                # Named titles, for filling in something just added rather
+                # than sweeping the whole library for it.
+                raw_ids = body.get("ids")
+                ids = tuple(_s(i, 64) for i in raw_ids[:200]
+                            if _s(i, 64)) if isinstance(raw_ids, list) else ()
+                self._json(200, ENRICHER.start(
+                    scope, _int(body.get("limit"), 0, 100000) or 0, ids))
                 return
             self._fail(405, "GET or POST")
+            return
+
+        if head == "resolve":
+            if not OUTBOUND_LIMIT.allow(self.client_address[0] if self.client_address else "?"):
+                self._fail(429, "slow down")
+                return
+            if method == "GET":
+                text = (query.get("q") or [""])[0]
+            elif method == "POST":
+                payload = self._body()
+                if payload is None:
+                    return
+                body = payload if isinstance(payload, dict) else {}
+                text = _s(body.get("text") or body.get("q"), 600)
+                query = {**query,
+                         "type": [_s(body.get("type"), 16) or (query.get("type") or ["any"])[0]],
+                         "limit": [str(body.get("limit") or (query.get("limit") or ["8"])[0])]}
+            else:
+                self._fail(405, "GET or POST")
+                return
+            text = _s(text, 600)
+            if not text:
+                self._fail(400, "q is required")
+                return
+            kind = (query.get("type") or ["any"])[0][:16]
+            if kind not in ITEM_TYPES:
+                kind = "any"
+            limit = max(1, min(_int((query.get("limit") or ["8"])[0], 1, 20) or 8, 20))
+            self._json(200, resolve(text, kind, limit))
+            return
+
+        # What a pasted link is, without going and asking anyone. Free, and
+        # instant, so the importer can label a link as you paste it.
+        if head == "identify":
+            self._json(200, identify(_s((query.get("q") or [""])[0], 600)))
             return
 
         if head in ("lookup", "img"):

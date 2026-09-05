@@ -15,8 +15,12 @@ Standard library only, on purpose: the image ships CPython and nothing else.
 This module is only the entry point.  The work lives next door, and the
 modules import in this order — each one only ever reaches leftwards:
 
-    config → normalize → library ─┐
-    config → netio → providers ───┴→ enrich → httpd
+    config → normalize → library ─────────────┐
+    config → netio → providers ─┐             │
+    match ──────────────────────┴→ resolve ───┴→ enrich → httpd
+
+`match` imports nothing at all: it is the measures, with no provider and no
+network anywhere near them.
 """
 
 from __future__ import annotations

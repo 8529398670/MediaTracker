@@ -22,6 +22,8 @@ from netio import BREAKER, fetch_json, proxy_img
 from normalize import _s, _url, canon_genres
 from providers import (prov_itunes, prov_openlibrary, prov_wikipedia,
                        strip_tags, year_of)
+from resolve import _complete, confident, search
+from seed import split_title
 
 
 # --------------------------------------------------------------------------
@@ -192,6 +194,37 @@ def enrich_wikidata(title: str, year: int | None, kind: str) -> dict:
         "imdbId": (_wd_strings(best, "P345") or [""])[0],
         "wikiUrl": wiki,
     }
+
+
+def enrich_resolve(title: str, year: int | None, kind: str) -> dict:
+    """The importer's own matcher, put to work on a title already in hand.
+
+    This is the same code path a paste goes through, so a title that the
+    importer can resolve is a title this pass can fill in — asking TMDB
+    several ways, checking the spelling against Wikipedia, and looking in the
+    other medium when a film has been filed under television.
+
+    Nothing is returned unless the match is a confident one. A card with no
+    artwork is a gap; a card with another film's artwork is a lie, and there
+    is nothing on it to say which it is.
+    """
+    if not TMDB_KEY:
+        return {}
+    rows, _, (title, year) = search(title, year, kind, 6)
+    if not rows:
+        return {}
+
+    # Completed before it is judged, because the cast is part of the evidence:
+    # deciding whether every word of "Shockproof - Patricia Night" is
+    # accounted for needs to know who was in it, and a search result does not
+    # say. The title has to be handed over too — without it the check has
+    # nothing to compare against but the answer itself, which always agrees.
+    best = _complete(rows[0])
+    if not confident([best] + rows[1:], year):
+        return {}
+
+    return {k: v for k, v in best.items()
+            if not k.startswith("_") and v not in (None, "", [])}
 
 
 def enrich_tmdb(title: str, year: int | None, kind: str) -> dict:
@@ -408,18 +441,21 @@ def enrich_openlibrary(title: str, year: int | None, kind: str) -> dict:
 
 # Richest first; the chain stops as soon as nothing is left to fill.
 ENRICH_CHAIN = {
-    # `wikidata_imdb` sits directly after whatever supplies the IMDb id,
-    # because an exact id beats a title search every time.
-    "tv":      ("tmdb", "tvmaze", "wikidata_imdb", "wikidata", "wikipedia", "omdb"),
-    "anime":   ("tmdb", "tvmaze", "wikidata_imdb", "wikidata", "wikipedia"),
+    # `resolve` leads wherever TMDB has anything to say: it is the only
+    # provider here that asks more than once, and a title the others miss
+    # because of a stray comma or a year that was never right is a title it
+    # still finds. `wikidata_imdb` sits directly after whatever supplies the
+    # IMDb id, because an exact id beats a title search every time.
+    "tv":      ("resolve", "tvmaze", "wikidata_imdb", "wikidata", "wikipedia", "omdb"),
+    "anime":   ("resolve", "tvmaze", "wikidata_imdb", "wikidata", "wikipedia"),
     "book":    ("openlibrary", "wikidata", "wikipedia"),
     # Wikipedia leads for film: its one-line descriptions ("1941 film by
     # Preston Sturges") carry the year, and the year is what lets Wikidata
     # tell two films of the same name apart.
     # No iTunes here: Apple's public search endpoint stopped returning films,
     # and each call to it costs three seconds of the rate limit.
-    "movie":   ("tmdb", "wikidata_imdb", "wikipedia", "wikidata", "omdb"),
-    "doc":     ("tmdb", "wikidata_imdb", "wikipedia", "wikidata", "omdb"),
+    "movie":   ("resolve", "wikidata_imdb", "wikipedia", "wikidata", "omdb"),
+    "doc":     ("resolve", "wikidata_imdb", "wikipedia", "wikidata", "omdb"),
     "podcast": ("itunes", "wikidata", "wikipedia"),
     "game":    ("wikidata", "wikipedia"),
     "other":   ("wikipedia", "wikidata"),
@@ -437,6 +473,8 @@ OTHER_MEDIUM = {"movie": "tv", "doc": "tv", "tv": "movie", "anime": "movie"}
 # other medium is tried as well. On a genre pass over a thousand titles that
 # is hours spent on a guaranteed miss.
 PROVIDER_FIELDS = {
+    "resolve":     {"year", "poster", "cast", "certification", "imdbId",
+                    "overview", "runtime", "genres", "creator", "extRating"},
     "tmdb":        {"year", "poster", "cast", "certification", "imdbId",
                     "overview", "runtime", "genres", "creator", "extRating"},
     "omdb":        {"year", "poster", "cast", "certification", "imdbId",
@@ -456,6 +494,7 @@ PROVIDER_FIELDS = {
 # ignores the arguments it has no use for. OMDb and Wikidata both answer far
 # better from an id than from a name, so both are handed it.
 ENRICH_PROVIDERS = {
+    "resolve": lambda t, y, k, i: enrich_resolve(t, y, k),
     "tmdb": lambda t, y, k, i: enrich_tmdb(t, y, k),
     "omdb": lambda t, y, k, i: enrich_omdb(t, y, i),
     "wikidata": lambda t, y, k, i: enrich_wikidata(t, y, k),
@@ -484,13 +523,37 @@ def enrich_item(item: dict, problems: list | None = None,
     title = item.get("title") or ""
     if not title:
         return {}
+
+    # A title carried in from a document may still have its year stuck to the
+    # end of it — "Yes, Minister - 1980" — and no provider has heard of that.
+    # The stored title is left exactly as it is; only what is searched for is
+    # cleaned up. A year found in the title is trusted over the stored one,
+    # since a span written "1980-1984" was read from the wrong end.
     kind = item.get("type") or "movie"
+    searchable, in_title, _ = split_title(title)
+    if searchable and searchable != title:
+        title = searchable
     patch: dict = {}
     problems = problems if problems is not None else []
     have = {k: v for k, v in item.items() if k not in replace}
 
-    def walk(as_kind: str) -> None:
+    # The year to search on. One still glued to the title wins over the one on
+    # the item, because a span written "1980-1984" was read from the wrong end
+    # by the parser that stored it. What gets written is decided at the foot of
+    # this function as usual: a year already on the item is left alone.
+    year_hint = in_title or item.get("year")
+    if in_title and not item.get("year"):
+        patch["year"] = in_title
+
+    # What the record is actually called. Only the resolver's answer counts:
+    # it is the one provider here that will not answer unless it is sure, and
+    # a name is not a blank to be filled but a correction to be made.
+    corrected: list[str] = []
+
+    def walk(as_kind: str, skip: tuple = ()) -> None:
         for name in ENRICH_CHAIN.get(as_kind, ENRICH_CHAIN["other"]):
+            if name in skip:
+                continue
             left = _needs(have, patch, want)
             if not left:
                 return
@@ -502,11 +565,11 @@ def enrich_item(item: dict, problems: list | None = None,
             # providers further down the chain tell two works of the same
             # name apart, so it is worth a call even when it is not the point.
             if not (can & set(left)) and not (
-                    "year" in can and not (item.get("year") or patch.get("year"))):
+                    "year" in can and not (year_hint or patch.get("year"))):
                 continue
             try:
                 found = ENRICH_PROVIDERS[name](
-                    title, item.get("year") or patch.get("year"), as_kind,
+                    title, year_hint or patch.get("year"), as_kind,
                     item.get("imdbId") or patch.get("imdbId") or "")
                 BREAKER.record(name, True)
             except (urllib.error.URLError, socket.timeout, TimeoutError,
@@ -518,6 +581,8 @@ def enrich_item(item: dict, problems: list | None = None,
                 problems.append(f"{name}: {type(exc).__name__}")
                 continue
             _fill(patch, found)
+            if found and name == "resolve" and found.get("title"):
+                corrected.append(found["title"])
             if found:
                 patch.setdefault("source", name)
 
@@ -534,7 +599,12 @@ def enrich_item(item: dict, problems: list | None = None,
     # the pass was after, so it never overrides an answer, only a blank. The
     # item's own type is left exactly as it is: that is yours to set.
     if _needs(have, patch, want) and kind in OTHER_MEDIUM:
-        walk(OTHER_MEDIUM[kind])
+        # `resolve` is left out of the second pass: asking the other medium is
+        # something it does for itself, so running it again here is the same
+        # dozen calls a second time for the same answer. On a title that is in
+        # none of the providers — a document line that was never a film — that
+        # doubling was the difference between twenty seconds and a minute.
+        walk(OTHER_MEDIUM[kind], skip=("resolve",))
 
     # A field is written when it was asked to be replaced, or when the title
     # has nothing there. A provider never blanks anything: _fill drops empties
@@ -545,6 +615,15 @@ def enrich_item(item: dict, problems: list | None = None,
             out[key] = value
         elif key in ENRICH_FIELDS + ("source", "extRating") and not item.get(key):
             out[key] = value
+
+    # And the name, when the record says it differently. A list written by
+    # hand is full of "Jossie and the Pussy Cats" and "Champagne for Ceasar",
+    # and having found the film there is no reason to keep the misspelling —
+    # the whole point of identifying it is to know what it is called. Written
+    # only alongside something else, so a title is never rewritten on the
+    # strength of a match that produced nothing.
+    if out and corrected and corrected[0] != item.get("title"):
+        out["title"] = corrected[0]
     return out
 
 
@@ -646,7 +725,14 @@ class Enricher:
                 "network": NET_ENABLED,
             }
 
-    def start(self, scope: str = "missing", limit: int = 0) -> dict:
+    def start(self, scope: str = "missing", limit: int = 0,
+              ids: tuple = ()) -> dict:
+        """Begin a pass. `ids` names the titles to work on.
+
+        Naming them is what the importer does: a title just added should be
+        filled in now, and it should not cost a walk over the nine hundred
+        already in the library to do it.
+        """
         with self.lock:
             if self.running:
                 return self.status()
@@ -654,7 +740,12 @@ class Enricher:
                 self.note = "lookups are switched off in this container"
                 return self.status()
             replace = self.SCOPES.get(scope, ())
-            rows = self.candidates(scope)
+            if ids:
+                wanted = set(ids)
+                rows = [i for i in self.library.snapshot()["items"]
+                        if i["id"] in wanted and not i.get("deleted")]
+            else:
+                rows = self.candidates(scope)
             if limit > 0:
                 rows = rows[:limit]
             self.reset()

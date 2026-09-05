@@ -85,7 +85,28 @@ RX_DECADE = re.compile(r"^(?:19|20)?\d0['\u2019]?s$", re.I)
 RX_PAREN_TAIL = re.compile(r"^(.*?)\s*[(\[]([^()\[\]]{1,80})[)\]]\s*$")
 RX_YEAR_RANGE = re.compile(r"^((?:18|19|20)\d{2})\s*(?:[-\u2013\u2014]\s*(?:(?:18|19|20)\d{2})?)?$")
 RX_YEAR_BARE = re.compile(r"^(?:18|19|20)\d{2}$")
-RX_DASH_YEAR = re.compile(r"^(.{2,}?)\s*[-\u2013\u2014,]\s*((?:18|19|20)\d{2})\s*$")
+
+# How Wikipedia disambiguates a title, which is how it arrives when a
+# Wikipedia link is pasted: "Parasite (2019 film)".
+RX_YEAR_MEDIUM = re.compile(
+    r"^((?:18|19|20)\d{2})\s+(?:film|movie|tv series|television series|series"
+    r"|miniseries|anime|documentary|video game|novel|book)s?$", re.I)
+
+# A run a document gives as a span: "Yes, Minister - 1980-1984", "Dickinson -
+# 2019-21", "Cheers - 1982-present". The first year is the one that identifies
+# the title, and the whole span comes off it — matching only the last year
+# leaves "Yes, Minister - 1980" as the title and 1984 as the year, which is
+# neither the name of anything nor the year it started.
+RX_DASH_YEARS = re.compile(
+    r"^(.{2,}?)\s*[-\u2013\u2014,]\s*"
+    r"((?:18|19|20)\d{2})"
+    r"(?:\s*[-\u2013\u2014/]\s*(?:(?:18|19|20)?\d{2}|present|now|date|ongoing|\?+))?"
+    r"\s*$", re.I)
+
+# The same span inside brackets: "The Wire (2002-2008)".
+RX_PAREN_YEARS = re.compile(
+    r"^((?:18|19|20)\d{2})"
+    r"\s*[-\u2013\u2014/]\s*(?:(?:18|19|20)?\d{2}|present|now|date|ongoing|\?+)\s*$", re.I)
 
 
 def clean(text: str) -> str:
@@ -160,9 +181,11 @@ def split_title(raw: str) -> tuple[str, int | None, str]:
         if not match:
             break
         inner = match.group(2).strip()
-        span = RX_YEAR_RANGE.match(inner)
-        if span and year is None:
-            year = int(span.group(1))
+        span = (RX_YEAR_RANGE.match(inner) or RX_PAREN_YEARS.match(inner)
+                or RX_YEAR_MEDIUM.match(inner))
+        if span:
+            if year is None:
+                year = int(span.group(1))
         elif RX_YEAR_BARE.match(inner):
             if year is None:
                 year = int(inner)
@@ -170,10 +193,13 @@ def split_title(raw: str) -> tuple[str, int | None, str]:
             notes.insert(0, inner)
         title = match.group(1).strip()
 
-    if year is None:
-        match = RX_DASH_YEAR.match(title)
-        if match:
-            title = match.group(1).strip()
+    # The span comes off the title whether or not a year has already been
+    # found, because it is not part of the name either way: "Yes, Minister -
+    # 1980-1984 (1984)" is the programme "Yes, Minister" twice over.
+    match = RX_DASH_YEARS.match(title)
+    if match:
+        title = match.group(1).strip()
+        if year is None:
             year = int(match.group(2))
 
     return re.sub(r"\s{2,}", " ", title).strip(), year, " ".join(notes)

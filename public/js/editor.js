@@ -1,5 +1,8 @@
-/* Item detail / edit sheet, the quick rating picker, and the add flow
- * (online lookup, manual entry, or bulk paste). */
+/* Item detail / edit sheet, the quick rating picker, and the add flow.
+ *
+ * Adding has one box that takes anything — a title, a link, a whole list —
+ * and lives in importer.js. What is left here is the by-hand form, for a
+ * title no provider has heard of and for when there is no network at all. */
 
 import {
   state, api, TYPES, STATUSES, TYPE_LABEL, addItem, patchItem, removeItem,
@@ -10,6 +13,7 @@ import {
   setChildren, fmtDate, isoToDateInput, dateInputToISO, hostOf,
 } from './ui.js';
 import { openPortingSheet } from './porting.js';
+import { universalPanel } from './importer.js';
 import { justWatchUrl } from './views.js';
 
 /* ---------------------------------------------------------- rating picker */
@@ -195,6 +199,7 @@ export function openItem(item, { onChange, onDeleted }) {
   lookupBtn.addEventListener('click', () => {
     openLookupSheet({
       query: title.value || draft.title,
+      year: Number(year.value) || draft.year || null,
       kind: draft.type,
       onPick: (meta) => {
         Object.assign(draft, pickMeta(meta, draft));
@@ -309,6 +314,18 @@ function pickMeta(meta, draft) {
 
 /* ------------------------------------------------------------ lookup sheet */
 
+/* How the answer was arrived at, said plainly. */
+const VIA_NOTE = {
+  'imdb-id': 'from that IMDb link',
+  'tmdb-id': 'from that TMDB link',
+  'tvmaze-id': 'from that TVmaze link',
+  'wikidata-id': 'from that Wikidata link',
+  'wikipedia-id': 'through the Wikipedia article',
+  page: 'from that page',
+  spelling: 'after correcting the spelling',
+  'other-medium': 'filed under the other medium',
+};
+
 const LOOKUP_KINDS = [
   { id: 'any', label: 'Anything' },
   { id: 'movie', label: 'Movies' },
@@ -317,10 +334,11 @@ const LOOKUP_KINDS = [
   { id: 'podcast', label: 'Podcasts' },
 ];
 
-export function openLookupSheet({ query = '', kind = 'any', onPick, actionLabel = 'Use' }) {
+export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
+                                  actionLabel = 'Use' }) {
   let mediaKind = ['movie', 'tv', 'book', 'podcast'].includes(kind) ? kind : 'any';
   const input = el('input.input', {
-    type: 'search', value: query, placeholder: 'Title to look up',
+    type: 'search', value: query, placeholder: 'Title, or a link to paste',
     enterkeyhint: 'search', autocapitalize: 'words',
   });
   const results = el('div');
@@ -331,15 +349,28 @@ export function openLookupSheet({ query = '', kind = 'any', onPick, actionLabel 
     const term = input.value.trim();
     if (term.length < 2) { results.replaceChildren(); return; }
     const mine = ++seq;
-    results.replaceChildren(el('div.center-note', null, [el('div.spinner'), 'Searching...']));
+    results.replaceChildren(el('div.center-note', null, [el('div.spinner'), 'Looking...']));
+    // The year the card already carries is what tells two films of the same
+    // name apart, so it goes along with the title. Only while the title is
+    // still the card's own, though: once it has been edited — to a different
+    // film, or to a link — the old year is no longer about what is being
+    // asked for.
+    const asked = year && term === query.trim()
+      && !/\((?:18|19|20)\d{2}\)\s*$/.test(term)
+      ? `${term} (${year})` : term;
     try {
-      const data = await api('GET', `/lookup?q=${encodeURIComponent(term)}&type=${mediaKind}&limit=12`);
+      const data = await api('POST', '/resolve',
+        { text: asked, type: mediaKind, limit: 10 });
       if (mine !== seq) return;
-      paint(data);
+      paint({
+        results: data.candidates || [],
+        note: data.note || (data.confident && data.via && data.via !== 'search'
+          ? `Found ${VIA_NOTE[data.via] || data.via}.` : ''),
+      });
     } catch (err) {
       if (mine !== seq) return;
       results.replaceChildren(el('p.hint', {
-        text: `Lookup failed: ${err.message}. You can still add it by hand.`,
+        text: `Lookup failed: ${err.message}. You can still fill it in by hand.`,
       }));
     }
   }
@@ -348,15 +379,19 @@ export function openLookupSheet({ query = '', kind = 'any', onPick, actionLabel 
     results.replaceChildren();
     if (data.note) results.append(el('p.hint', { text: data.note }));
     if (!data.results || !data.results.length) {
-      results.append(el('p.hint', { text: 'No matches. Try fewer words, or add it manually.' }));
+      results.append(el('p.hint', {
+        text: 'No matches. Try fewer words, or paste a link to it.',
+      }));
       return;
     }
     for (const row of data.results) {
       const use = el('button.btn.sm.primary', { type: 'button', text: actionLabel });
       use.addEventListener('click', async () => {
         use.disabled = true;
+        // The top answer arrives complete; the rest are search results, and
+        // the cast and runtime take one more call.
         let meta = row;
-        if (row.source && row.sourceId) {
+        if (!row.cast && row.source && row.sourceId) {
           try {
             const detail = await api('GET',
               `/lookup/detail?source=${encodeURIComponent(row.source)}&id=${encodeURIComponent(row.sourceId)}`);
@@ -412,10 +447,10 @@ export function openAdd(onDone, { defaultType = 'movie' } = {}) {
   const body = el('div');
   const tabs = el('div.tabs');
   const panel = el('div');
-  let current = 'search';
+  let current = 'add';
   const buttons = {};
 
-  for (const [id, label] of [['search', 'Look up'], ['manual', 'By hand'], ['paste', 'Paste a list']]) {
+  for (const [id, label] of [['add', 'Add anything'], ['manual', 'By hand'], ['paste', 'Files & export']]) {
     const button = el('button', {
       type: 'button', text: label, 'aria-selected': String(id === current),
       onclick: () => { current = id; draw(); },
@@ -428,92 +463,9 @@ export function openAdd(onDone, { defaultType = 'movie' } = {}) {
     for (const [id, button] of Object.entries(buttons)) {
       button.setAttribute('aria-selected', String(id === current));
     }
-    if (current === 'search') panel.replaceChildren(searchPanel());
+    if (current === 'add') panel.replaceChildren(universalPanel(onDone, { defaultType }));
     else if (current === 'manual') panel.replaceChildren(manualPanel());
     else panel.replaceChildren(pastePanel());
-  }
-
-  function searchPanel() {
-    const wrap = el('div');
-    const input = el('input.input', {
-      type: 'search', placeholder: 'Search movies, shows, books...',
-      enterkeyhint: 'search', autocapitalize: 'words', 'data-autofocus': '',
-    });
-    let mediaKind = defaultType === 'movie' ? 'any' : defaultType;
-    const results = el('div');
-    let timer = 0;
-    let seq = 0;
-
-    async function run() {
-      const term = input.value.trim();
-      if (term.length < 2) { results.replaceChildren(); return; }
-      const mine = ++seq;
-      results.replaceChildren(el('div.center-note', null, [el('div.spinner'), 'Searching...']));
-      try {
-        const data = await api('GET', `/lookup?q=${encodeURIComponent(term)}&type=${mediaKind}&limit=12`);
-        if (mine !== seq) return;
-        results.replaceChildren();
-        if (!data.results.length) {
-          results.append(el('p.hint', { text: 'No matches - try "By hand".' }));
-          return;
-        }
-        for (const row of data.results) {
-          const add = el('button.btn.sm.primary', { type: 'button' }, [icon('plus')]);
-          add.addEventListener('click', () => {
-            const created = addItem({
-              title: row.title,
-              year: row.year || null,
-              type: row.type || defaultType,
-              poster: row.poster || '',
-              overview: row.overview || '',
-              genres: row.genres || [],
-              runtime: row.runtime || null,
-              creator: row.creator || '',
-              source: row.source || '',
-              sourceId: row.sourceId || '',
-              imdbId: row.imdbId || '',
-              extRating: row.extRating || null,
-              links: row.link ? [{ label: hostOf(row.link), url: row.link }] : [],
-            });
-            add.replaceChildren(icon('check'));
-            add.disabled = true;
-            onDone();
-            toast(`Added "${created.title}"`, {
-              action: { label: 'Edit', fn: () => openItem(created, { onChange: onDone, onDeleted: onDone }) },
-            });
-          });
-
-          results.append(el('div.result', null, [
-            row.poster ? el('img', { src: row.poster, alt: '', loading: 'lazy' }) : el('img', { alt: '' }),
-            el('div.result-body', null, [
-              el('h4', { text: row.title }),
-              el('div.card-meta', null, [
-                row.year ? el('span', { text: String(row.year) }) : null,
-                el('span.tag-badge.type', { text: TYPE_LABEL[row.type] || row.type }),
-                row.source ? el('span', { text: row.source }) : null,
-              ]),
-              row.overview ? el('p', { text: row.overview }) : null,
-            ]),
-            add,
-          ]));
-        }
-      } catch (err) {
-        if (mine !== seq) return;
-        results.replaceChildren(el('p.hint', {
-          text: `Lookup unavailable (${err.message}). Use "By hand" - everything still works offline.`,
-        }));
-      }
-    }
-
-    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 350); });
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
-
-    wrap.append(
-      field('Title', input),
-      field('Where to look', segmented(LOOKUP_KINDS, mediaKind, (v) => { mediaKind = v; run(); })),
-      results,
-    );
-    return wrap;
   }
 
   function manualPanel() {
@@ -576,11 +528,11 @@ export function openAdd(onDone, { defaultType = 'movie' } = {}) {
   function pastePanel() {
     const wrap = el('div', null, [
       el('p.hint', {
-        text: 'Paste a whole list at once - a Google Docs export, a CSV, or a JSON backup from here. '
-            + 'Year headings, checkboxes and indented links are all understood.',
+        text: 'Import from a file, or take a backup of everything that is here. '
+            + 'Pasting a list does not need this tab — "Add anything" takes one.',
       }),
     ]);
-    const go = el('button.btn.primary.grow', { type: 'button', text: 'Open the importer' });
+    const go = el('button.btn.primary.grow', { type: 'button', text: 'Import & export' });
     go.addEventListener('click', () => { handle.close(); openPortingSheet(onDone, 'import'); });
     wrap.append(el('div.field', null, [go]));
     return wrap;

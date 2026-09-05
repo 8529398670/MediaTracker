@@ -11,8 +11,9 @@ import {
   TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL,
 } from './store.js';
 import {
-  el, field, openSheet, toast, download, copyText, segmented, fmtDate,
+  el, openSheet, toast, download, copyText, fmtDate,
 } from './ui.js';
+import { universalPanel } from './importer.js';
 
 /* ============================== export ================================= */
 
@@ -101,6 +102,11 @@ const RX = {
   boldHead: /^\*\*(.+?)\*\*:?\s*$/,
   yearOnly: /^(?:19|20)\d{2}$/,
   decade: /^(?:19|20)?\d0['’]?s$/i,
+  // A year, or a run of them, as a document writes it. Kept in step with
+  // RX_PAREN_YEARS / RX_DASH_YEARS in server/seed.py.
+  yearSpan: /^((?:18|19|20)\d{2})\s*(?:[-–—/]\s*(?:(?:18|19|20)?\d{2}|present|now|date|ongoing|\?+)?)?$/i,
+  yearMedium: /^((?:18|19|20)\d{2})\s+(?:film|movie|tv series|television series|series|miniseries|anime|documentary|video game|novel|book)s?$/i,
+  dashYears: /^(.{2,}?)\s*[-–—,]\s*((?:18|19|20)\d{2})(?:\s*[-–—/]\s*(?:(?:18|19|20)?\d{2}|present|now|date|ongoing|\?+))?\s*$/i,
 };
 
 /** Undo Google Docs' markdown escaping and invisible characters. */
@@ -166,14 +172,15 @@ function splitTitle(raw) {
   let year = null;
   const notes = [];
 
-  // Trailing parentheses, innermost last: "Title (1995) (a note)"
+  // Trailing parentheses, innermost last: "Title (1995) (a note)",
+  // "The Wire (2002-2008)", "Parasite (2019 film)".
   for (let guard = 0; guard < 4; guard += 1) {
     const match = title.match(/^(.*?)\s*[([]([^()[\]]{1,80})[)\]]\s*$/);
     if (!match) break;
     const inner = match[2].trim();
-    const range = inner.match(/^((?:18|19|20)\d{2})\s*(?:[-–—]\s*(?:(?:18|19|20)\d{2})?)?$/);
-    if (range && !year) {
-      year = Number(range[1]);
+    const span = inner.match(RX.yearSpan) || inner.match(RX.yearMedium);
+    if (span) {
+      if (!year) year = Number(span[1]);
     } else if (/^(?:18|19|20)\d{2}$/.test(inner)) {
       if (!year) year = Number(inner);
     } else {
@@ -182,10 +189,18 @@ function splitTitle(raw) {
     title = match[1].trim();
   }
 
-  // Trailing "- 1948" / ", 1948" (only when something is left in front of it)
-  if (!year) {
-    const match = title.match(/^(.{2,}?)\s*[-–—,]\s*((?:18|19|20)\d{2})\s*$/);
-    if (match) { title = match[1].trim(); year = Number(match[2]); }
+  // A run a document gives as a span: "Yes, Minister - 1980-1984",
+  // "Dickinson - 2019-21", "Cheers - 1982-present". The first year is the one
+  // that identifies the title, and the whole span comes off it — matching only
+  // the last year leaves "Yes, Minister - 1980" as the title and 1984 as the
+  // year, which is neither the name of anything nor the year it started.
+  //
+  // The span comes off whether or not a year has been found already, because
+  // it is not part of the name either way.
+  const tail = title.match(RX.dashYears);
+  if (tail) {
+    title = tail[1].trim();
+    if (!year) year = Number(tail[2]);
   }
 
   return { title: title.replace(/\s{2,}/g, ' ').trim(), year, notes: notes.join(' ') };
@@ -531,7 +546,7 @@ export function openPortingSheet(onDone, initialTab = 'import') {
     for (const [id, button] of Object.entries(tabButtons)) {
       button.setAttribute('aria-selected', String(id === current));
     }
-    panel.replaceChildren(current === 'import' ? importPanel(onDone) : exportPanel());
+    panel.replaceChildren(current === 'import' ? universalPanel(onDone) : exportPanel());
   }
 
   body.append(tabs, panel);
@@ -566,95 +581,3 @@ function exportPanel() {
   return wrap;
 }
 
-function importPanel(onDone) {
-  const wrap = el('div');
-  const opts = { type: 'movie', status: 'queue', headingsAsTags: true, captureSources: true };
-  let mode = 'merge';
-  let skipDuplicates = true;
-
-  const area = el('textarea.input', {
-    placeholder: 'Paste a list, a Google Docs export, CSV, or a JSON backup from here...',
-    rows: 7, spellcheck: false,
-  });
-  area.style.setProperty('min-height', '140px');
-
-  const file = el('input', { type: 'file', accept: '.json,.csv,.md,.txt,.markdown,text/*' });
-  file.addEventListener('change', async () => {
-    const chosen = file.files && file.files[0];
-    if (!chosen) return;
-    area.value = await chosen.text();
-    preview();
-  });
-
-  const summary = el('p.hint', { text: 'Nothing pasted yet.' });
-  const sample = el('div.chip-row');
-  let parsed = null;
-
-  function preview() {
-    const text = area.value.trim();
-    sample.replaceChildren();
-    if (!text) { parsed = null; summary.textContent = 'Nothing pasted yet.'; return; }
-    parsed = parseAny(text, opts);
-    const found = parsed.items.length;
-    summary.textContent = found
-      ? `Detected ${parsed.format.toUpperCase()}: ${found} titles`
-        + (parsed.sources.length ? `, ${parsed.sources.length} source links` : '')
-        + (parsed.placeholders ? `, ${parsed.placeholders} placeholders ignored` : '')
-      : `Detected ${parsed.format.toUpperCase()} but found no titles - check the format.`;
-    for (const item of parsed.items.slice(0, 6)) {
-      sample.append(el('span.pill', { text: item.year ? `${item.title} (${item.year})` : item.title }));
-    }
-    if (found > 6) sample.append(el('span.pill', { text: `+${found - 6} more` }));
-  }
-
-  area.addEventListener('input', () => { clearTimeout(area._t); area._t = setTimeout(preview, 250); });
-
-  wrap.append(
-    field('Paste or choose a file', area),
-    el('div.field', null, [file]),
-    field('Treat untyped entries as', segmented(TYPES.slice(0, 5), opts.type, (v) => { opts.type = v; preview(); })),
-    field('Default status', segmented(STATUSES, opts.status, (v) => { opts.status = v; preview(); })),
-  );
-
-  const optionRow = el('div.chip-row');
-  const optChip = (label, get, set) => {
-    const chip = el('button.chip.chip-toggle', { type: 'button', text: label, 'aria-pressed': String(get()) });
-    chip.addEventListener('click', () => { set(!get()); chip.setAttribute('aria-pressed', String(get())); preview(); });
-    return chip;
-  };
-  optionRow.append(
-    optChip('Headings become tags', () => opts.headingsAsTags, (v) => { opts.headingsAsTags = v; }),
-    optChip('Keep bare links as sources', () => opts.captureSources, (v) => { opts.captureSources = v; }),
-    optChip('Merge duplicates', () => skipDuplicates, (v) => { skipDuplicates = v; }),
-    optChip('Replace whole library', () => mode === 'replace', (v) => { mode = v ? 'replace' : 'merge'; }),
-  );
-  wrap.append(field('Options', optionRow,
-    'Year headings (## 1949) and checked boxes are picked up automatically. '
-    + 'Indented links attach to the title above them.'));
-
-  wrap.append(summary, sample);
-
-  const go = el('button.btn.primary.grow', { type: 'button', text: 'Import' });
-  go.addEventListener('click', async () => {
-    if (!parsed) preview();
-    if (!parsed || !parsed.items.length) { toast('Nothing to import', { error: true }); return; }
-    if (mode === 'replace' && !window.confirm(
-      `Replace all ${live().length} existing titles with these ${parsed.items.length}?`)) return;
-
-    go.disabled = true;
-    const report = applyImport(parsed, { mode, skipDuplicates });
-    go.disabled = false;
-
-    const parts = [`${report.added} added`];
-    if (report.merged) parts.push(`${report.merged} merged`);
-    if (report.skipped) parts.push(`${report.skipped} already there`);
-    if (report.sources) parts.push(`${report.sources} sources`);
-    toast(parts.join(', '));
-    area.value = '';
-    preview();
-    onDone();
-  });
-
-  wrap.append(el('div.field', null, [go]));
-  return wrap;
-}

@@ -7,8 +7,10 @@ what one caller can ask of our own outbound endpoints.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -207,3 +209,62 @@ class Breaker:
 
 BREAKER = Breaker()
 OUTBOUND_LIMIT = RateLimiter(180, 60.0)
+
+
+# --------------------------------------------------------------------------
+# fetching a page, for links from sites with no API
+# --------------------------------------------------------------------------
+#
+# The resolver is handed URLs by whoever is using the app, and it is the
+# server that goes and fetches them. That makes an arbitrary paste into a
+# request from inside the network, so the host is checked before the call:
+# a link to 127.0.0.1, to 192.168.x, or to a cloud metadata address is
+# refused rather than fetched.
+
+def public_host(host: str) -> bool:
+    """False for anything that resolves to a private or local address."""
+    if not host or host.lower() in ("localhost", "localhost.localdomain"):
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (OSError, UnicodeError):
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast
+                or address.is_unspecified):
+            return False
+    return True
+
+
+def fetch_text(url: str, timeout: float = 8.0, limit: int = 600_000) -> str:
+    """The head of an HTML page, for reading its metadata tags.
+
+    Only as much as the tags need: they live in <head>, and a film page can
+    carry half a megabyte of markup after it that nothing here reads.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    if not public_host(parsed.hostname):
+        return ""
+    request = urllib.request.Request(url, headers={
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
+    PACE.wait(parsed.hostname)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            ctype = (response.headers.get("Content-Type") or "").lower()
+            if "html" not in ctype and "xml" not in ctype and ctype:
+                return ""
+            return response.read(limit).decode("utf-8", "replace")
+    except (urllib.error.URLError, socket.timeout, TimeoutError, ValueError, OSError):
+        return ""
