@@ -539,6 +539,13 @@ a { color: var(--accent-2); }
 }
 .empty-state h3 { color: var(--text-2); margin: 0 0 6px; font-size: 16px; }
 .empty-state p { margin: 0 0 16px; font-size: 13.5px; }
+/* Two ways out of an empty answer sit beside each other, and wrap rather
+   than run off a phone. */
+.empty-state .btn + .btn { margin-left: 8px; }
+@media (max-width: 420px) {
+  .empty-state .btn { display: flex; margin: 0 auto 8px; }
+  .empty-state .btn + .btn { margin-left: auto; }
+}
 
 /* ------------------------------------------------------------------- fab */
 
@@ -1395,3 +1402,284 @@ body.has-map .fab-dock { right: calc(var(--pad) + var(--safe-r) + 50px); }
 
 /* The links row holds the user's own chips first and these on the right. */
 .card-links { align-items: center; }
+
+/* ------------------------------------------------------------------ discover
+
+   The fourth tab: films from Wikipedia's own year lists, which the library
+   was picked out of. Rows rather than cards — there is no artwork to show
+   until a title is yours, and what matters is the sentence beside the name:
+   who directed it, who is in it, and what the world made of it. */
+
+.disco {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px var(--pad);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-soft);
+  background: var(--surface);
+  margin-bottom: 8px;
+}
+.disco-body { flex: 1; min-width: 0; }
+
+.disco-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.disco-year {
+  margin-left: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.disco .card-meta { margin-top: 3px; }
+.disco .card-cast { margin-top: 3px; }
+.disco .card-links { margin-top: 7px; }
+
+.disco-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+/* What the world made of it, as opposed to what it is about: a different
+   colour, because "#1 for five weeks" is a fact and "Comedy" is a label. */
+.tag-badge.signal {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-2) 8%, transparent);
+}
+
+/* Add and Skip, stacked, one column that keeps its width whatever the row
+   beside it says. Two verdicts, equal in reach — the point of Skip is that it
+   is as easy to press as Add. */
+.disco-acts {
+  flex: none;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Fixed, so the column does not widen when Skip becomes Put back and the
+     row beside it does not reflow on the way into the skipped list. */
+  width: 96px;
+}
+.disco-act {
+  flex: none;
+  align-self: stretch;
+  justify-content: center;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.disco-act.skip { color: var(--text-3); }
+.disco-act.skip:hover { color: var(--text-2); }
+/* Already yours: the row stays, quietly, so a year reads as a whole rather
+   than with holes in it where the ones you have taken used to be. */
+.disco.is-mine { background: var(--surface-2); border-style: dashed; }
+.disco.is-mine .disco-title { color: var(--text-2); }
+
+.disco-more { display: flex; justify-content: center; padding: 10px 0 22px; }
+
+/* A year heading over a catalogue is a label, not a switch — there is
+   nothing to collapse when the list is paged from the server. */
+.group-head.static { cursor: default; }
+
+/* Collecting: a checkbox, a name and a line saying what it is worth. */
+.pickrow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.pickrow:last-child { border-bottom: 0; }
+.pickrow input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.pickrow b { display: block; font-size: 14px; font-weight: 600; }
+.pickrow small { display: block; color: var(--text-3); font-size: 12px; margin-top: 2px; }
+
+/* The year range in the toolbar: two small boxes that read as one control. */
+.yr-range { display: flex; align-items: center; gap: 4px; color: var(--text-3); }
+.input.yr {
+  width: 62px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text);
+  text-align: center;
+}
+.input.yr:focus { outline: none; }
+.input.yr::-webkit-outer-spin-button,
+.input.yr::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* The fill-in-the-details bar and the collect bar are the same bar; it had
+   no rule of its own until there were two of them. */
+.progress {
+  height: 6px;
+  margin: 8px 0 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.progress i {
+  display: block;
+  height: 100%;
+  width: var(--w, 0%);
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width .3s ease;
+}
+
+/* The poster, where Wikipedia has a free one. Same box as a library card's,
+   so a row here and a card there read as the same kind of thing; the initials
+   stand in for the many older films that have no free image at all. */
+.disco-art {
+  flex: none;
+  width: 52px;
+  height: 78px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+.disco-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* A name in a cast list is a way into everything else they were in, so it
+   reads as text until you go near it. */
+.castname {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+.castname:hover { color: var(--text-1); border-bottom-color: var(--line); }
+/* A name and its comma are one unbreakable piece, and the line breaks
+   between people. A flex row does that with no whitespace to get wrong —
+   a generated space inside a nowrap box is not a break opportunity. */
+.disco .card-cast {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
+}
+.castbit { white-space: nowrap; }
+.castname[aria-pressed="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.actor-chip .ico { width: 13px; height: 13px; }
+
+/* The age rating sits with the year, because it answers the same question:
+   what kind of evening is this — and because that is the question it answers,
+   it filters on tap the way the genres under it do. */
+.disco-title .cert {
+  margin-left: 7px;
+  vertical-align: middle;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 35%, transparent);
+}
+.disco-title .cert[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* The rating chosen, and the way out of it, read as one control in the bar. */
+.cert-clear { margin-left: -4px; color: var(--text-3); }
+
+/* Under the rating chips: how much of the catalogue has actually been asked
+   about, and the way to ask about the rest. */
+.cert-pass {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.cert-pass .hint { margin: 0; flex: 1 1 220px; }
+
+/* Year and genre in the toolbar. The year reads as one control with a way
+   out of it; a genre chosen stays visible in the bar rather than only inside
+   the sheet that chose it, because a filter you cannot see is a filter you
+   forget you set. */
+.yr-chip { padding-right: 6px; gap: 2px; }
+.yr-chip .icon-btn.tiny { margin-left: 2px; color: var(--text-3); }
+.genre-chip .ico { width: 13px; height: 13px; }
+.mode-chip { color: var(--text-3); font-style: italic; }
+
+/* How many films a chip stands for, on the chip. */
+.chip-count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+.chip[aria-pressed="true"] .chip-count {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.ghost-chip { border-style: dashed; color: var(--text-3); }
+
+.mode-seg { margin-bottom: 10px; }
+.decades { margin-top: 8px; }
+
+/* A genre already being filtered by, on the row that offered it. */
+.tag-badge.genre[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* In a row of pills a rule is a rule, not a one-pixel pill of its own. */
+.stats .divider {
+  width: 1px;
+  height: 15px;
+  align-self: center;
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--line);
+}
+
+/* What the count is a count of. */
+.stats .stat-filter {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* No year rail over a catalogue, so the list gets the width back. */
+body.discovering .yearmap { display: none; }
+
+/* A Discover row carries more than a library card — a poster, a cast list and
+   two verdicts — so it wants a wider column than 330px, or the cast ends up
+   one name per line. */
+@media (min-width: 720px) {
+  body.discovering .group-items {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  }
+}

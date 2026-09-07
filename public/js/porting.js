@@ -379,24 +379,32 @@ export function parseCSV(text) {
     return -1;
   };
 
+  /* The second name in each of these is usually a spreadsheet's; the ones
+     that look odd are IMDb's, because an IMDb list has an Export button and
+     that CSV is the only way to get one out of them — there is no public
+     API, and their search pages answer a program with an empty page. Their
+     "Const" is the tt id, which is worth more than everything else on the
+     row put together: a title that arrives with one is identified rather
+     than matched. "Your Rating" is yours; their "IMDb Rating" is not, and is
+     deliberately not read as one. */
   const map = {
-    title: index('title', 'name', 'movie', 'film'),
+    title: index('title', 'name', 'movie', 'film', 'original title'),
     year: index('year', 'release year', 'released'),
     type: index('type', 'media', 'kind'),
     status: index('status', 'state'),
-    rating: index('rating', 'score', 'my rating'),
+    rating: index('rating', 'score', 'my rating', 'your rating'),
     heart: index('heart', 'loved', 'favorite', 'favourite'),
     tags: index('tags', 'genre tags', 'labels'),
     links: index('links', 'link', 'url', 'urls'),
     notes: index('notes', 'note', 'comment'),
-    addedAt: index('addedat', 'added', 'date added'),
+    addedAt: index('addedat', 'added', 'date added', 'created'),
     watchedAt: index('watchedat', 'watched', 'date watched'),
-    runtime: index('runtime', 'length'),
+    runtime: index('runtime', 'length', 'runtime (mins)'),
     genres: index('genres', 'genre'),
-    creator: index('creator', 'director', 'author'),
+    creator: index('creator', 'director', 'author', 'directors'),
     poster: index('poster', 'image'),
     overview: index('overview', 'description', 'plot'),
-    imdbId: index('imdbid', 'imdb'),
+    imdbId: index('imdbid', 'imdb', 'const'),
   };
   if (map.title === -1) return { items: [], sources: [] };
 

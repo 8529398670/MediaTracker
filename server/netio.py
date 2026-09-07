@@ -99,7 +99,9 @@ def fetch_json(url: str, timeout: float = 6.0, limit: int = 4_000_000,
             PACE.eased(host)
             return payload
         except urllib.error.HTTPError as exc:
-            if exc.code not in (429, 503) or attempt + 1 >= tries:
+            # 502 sits beside the throttles because a shared gateway answers
+            # with one now and then and the same call succeeds a moment later.
+            if exc.code not in (429, 502, 503) or attempt + 1 >= tries:
                 raise
             try:
                 after = float(exc.headers.get("Retry-After") or 0)

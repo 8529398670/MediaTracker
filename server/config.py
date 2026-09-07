@@ -88,6 +88,10 @@ TOKEN = env("MT_TOKEN")
 MAX_BODY = int(env("MT_MAX_BODY", str(32 * 1024 * 1024)))
 NET_ENABLED = env_flag("MT_ENABLE_NET", True)
 IMG_ALLOW_ANY = env_flag("MT_IMG_ALLOW_ANY", False)
+# The harvested Wikipedia lists: the raw pages as parsed, and the merge built
+# from them. In the data volume, so a rebuilt image keeps them and a century
+# of harvesting is paid for once.
+LISTS_DIR = DATA_DIR / "lists"
 # Artwork is cached in the data volume so it survives a rebuild. Posters are
 # drawn in a 52x78 box, so even at three times that for a dense screen they
 # are a few kilobytes each; the default budget holds many times the library.
@@ -104,12 +108,20 @@ UA = (f"MediaTracker/{VERSION} "
       "(self-hosted personal media library; one user; https://localhost)")
 
 # Inline styles and scripts are disallowed; everything the page needs is a
-# same-origin file.  Remote images are pulled through /api/img instead.
+# same-origin file.  A library item's artwork is pulled through /api/img and
+# cached on disk, so it stays same-origin.
+#
+# Discover's is not, and deliberately: those are forty-five thousand films
+# nobody owns yet, and keeping their posters would fill the disk to show
+# pictures for rows that are mostly scrolled past.  So the two Wikimedia
+# thumbnail hosts are named here and the browser loads those straight, into
+# its own cache and nowhere else.  Nothing else is added: not the API host —
+# the address lookup goes through this server, so `connect-src` stays 'self'.
 CSP = (
     "default-src 'none'; "
     "script-src 'self'; "
     "style-src 'self'; "
-    "img-src 'self' data: blob:; "
+    "img-src 'self' data: blob: https://thumb.wikimedia.org https://upload.wikimedia.org; "
     "font-src 'self'; "
     "connect-src 'self'; "
     "manifest-src 'self'; "

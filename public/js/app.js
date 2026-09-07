@@ -19,6 +19,12 @@ import {
 } from './views.js';
 import { openItem, openRating, openAdd } from './editor.js';
 import { openPortingSheet } from './porting.js';
+import {
+  loadDiscover, setView, buildTools, renderDiscover, refreshDiscover, toggleGenre,
+  toggleRating,
+  discoverStats, discoverState, openHarvest, addFilm, ensureCatalogue,
+  setVerdict, setActor,
+} from './discover.js';
 
 const dom = {
   q: $('#q'),
@@ -42,6 +48,8 @@ const dom = {
   unrated: $('#t-unrated'),
   sort: $('#sel-sort'),
   group: $('#sel-group'),
+  toolbar: $('#toolbar'),
+  discoTools: $('#disco-tools'),
 };
 
 /* -------------------------------------------------------------- rendering */
@@ -136,6 +144,10 @@ function render() {
 
 function paint() {
   const everything = live();
+
+  if (inDiscover()) { paintTabs(everything); paintDiscover(); return; }
+  showLibraryChrome();
+
   const filtered = apply(everything);
   const isQueue = filters.view === 'queue';
 
@@ -180,6 +192,105 @@ function paint() {
   dom.filterBadge.hidden = count === 0;
   dom.filterBadge.textContent = String(count);
   dom.qClear.hidden = !dom.q.value;
+}
+
+/* ---------------------------------------------------------------- discover
+
+   Two panes share one page. The library's chrome — the three lists, the
+   filters, the year rail — means nothing against a catalogue you do not own,
+   so it is put away rather than left there doing nothing. */
+
+function showLibraryChrome() {
+  dom.toolbar.hidden = false;
+  dom.discoTools.hidden = true;
+  dom.btnFilters.hidden = false;
+  document.body.classList.remove('discovering');
+}
+
+const discoHandlers = {
+  reload: () => { pullDiscover(); },
+  more: () => { pullDiscover({ more: true }); },
+  fetch: () => openHarvest(() => { paintTabs(live()); pullDiscover(); }),
+  // The refine sheet waits on this one: its counts are the answer's counts,
+  // so it repaints when the list underneath has been repainted.
+  change: () => pullDiscover(),
+  genre: (genre) => { toggleGenre(genre); pullDiscover(); },
+  // The rating badge on a row is the same kind of control as the genre
+  // beside it: one tap for everything else rated the same, a second to stop.
+  rating: (id) => { toggleRating(id); pullDiscover(); },
+  // Clicking the same name twice stops following them, which is what the
+  // pressed state on the row is promising.
+  actor: (name) => { setActor(name); pullDiscover(); },
+  topic: (id) => { setView({ filter: `topic:${id}` }); pullDiscover(); },
+  open: (item) => openItem(item, { onChange: render, onDeleted: render }),
+  // The row has already left the page by the time these are called; what is
+  // left is to record it, keep the counts honest, and leave a way back.
+  skip: (film, restore) => verdict(film, 'skip', restore, `"${film.title}" skipped`),
+  unskip: (film, restore) => verdict(film, '', restore,
+    `"${film.title}" is back in the list`),
+  add: (film) => {
+    const item = addFilm(film);
+    render();
+    toast(`"${item.title}" added to the queue`, {
+      action: { label: 'Open', fn: () => discoHandlers.open(item) },
+    });
+  },
+};
+
+/* One verdict on one film. The row is gone already, so this is the counts,
+ * the toast, and putting the row back where it was — either because the
+ * server would not take it, or because the person changed their mind. */
+async function verdict(film, value, restore, said) {
+  try {
+    await setVerdict(film, value);
+  } catch (err) {
+    restore();
+    paintVerdict();
+    toast(err.message || 'could not save that', { error: true });
+    return;
+  }
+  paintVerdict();
+  toast(said, { action: { label: 'Undo', fn: () => undoVerdict(film, value, restore) } });
+}
+
+async function undoVerdict(film, value, restore) {
+  try {
+    await setVerdict(film, value === 'skip' ? '' : 'skip', { shown: 1 });
+  } catch (err) {
+    toast(err.message || 'could not undo that', { error: true });
+    return;
+  }
+  restore();
+  paintVerdict();
+}
+
+/* The two things a verdict changes that are not the row itself. */
+function paintVerdict() {
+  discoverStats(dom.stats);
+  buildTools(dom.discoTools, discoHandlers);
+}
+
+/** Ask the server again, then repaint. The search box is the query. */
+async function pullDiscover({ more = false } = {}) {
+  if (!more) dom.list.replaceChildren(
+    el('div.center-note', null, [el('div.spinner'), 'Reading the lists…']));
+  if (await refreshDiscover(filters.q, { more })) paintDiscover();
+}
+
+function paintDiscover() {
+  dom.toolbar.hidden = true;
+  dom.discoTools.hidden = false;
+  dom.btnFilters.hidden = true;
+  dom.empty.hidden = true;
+  dom.activeFilters.hidden = true;
+  dom.filterBadge.hidden = true;
+  dom.qClear.hidden = !dom.q.value;
+  document.body.classList.add('discovering');
+  paintYearMap(null);
+
+  buildTools(dom.discoTools, discoHandlers);
+  discoverStats(dom.stats);
+  renderDiscover(dom.list, discoHandlers);
 }
 
 /* When a search comes up empty here but not everywhere, say where it is. */
@@ -445,16 +556,25 @@ function addHere() {
 }
 
 function setPlace(section, view) {
+  const arriving = section && section !== filters.section;
   if (section) filters.section = section;
   if (view) filters.view = view;
   saveView();
   window.scrollTo({ top: 0 });
   syncControls();
+  if (arriving && inDiscover()) { pullDiscover(); return; }
   render();
 }
 
+/* A fourth tab beside Movies, TV and Other. Not a part of the library — it
+ * is the pile of films the library was picked out of — so it has no lists,
+ * no filters and no year rail, and paints itself. */
+const DISCOVER = { id: 'discover', label: 'Discover' };
+
+const inDiscover = () => filters.section === DISCOVER.id;
+
 function buildTabs() {
-  for (const section of SECTIONS) {
+  for (const section of [...SECTIONS, DISCOVER]) {
     dom.sections.append(el('button', {
       type: 'button', role: 'tab', dataset: { section: section.id },
       onclick: () => setPlace(section.id, null),
@@ -486,8 +606,11 @@ function paintTabs(everything) {
     const on = id === filters.section;
     button.setAttribute('aria-pressed', String(on));
     button.setAttribute('aria-selected', String(on));
-    button.querySelector('.tab-count').textContent = String(tally.get(id) || 0);
+    button.querySelector('.tab-count').textContent = id === DISCOVER.id
+      ? String((discoverState().coverage || {}).films || 0)
+      : String(tally.get(id) || 0);
   }
+  if (inDiscover()) return;
   for (const button of dom.viewtabs.children) {
     const id = button.dataset.view;
     const on = id === filters.view;
@@ -542,18 +665,24 @@ toggle(dom.unrated, 'unratedOnly');
 dom.sort.addEventListener('change', () => { filters.sort = dom.sort.value; saveView(); render(); });
 dom.group.addEventListener('change', () => { filters.group = dom.group.value; saveView(); render(); });
 
+/* One box, whichever pane is up: the library filters itself in the browser,
+ * the catalogue is asked of the server. Discover waits a beat longer, since
+ * every keystroke there is a request rather than a substring test. */
 let searchTimer = 0;
+const searched = () => { if (inDiscover()) pullDiscover(); else render(); };
+
 dom.q.addEventListener('input', () => {
   clearTimeout(searchTimer);
   dom.qClear.hidden = !dom.q.value;
-  searchTimer = setTimeout(() => { filters.q = dom.q.value; render(); }, 160);
+  searchTimer = setTimeout(() => { filters.q = dom.q.value; searched(); },
+    inDiscover() ? 320 : 160);
 });
-dom.q.addEventListener('search', () => { filters.q = dom.q.value; render(); });
+dom.q.addEventListener('search', () => { filters.q = dom.q.value; searched(); });
 dom.qClear.addEventListener('click', () => {
   dom.q.value = '';
   filters.q = '';
   dom.q.focus();
-  render();
+  searched();
 });
 
 dom.btnFilters.addEventListener('click', () => openFilterSheet(() => { syncControls(); render(); }));
@@ -584,6 +713,12 @@ function openMenu() {
       () => { handle.close(); openHelp(); }),
     entry('sparkle', 'Fill in the details', 'Artwork, cast, genres, ages and IMDb ids',
       () => { handle.close(); openEnrich(); }),
+    entry('download', 'Collect the lists',
+      `${(discoverState().coverage || {}).films || 0} films from Wikipedia's year lists`,
+      () => {
+        handle.close();
+        openHarvest(() => { paintTabs(live()); if (inDiscover()) pullDiscover(); });
+      }),
     entry('map', filters.map ? 'Hide the year rail' : 'Show the year rail',
       filters.map ? 'The list of years down the right' : 'Jump straight to a year',
       () => {
@@ -842,12 +977,16 @@ addEventListener('keydown', (event) => {
   if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
   if (event.key === '/') { event.preventDefault(); dom.q.focus(); dom.q.select(); }
   else if (event.key === 'n') { event.preventDefault(); addHere(); }
+  else if (event.key >= '1' && event.key <= '4') {
+    event.preventDefault();
+    setPlace([...SECTIONS, DISCOVER][Number(event.key) - 1].id, null);
+  }
+  // The rest are the library's: its filters, its three lists, its watched
+  // toggle. None of them mean anything against a catalogue.
+  else if (inDiscover()) { /* nothing further */ }
   else if (event.key === 'f') { event.preventDefault(); openFilterSheet(() => { syncControls(); render(); }); }
   else if (event.key === 'w') { event.preventDefault(); dom.hideWatched.click(); }
-  else if (event.key >= '1' && event.key <= '3') {
-    event.preventDefault();
-    setPlace(SECTIONS[Number(event.key) - 1].id, null);
-  } else if (event.key === 'q' || event.key === 'l' || event.key === 'v') {
+  else if (event.key === 'q' || event.key === 'l' || event.key === 'v') {
     event.preventDefault();
     setPlace(null, event.key === 'q' ? 'queue' : event.key === 'l' ? 'list' : 'watched');
   }
@@ -858,15 +997,23 @@ addEventListener('keydown', (event) => {
 onChange(render);
 applyTheme(readTheme());
 loadView();
+loadDiscover();
 buildTabs();
 syncControls();
 dom.q.value = '';
 
 dom.list.replaceChildren(el('div.center-note', null, [el('div.spinner'), 'Loading your library…']));
 
-boot().then(() => {
+boot().then(async () => {
   render();
   if (!state.online) {
     toast("Server unreachable - using the copy saved on this device", { error: true, ms: 6000 });
   }
+  // What has been collected, for the tab's count and the harvest sheet. One
+  // small call; the catalogue itself is only read when you go and look at it.
+  await ensureCatalogue();
+  // The counts on the section tabs, including Discover's — which is only
+  // known once the catalogue has answered, so it is painted after it has.
+  paintTabs(live());
+  if (inDiscover()) pullDiscover();
 });

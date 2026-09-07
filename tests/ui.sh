@@ -1,5 +1,5 @@
 #!/bin/sh
-# Drive the importer panel against a shimmed DOM.
+# Drive the front end against a shimmed DOM.
 #
 # No browser and no node on this host, so it runs in the node image that is
 # already pulled. The front end is copied in beside the shim rather than
@@ -10,7 +10,12 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 cp public/js/*.js "$work/"
-cp tests/ui/dom.mjs "$work/dom.mjs"
-cp tests/ui/importer.mjs "$work/run.mjs"
+cp tests/ui/*.mjs "$work/"
 
-docker run --rm -v "$work:/w" -w /w node:22-alpine node run.mjs
+# Every runner beside the shim, so a new one joins by being written.
+for runner in tests/ui/*.mjs; do
+  name=$(basename "$runner")
+  [ "$name" = "dom.mjs" ] && continue
+  echo "== $name"
+  docker run --rm -v "$work:/w" -w /w node:22-alpine node "$name"
+done

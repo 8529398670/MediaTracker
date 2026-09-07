@@ -88,13 +88,32 @@ export function newItem(partial = {}) {
   };
 }
 
+/* A title reduced to what two spellings of it have in common.
+ *
+ * The same fold as server/match.py, because the two must agree about what
+ * counts as the same title. Google Docs writes an apostrophe as ’, so the
+ * library holds "Can’t Buy Me Love" while a keyboard types "Can't"; the
+ * accent on "Amélie" is optional to whoever is typing; and "&" and "and"
+ * are the same word. None of that should decide whether a search finds a
+ * film, or whether an import counts as a duplicate. */
+export function fold(text) {
+  return String(text ?? '')
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')                 // é has already become e + ́
+    .toLowerCase()
+    .replace(/[&+]/g, ' and ')
+    .replace(/['\u2018\u2019\u02bc`\u00b4]/g, '')       // "Your's" is "Yours"
+    .replace(/[^\p{L}\p{N}_\s]+/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ');
+}
+
+const LEADING_ARTICLE = /^(?:the|a|an)\s+/;
+
 /** Loose title match used for de-duplicating imports. */
 export function titleKey(title, year) {
-  const base = String(title || '')
-    .toLowerCase()
-    .replace(/^(the|a|an)\s+/, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+  const base = fold(title).replace(LEADING_ARTICLE, '');
   return year ? `${base}|${year}` : base;
 }
 

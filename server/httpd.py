@@ -22,11 +22,13 @@ from config import (BASE_HEADERS, COMPRESSIBLE, EXTRA_TYPES, IMG_ALLOW_ANY,
                     env_flag, log)
 from enrich import ENRICHER, Enricher
 from library import LIBRARY
+import lists
 import imgcache
 from netio import IMG_HOSTS, OUTBOUND_LIMIT, smaller_img
 from normalize import _int, _s
 from providers import lookup, lookup_detail
 from resolve import identify, resolve
+import verdicts
 
 
 # --------------------------------------------------------------------------
@@ -223,6 +225,20 @@ class Handler(BaseHTTPRequestHandler):
             self._fail(405, "GET or POST")
             return
 
+        # The harvested Wikipedia lists: what has been collected, how to
+        # collect more, and the merged catalogue to browse.
+        if head == "lists":
+            self._api_lists(method, parts, query)
+            return
+
+        # What you have said about a film in those lists that is not yours.
+        if head == "verdicts":
+            payload = self._body() if method == "POST" else None
+            if method == "POST" and payload is None:
+                return
+            self._api_verdicts(method, payload)
+            return
+
         if head == "resolve":
             if not OUTBOUND_LIMIT.allow(self.client_address[0] if self.client_address else "?"):
                 self._fail(429, "slow down")
@@ -279,6 +295,156 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._fail(404, "no such endpoint")
+
+    def _api_verdicts(self, method: str, body: object) -> None:
+        """What you have said about a film you do not own.
+
+        GET is the whole record, which is what a recommendation will one day
+        be learned from. POST gives one film a verdict, or takes it back with
+        an empty one.
+        """
+        if method == "GET":
+            self._json(200, {"counts": verdicts.STORE.counts(),
+                             "verdicts": verdicts.STORE.all()})
+            return
+        if method != "POST":
+            self._fail(405, "GET or POST")
+            return
+        given = body if isinstance(body, dict) else {}
+        key = _s(given.get("key"), 200)
+        if not key:
+            self._fail(400, "which film")
+            return
+        verdict = _s(given.get("verdict"), 16)
+        if verdict and verdict not in verdicts.VERDICTS:
+            self._fail(400, "no such verdict")
+            return
+        self._json(200, {"counts": verdicts.STORE.set(key, verdict)})
+
+    def _api_lists(self, method: str, parts: list[str], query: dict) -> None:
+        one = parts[1] if len(parts) > 1 else ""
+
+        # /api/lists/films — the merged catalogue, filtered and paged.
+        if one == "films":
+            if method != "GET":
+                self._fail(405, "GET")
+                return
+            first = (query.get("q") or [""])[0]
+            # `genre=` may be given once with commas, or once per genre; both
+            # say the same thing, and `genremode` decides whether they widen
+            # the net or narrow it.
+            genres = [_s(name, 40) for chunk in (query.get("genre") or [])[:12]
+                      for name in _s(chunk, 240).split(",")]
+            # `rating=` reads the same way, and carries two ids that are not
+            # ratings: `none` for the films Wikidata says have none, and
+            # `unknown` for the ones the rating pass has not reached.
+            ratings = [_s(name, 12) for chunk in (query.get("rating") or [])[:12]
+                       for name in _s(chunk, 120).split(",")]
+            self._json(200, lists.query(
+                year_from=_int((query.get("from") or ["0"])[0], 0, 3000) or 0,
+                year_to=_int((query.get("to") or ["0"])[0], 0, 3000) or 0,
+                text=_s(first, 120),
+                topic=_s((query.get("topic") or [""])[0], 40),
+                genres=genres,
+                genre_mode=_s((query.get("genremode") or [""])[0], 8),
+                actor=_s((query.get("actor") or [""])[0], 120),
+                only=_s((query.get("only") or [""])[0], 16),
+                skipped=_s((query.get("skipped") or [""])[0], 8) or "hide",
+                ratings=ratings,
+                sort=_s((query.get("sort") or [""])[0], 16) or "notable",
+                limit=_int((query.get("limit") or ["60"])[0], 1, 300) or 60,
+                offset=_int((query.get("offset") or ["0"])[0], 0, 100000) or 0))
+            return
+
+        # /api/lists/facts?a=<article>&a=… — the poster, the IMDb id and the
+        # age rating for each of these. Addresses and identifiers only: no
+        # image passes through here and nothing is written to disk. The
+        # browser fetches and caches the picture itself, which is the only
+        # copy kept anywhere.
+        if one == "facts":
+            if method != "GET":
+                self._fail(405, "GET")
+                return
+            names = [_s(name, 200) for name in (query.get("a") or [])[:60]]
+            self._json(200, {"facts": lists.facts([n for n in names if n])})
+            return
+
+        # /api/lists/certs — what each film was rated, and the pass that
+        # fills it in. GET is where it has got to; POST starts or stops it.
+        # A rating cannot be filtered by until it has been fetched, and the
+        # year lists never printed one, so this is the only way it gets there.
+        if one == "certs":
+            if method == "GET":
+                self._json(200, lists.CERTIFIER.status())
+                return
+            if method != "POST":
+                self._fail(405, "GET or POST")
+                return
+            payload = self._body()
+            if payload is None:
+                return
+            given = payload if isinstance(payload, dict) else {}
+            action = _s(given.get("action"), 16) or "start"
+            if action == "stop":
+                self._json(200, lists.CERTIFIER.stop())
+                return
+            # `all` asks again about films already answered for, which is what
+            # a year re-rated since the last pass needs.
+            scope = _s(given.get("scope"), 16) or "missing"
+            self._json(200, lists.CERTIFIER.start(scope))
+            return
+
+        # /api/lists/raw/<set>/<year|topic> — one archived page, as parsed.
+        if one == "raw":
+            if method != "GET":
+                self._fail(405, "GET")
+                return
+            if len(parts) < 4:
+                self._json(200, {"pages": lists.archived()})
+                return
+            set_id = _s(parts[2], 24)
+            ref = _s(parts[3], 40)
+            page = lists.load_raw(set_id, _int(ref, 0, 3000) or 0,
+                                  "" if ref.isdigit() else ref)
+            self._json(200 if page else 404, page or {"error": "not harvested"})
+            return
+
+        if one:
+            self._fail(404, "no such endpoint")
+            return
+
+        # /api/lists
+        if method == "GET":
+            self._json(200, {"catalogue": lists.source_catalogue(),
+                             **lists.HARVESTER.status()})
+            return
+        if method != "POST":
+            self._fail(405, "GET or POST")
+            return
+
+        payload = self._body()
+        if payload is None:
+            return
+        body = payload if isinstance(payload, dict) else {}
+        action = _s(body.get("action"), 16) or "start"
+        if action == "stop":
+            self._json(200, lists.HARVESTER.stop())
+            return
+        # Re-fold the archive without asking Wikipedia for any of it again.
+        if action == "rebuild":
+            lists.rebuild()
+            self._json(200, lists.HARVESTER.status())
+            return
+
+        sets = [_s(x, 16) for x in (body.get("sets") or []) if _s(x, 16)][:8]
+        topics = [_s(x, 40) for x in (body.get("topics") or []) if _s(x, 40)][:20]
+        low = _int(body.get("from"), lists.FIRST_YEAR, lists.LAST_YEAR) or 0
+        high = _int(body.get("to"), lists.FIRST_YEAR, lists.LAST_YEAR) or low
+        years = list(range(min(low, high), max(low, high) + 1)) if low else []
+        # A century of three pages each is four hundred paced calls; more than
+        # that in one press is a mistake rather than a plan.
+        self._json(200, lists.HARVESTER.start(sets, years[:200], topics))
+        return
 
     def _api_library(self, method: str, parts: list[str], query: dict) -> None:
         # /api/library

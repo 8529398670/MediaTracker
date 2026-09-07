@@ -18,9 +18,13 @@ modules import in this order — each one only ever reaches leftwards:
     config → normalize → library ─────────────┐
     config → netio → providers ─┐             │
     match ──────────────────────┴→ resolve ───┴→ enrich → httpd
+    wiki → lists ─────────────────────────────────────────┘
+    config → certs ──┘  (and verdicts beside it, the same way)
 
 `match` imports nothing at all: it is the measures, with no provider and no
-network anywhere near them.
+network anywhere near them.  `wiki` is the same idea one level up: it turns
+Wikipedia's markup into tables and links and knows nothing of what they mean,
+which `lists` decides and then goes and fetches.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from config import (ENV_COUNT, ENV_FILE, EXTRA_TYPES, HOST, LIBRARY_PATH,
                     SEED_ENABLED, TMDB_KEY, TOKEN, VERSION, log)
 from httpd import Handler, Server
 from library import LIBRARY
+import lists
 
 
 def main() -> int:
@@ -69,6 +74,12 @@ def main() -> int:
         f" ({'on' if SEED_ENABLED else 'off'}, {len(LIBRARY.data.get('seeds') or {})} imported)")
     log(f"  lookups     {'on' if NET_ENABLED else 'off'}"
         f"{' (tmdb key)' if TMDB_KEY else ''}{' (omdb key)' if OMDB_KEY else ''}")
+    listed = lists.coverage()
+    log(f"  lists       {listed['films']} films over {len(listed['years'])} years"
+        f" from {len(listed['pages'])} pages")
+    rated = lists.CERTIFIER.status()
+    log(f"  ratings     {rated['rated']} rated, {rated['asked'] - rated['rated']} with none"
+        f", {rated['unknown']} not looked up")
     log(f"  auth        {'token required' if TOKEN else 'open'}")
     if ENV_COUNT:
         log(f"  settings    {ENV_FILE} ({ENV_COUNT} read)")

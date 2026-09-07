@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from match import fold
+
 # ---------------------------------------------------------------- filenames
 
 # Watched.md goes last on purpose: by then the other documents have
@@ -357,7 +359,17 @@ def parse_outline(text: str, *, type: str = "movie", status: str = "queue",
 
 # ------------------------------------------------------------------- merging
 
+LEADING_ARTICLE = re.compile(r"^(?:the|a|an)\s+")
+
+
 def title_key(title: str, year: object = None) -> str:
-    base = re.sub(r"^(the|a|an)\s+", "", str(title or "").lower())
-    base = re.sub(r"[^a-z0-9]+", " ", base).strip()
+    """The key two spellings of one title share.
+
+    `match.fold` rather than a rule of its own, because public/js/store.js
+    keys the same library the same way and the two have to agree: the
+    importer decides a title is already here by comparing these, and "Can’t
+    Buy Me Love" as Google Docs wrote it must key the same as "Can't Buy Me
+    Love" as anyone would type it.
+    """
+    base = LEADING_ARTICLE.sub("", fold(title))
     return f"{base}|{year}" if year else base

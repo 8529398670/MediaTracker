@@ -3,6 +3,7 @@
 
 import {
   TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, live, genreLabels,
+  fold,
 } from './store.js';
 import { el, field, openSheet, toast } from './ui.js';
 
@@ -100,14 +101,19 @@ export function resetFilters() {
 
 /* ------------------------------------------------------------------ search */
 
+/* A phone writes a quote as a curly one, and there is no way to type a
+ * straight one on the iOS keyboard without fighting it. All four open and
+ * close a phrase. */
+const QUOTED = /["\u201c\u201d\u2033]([^"\u201c\u201d\u2033]+)["\u201c\u201d\u2033]|(\S+)/g;
+
 /** Splits `matrix tag:noir year:1999 -remake` into terms and field filters. */
 function parseQuery(raw) {
   const terms = [];
   const fields = [];
   const negatives = [];
-  const pattern = /"([^"]+)"|(\S+)/g;
+  QUOTED.lastIndex = 0;
   let match;
-  while ((match = pattern.exec(raw || '')) !== null) {
+  while ((match = QUOTED.exec(raw || '')) !== null) {
     const token = (match[1] || match[2] || '').trim();
     if (!token) continue;
     const colon = token.indexOf(':');
@@ -115,7 +121,7 @@ function parseQuery(raw) {
       fields.push([token.slice(0, colon).toLowerCase(), token.slice(colon + 1).toLowerCase()]);
     } else if (token.startsWith('#') && token.length > 1) {
       fields.push(['tag', token.slice(1).toLowerCase()]);
-    } else if (token.startsWith('-') && token.length > 1) {
+    } else if (/^[-\u2010-\u2015]/.test(token) && token.length > 1) {
       negatives.push(token.slice(1).toLowerCase());
     } else {
       terms.push(token.toLowerCase());
@@ -133,23 +139,43 @@ function genreTerms(item) {
   return [...seen];
 }
 
-function haystack(item) {
+/* Both sides of the comparison are folded, so a title does not have to be
+ * spelled the way the document that carried it in spelled it. "Can't Buy Me
+ * Love" typed on a keyboard finds "Can’t Buy Me Love" as Google Docs wrote
+ * it; "Wall-E" finds "WALL·E"; "Amelie" finds "Amélie"; "Prince & Me" finds
+ * "Prince and Me". Whichever way round, one of them is what you typed. */
+function searchable(item) {
   return [
     item.title, item.year, item.notes, item.overview, item.creator,
     item.tags.join(' '), genreTerms(item).join(' '), item.certification,
+    (item.cast || []).join(' '),
     item.links.map((l) => `${l.label} ${l.url}`).join(' '),
     TYPE_LABEL[item.type], STATUS_LABEL[item.status],
-  ].filter(Boolean).join('  ').toLowerCase();
+  ].filter(Boolean).join('  ');
+}
+
+/* Folding nine hundred titles costs more than a substring test does, and the
+ * same nine hundred are searched again on the next keystroke. Cached against
+ * the stamp every edit bumps, so an edited title is folded again and nothing
+ * else is. */
+const hays = new WeakMap();
+
+function haystack(item) {
+  const seen = hays.get(item);
+  if (seen && seen.stamp === item.updatedAt) return seen.hay;
+  const hay = fold(searchable(item));
+  hays.set(item, { stamp: item.updatedAt, hay });
+  return hay;
 }
 
 function matchesQuery(item, parsed) {
   const hay = haystack(item);
-  for (const term of parsed.terms) if (!hay.includes(term)) return false;
-  for (const term of parsed.negatives) if (hay.includes(term)) return false;
+  for (const term of parsed.terms) if (!hay.includes(fold(term))) return false;
+  for (const term of parsed.negatives) if (hay.includes(fold(term))) return false;
 
   for (const [key, value] of parsed.fields) {
     switch (key) {
-      case 'tag': if (!item.tags.some((t) => t.includes(value))) return false; break;
+      case 'tag': if (!item.tags.some((t) => fold(t).includes(fold(value)))) return false; break;
       case 'type': if (!item.type.startsWith(value)) return false; break;
       case 'status': if (!item.status.startsWith(value)) return false; break;
       case 'year': if (String(item.year || '') !== value) return false; break;
@@ -159,7 +185,7 @@ function matchesQuery(item, parsed) {
          while `genre:romance` still finds the same film by the Romance the
          providers actually stored. Folding the pair must not hide either half. */
       case 'genre':
-        if (!genreTerms(item).some((g) => g.includes(value))) return false;
+        if (!genreTerms(item).some((g) => fold(g).includes(fold(value)))) return false;
         break;
       /* The board's rating, not yours — `rating:` is already the score you
          gave it. Exact, because a parent asking for PG does not mean PG-13. */
@@ -169,7 +195,11 @@ function matchesQuery(item, parsed) {
         if (cert !== value) return false;
         break;
       }
-      case 'note': case 'notes': if (!(item.notes || '').toLowerCase().includes(value)) return false; break;
+      case 'note': case 'notes':
+        if (!fold(item.notes).includes(fold(value))) return false;
+        break;
+      /* A URL is the one thing not worth folding: `link:themoviedb.org/tv`
+         is a shape of its own, and turning the slash into a space loses it. */
       case 'link': if (!item.links.some((l) => l.url.toLowerCase().includes(value))) return false; break;
       case 'is':
         if (value === 'loved' && !item.heart) return false;
@@ -177,7 +207,11 @@ function matchesQuery(item, parsed) {
         if (value === 'unrated' && item.rating) return false;
         if (value === 'watched' && item.status !== 'watched') return false;
         break;
-      default: if (!hay.includes(`${key}:${value}`) && !hay.includes(value)) return false;
+      /* Not an operator we know. `director:cukor` is not a field here, but
+         the director is in the haystack, so what was asked for is looked
+         for: the two words together first, then the value on its own. */
+      default:
+        if (!hay.includes(fold(`${key} ${value}`)) && !hay.includes(fold(value))) return false;
     }
   }
   return true;

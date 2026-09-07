@@ -18,7 +18,22 @@ class N {
   appendChild(n){ if(n){ n.parent = this; this.children.push(n); } return n; }
   append(...kids){ for (const k of kids.flat(9)) { if (k === null || k === undefined || k === false) continue; if (k instanceof N) k.parent = this; this.children.push(k); } }
   replaceChildren(...kids){ this.children = []; this.append(...kids); }
-  remove(){ const p = this.parent; if (p) p.children = p.children.filter((k) => k !== this); }
+  remove(){ const p = this.parent; if (p) p.children = p.children.filter((k) => k !== this); this.parent = null; }
+  // Enough of the tree to take a node out and put it back where it was,
+  // which is what an undoable row needs.
+  get parentNode(){ return this.parent || null; }
+  get nextSibling(){
+    const p = this.parent; if (!p) return null;
+    const at = p.children.indexOf(this);
+    return at === -1 ? null : (p.children[at + 1] || null);
+  }
+  insertBefore(node, ref){
+    if (!node) return node;
+    node.parent = this;
+    const at = ref ? this.children.indexOf(ref) : -1;
+    if (at === -1) this.children.push(node); else this.children.splice(at, 0, node);
+    return node;
+  }
   setAttribute(k,v){ this.attrs[k] = String(v); }
   getAttribute(k){ return this.attrs[k] ?? null; }
   removeAttribute(k){ delete this.attrs[k]; }
