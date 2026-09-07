@@ -132,6 +132,10 @@ const on = {
   topic(t) { seen.push(`topic:${t}`); },
   open(item) { seen.push(`open:${item.title}`); },
   add(film) { seen.push(`add:${film.title}`); disco.addFilm(film); },
+  watched(film) {
+    seen.push(`watched:${film.title}`);
+    disco.addFilm(film, { status: 'watched' });
+  },
 };
 
 /* ------------------------------------------------------------- the query */
@@ -433,8 +437,8 @@ check('the ordinary list asks for the ones not skipped',
 disco.renderDiscover(root, on);
 const rowsNow = () => root.find((n) => n.classList.has('disco'));
 const acts = (r) => r.find((n) => n.classList.has('disco-act')).map((b) => b.text());
-check('a row that is not yours offers both verdicts',
-  acts(rowsNow()[0]), ['Add', 'Skip']);
+check('a row that is not yours offers all three verdicts',
+  acts(rowsNow()[0]), ['Add', 'Skip', 'Watched']);
 check('but one already in the library has nothing to pass on',
   acts(rowsNow()[1]), ['Added']);
 
@@ -462,8 +466,10 @@ check('show-skipped asks for the other side of the same catalogue',
   asks().includes('skipped=only'), true);
 
 disco.renderDiscover(root, on);
+// Passed over, and then remembered — the skipped list is exactly where
+// "actually, I have seen that" gets said, so Watched is offered there too.
 check('and every row there offers a way out of the verdict',
-  acts(rowsNow()[0]), ['Add', 'Put back']);
+  acts(rowsNow()[0]), ['Add', 'Put back', 'Watched']);
 rowsNow()[0].find((n) => n.text() === 'Put back')[0].fire('click');
 check('which is recorded as the verdict being taken back',
   [passed[1][0], JSON.parse(verdictCalls[1]).verdict], ['back', '']);
@@ -516,6 +522,47 @@ check('and the bar carries them, with a way to stop',
   following.text(), 'Larry Parks');
 following.fire('click');
 check('which puts them down again', disco.discover.actor, '');
+
+/* -------------------------------------------------------------- watched */
+
+/* The third answer a row gets: not *queue this* and not *not for me*, but
+ * *I have seen that* — which on a list of four hundred films a year is the
+ * commonest of the three. It adds, like +, but into the watched pile.
+ *
+ * Last in the file on purpose: it puts the one remaining row into the
+ * library, and everything above wants a row that is not yours yet.
+ */
+
+disco.setView({ showSkipped: false, ratings: [], actor: '' });
+disco.renderDiscover(root, on);
+const actsOn = (at) => root.find((n) => n.classList.has('disco'))[at]
+  .find((n) => n.classList.has('disco-act')).map((b) => b.text());
+check('a row that is not yours offers all three answers, Watched under Skip',
+  actsOn(0), ['Add', 'Skip', 'Watched']);
+check('but one already in the library has nothing left to add',
+  actsOn(1), ['Added']);
+
+const wasThere = store.live().length;
+root.find((n) => n.classList.has('disco'))[0]
+  .find((n) => n.classList.has('seen'))[0].fire('click');
+check('pressing it adds exactly one title', store.live().length, wasThere + 1);
+
+const justSeen = store.live()[store.live().length - 1];
+check('as watched rather than queued, and dated — the library reads a '
+  + 'missing date as never seen',
+  [justSeen.title, justSeen.status, typeof justSeen.watchedAt],
+  ['Jolson Sings Again', 'watched', 'string']);
+check('with everything the harvest knew, the same as +',
+  [justSeen.year, justSeen.creator, justSeen.genres],
+  [1949, 'Henry Levin', ['Music', 'Biography']]);
+check('and nothing was queued by it',
+  store.live().filter((i) => i.status === 'queue').map((i) => i.title),
+  ["Adam's Rib", 'Baby Face']);
+check('the row stays on the page — only a skip takes one off',
+  root.find((n) => n.classList.has('disco')).length, 3);
+
+disco.renderDiscover(root, on);
+check('and it is drawn as already yours from then on', actsOn(0), ['Added']);
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

@@ -235,6 +235,16 @@ const discoHandlers = {
       action: { label: 'Open', fn: () => discoHandlers.open(item) },
     });
   },
+  // The same add, landing in the watched pile instead of the queue. The row
+  // stays where it is and redraws as already yours, the way + does — nothing
+  // here takes a row off the page except a skip.
+  watched: (film) => {
+    const item = addFilm(film, { status: 'watched' });
+    render();
+    toast(`"${item.title}" added as watched`, {
+      action: { label: 'Open', fn: () => discoHandlers.open(item) },
+    });
+  },
 };
 
 /* One verdict on one film. The row is gone already, so this is the counts,

@@ -1475,6 +1475,15 @@ body.has-map .fab-dock { right: calc(var(--pad) + var(--safe-r) + 50px); }
 }
 .disco-act.skip { color: var(--text-3); }
 .disco-act.skip:hover { color: var(--text-2); }
+/* Seen it. Quieter than +, because adding to the queue is the thing this
+   page is for and this is the answer for the ones it is too late to queue —
+   but in the watched pile's own colour, so it reads as that pile and not as
+   a second, dimmer Skip sitting under the first. */
+.disco-act.seen { color: var(--text-3); }
+.disco-act.seen:hover {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}
 /* Already yours: the row stays, quietly, so a year reads as a whole rather
    than with holes in it where the ones you have taken used to be. */
 .disco.is-mine { background: var(--surface-2); border-style: dashed; }

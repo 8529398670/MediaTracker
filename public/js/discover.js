@@ -12,7 +12,7 @@
  */
 
 import {
-  api, live, titleKey, addItem, state, TYPE_LABEL,
+  api, live, titleKey, addItem, nowISO, state, TYPE_LABEL,
 } from './store.js';
 import {
   el, icon, field, openSheet, setChildren, toast,
@@ -397,12 +397,24 @@ function row(film, on, mine) {
       onclick: () => on.skip(film, lift(node)),
     }, [icon('eye-off'), 'Skip']));
 
+  // The third answer a row gets, and the commonest one on a list of four
+  // hundred films a year: not *queue this* and not *not for me*, but *I have
+  // seen that*. Without it the only way to record a film you already know is
+  // to add it to the queue and then go and mark it watched, which is two
+  // screens for the thing the eye does fastest. Already-yours rows have
+  // nothing to add — that judgement belongs on the item itself.
+  const seen = mine ? null : el('button.btn.sm.ghost.disco-act.seen', {
+    type: 'button', 'aria-label': `Add ${film.title} as already watched`,
+    title: 'Seen it — put it straight in the watched pile',
+    onclick: () => on.watched(film),
+  }, [icon('check'), 'Watched']);
+
   const slot = artSlot(film);
   if (film.article) {
     drawn.push({ article: film.article, film, slot, heading, links, on, rated: !!rated });
   }
 
-  node.append(slot, body, el('div.disco-acts', null, [add, pass]));
+  node.append(slot, body, el('div.disco-acts', null, [add, pass, seen]));
   return node;
 }
 
@@ -428,16 +440,23 @@ function lift(node) {
  * than as a bare name the fill-in pass has to identify from scratch. The
  * Wikipedia article comes too — it is the exact one, not a guess at the URL,
  * which is what lets the enricher ask Wikidata for the IMDb id directly. */
-export function addFilm(film) {
+export function addFilm(film, { status = 'queue' } = {}) {
   const tags = (film.signals?.topics || []).slice(0, 3);
   const item = addItem({
     title: film.title,
     year: film.year || null,
     type: 'movie',
-    status: 'queue',
+    status,
+    // A film added as already watched is watched from now, not from some
+    // date nobody knows — the library reads a missing date as never seen,
+    // and the whole point of the button is that it has been.
+    watchedAt: status === 'watched' ? nowISO() : null,
     creator: film.director || '',
     cast: film.cast || [],
     genres: film.genres || [],
+    // Known here already, so the film arrives rated rather than waiting for
+    // the fill-in pass to ask Wikidata what Discover was just filtering by.
+    certification: film.rating || '',
     wikiUrl: film.url || '',
     tags,
     notes: [film.studio, film.gross].filter(Boolean).join(' · '),
