@@ -180,8 +180,8 @@ check('and it arrives with what the harvest already knew',
   ["Adam's Rib", 1949, 'George Cukor', ['Romance', 'Comedy'],
    ['Spencer Tracy', 'Katharine Hepburn'], 'queue',
    'https://en.wikipedia.org/wiki/Adam%27s_Rib']);
-check('the fill-in pass is started for that one title, not the library',
-  calls.some((c) => c.startsWith('POST /api/enrich')), true);
+check('and the title is on the strip of what was just added',
+  store.staging.includes(added.id), true);
 
 /* A topic film carries the topic in as a tag, so it can be found again. */
 rows[2].find((n) => n.classList.has('disco-act'))[0].fire('click');
@@ -219,6 +219,12 @@ check('and it holds the initials until an address is known',
   slots()[0].text(), 'JS');
 
 await disco.fillFacts();
+
+// The title had to reach the server before the pass was asked for it, so
+// the ask landed a tick after the press rather than in the same breath.
+await new Promise((r) => setTimeout(r, 40));
+check('the fill-in pass was started for the title added, not the library',
+  calls.some((c) => c.startsWith('POST /api/enrich')), true);
 const artCall = calls.filter((c) => c.includes('/lists/facts')).pop();
 check('the articles on screen are asked about by name, in one call',
   ['Jolson+Sings+Again', 'Adam%27s+Rib', 'Baby+Face+%28film%29']

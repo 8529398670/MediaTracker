@@ -6,7 +6,7 @@
 
 import {
   state, api, TYPES, STATUSES, TYPE_LABEL, addItem, patchItem, removeItem,
-  checkpoint, undo, nowISO, genreLabels,
+  checkpoint, undo, nowISO, genreLabels, fillIn, stage,
 } from './store.js';
 import {
   el, icon, field, openSheet, toast, confirmSheet, segmented, select,
@@ -95,10 +95,11 @@ export function openItem(item, { onChange, onDeleted }) {
   };
   paintFacts();
 
+  const heading = el('h3', { text: item.title });
   const head = el('div.detail-top', null, [
     poster,
     el('div', null, [
-      el('h3', { text: item.title }),
+      heading,
       facts,
       draft.overview ? el('p.hint', { text: draft.overview }) : null,
     ]),
@@ -195,22 +196,36 @@ export function openItem(item, { onChange, onDeleted }) {
   body.append(el('div.row', null, [field('Added', added), field('Watched', watched)]));
 
   /* metadata refresh */
+  const posterUrl = el('input.input', { type: 'url', value: draft.poster || '', placeholder: 'Poster image URL' });
   const lookupBtn = el('button.btn.sm.ghost', { type: 'button' }, [icon('sparkle'), 'Fetch artwork & details']);
   lookupBtn.addEventListener('click', () => {
-    openLookupSheet({
+    const handle = openLookupSheet({
       query: title.value || draft.title,
       year: Number(year.value) || draft.year || null,
       kind: draft.type,
       onPick: (meta) => {
         Object.assign(draft, pickMeta(meta, draft));
-        if (draft.poster) { poster.src = draft.poster; poster.style.removeProperty('display'); }
+        // Save reads the boxes, not the draft — so what was found has to be
+        // put in the boxes, or it is shown here and then never written. The
+        // poster went missing that way for as long as this sheet existed.
+        if (draft.poster) {
+          poster.src = draft.poster;
+          poster.style.removeProperty('display');
+          posterUrl.value = draft.poster;
+        }
         if (!year.value && draft.year) year.value = draft.year;
+        // And the name: "johnny allegro 1949" was typed, Johnny Allegro was
+        // picked, and having picked it there is no reason to keep the typo.
+        if (meta.title && meta.title !== title.value.trim()) {
+          title.value = meta.title;
+          heading.textContent = meta.title;
+        }
         paintFacts();
-        toast('Details attached');
+        handle.close();
+        toast('Details attached — press Save to keep them');
       },
     });
   });
-  const posterUrl = el('input.input', { type: 'url', value: draft.poster || '', placeholder: 'Poster image URL' });
   body.append(el('div.divider'));
 
   if ((draft.cast || []).length) {
@@ -282,8 +297,12 @@ export function openItem(item, { onChange, onDeleted }) {
       extRating: draft.extRating,
       cast: draft.cast || [],
       certification: draft.certification || '',
-      addedAt: dateInputToISO(added.value) || item.addedAt,
-      watchedAt: dateInputToISO(watched.value),
+      // A date box only knows the day. Left as it was unless the day itself
+      // was changed, or every save would move the stamp to noon.
+      addedAt: added.value === isoToDateInput(item.addedAt)
+        ? item.addedAt : (dateInputToISO(added.value) || item.addedAt),
+      watchedAt: watched.value === isoToDateInput(item.watchedAt)
+        ? item.watchedAt : dateInputToISO(watched.value),
     };
     if (fields.watchedAt && fields.status !== 'watched') fields.status = 'watched';
     if (!fields.watchedAt && fields.status === 'watched') fields.watchedAt = nowISO();
@@ -443,7 +462,7 @@ export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
 
 /* --------------------------------------------------------------- add sheet */
 
-export function openAdd(onDone, { defaultType = 'movie' } = {}) {
+export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
   const body = el('div');
   const tabs = el('div.tabs');
   const panel = el('div');
@@ -463,7 +482,7 @@ export function openAdd(onDone, { defaultType = 'movie' } = {}) {
     for (const [id, button] of Object.entries(buttons)) {
       button.setAttribute('aria-selected', String(id === current));
     }
-    if (current === 'add') panel.replaceChildren(universalPanel(onDone, { defaultType }));
+    if (current === 'add') panel.replaceChildren(universalPanel(onDone, { defaultType, text }));
     else if (current === 'manual') panel.replaceChildren(manualPanel());
     else panel.replaceChildren(pastePanel());
   }
@@ -503,7 +522,11 @@ export function openAdd(onDone, { defaultType = 'movie' } = {}) {
           ? [{ label: hostOf(link.value.trim()), url: link.value.trim() }] : [],
         tags: tags.value.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
       });
+      // By hand is still a title the providers may know: it goes to the
+      // strip and to the fill-in pass the same as a pasted one.
+      stage([created.id]);
       onDone();
+      fillIn([created.id]);
       return created;
     };
 

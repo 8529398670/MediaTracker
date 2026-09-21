@@ -17,15 +17,19 @@ function saveCollapsed() {
 
 /* ------------------------------------------------------------------- stats */
 
-export function renderStats(node, s, shown) {
+export function renderStats(node, s, shown, { elsewhere = 0, discover = 0 } = {}) {
   clear(node);
-  if (!s.total) { node.hidden = true; return; }
+  if (!s.total && !elsewhere && !discover) { node.hidden = true; return; }
   node.hidden = false;
 
   const cell = (label, value) => el('span', null, [el('b', { text: String(value) }), ` ${label}`]);
 
   node.append(cell('tracked', s.total));
   if (shown !== s.total) node.append(cell('shown', shown));
+  // A search reaches past this tab; say how far, so a miss here is not read
+  // as a miss everywhere.
+  if (elsewhere) node.append(cell('elsewhere', elsewhere));
+  if (discover) node.append(cell('in Discover', discover));
   node.append(cell('in queue', s.queue));
   node.append(cell('watched', s.watched));
   if (s.watching) node.append(cell('watching', s.watching));
@@ -35,11 +39,42 @@ export function renderStats(node, s, shown) {
 
 /* -------------------------------------------------------------------- card */
 
-export function card(item, on) {
-  const node = el('article.card', { dataset: { id: item.id } });
+/* The watched tick. An empty square said nothing about what it was for, so
+ * the mark it is waiting for is drawn faintly inside it — a box with a ghost
+ * of a tick reads as "tick me" the way an empty one does not. Pressed, it
+ * fills; the card behind it greys out and stays a few seconds before it
+ * leaves for the watched list, so a slip is one more tap to undo. */
+function checkButton(item, on) {
+  const done = item.status === 'watched';
+  return el('button.act.check', {
+    type: 'button',
+    class: done ? 'on' : '',
+    'aria-pressed': String(done),
+    'aria-label': done ? `Mark ${item.title} as not watched` : `Mark ${item.title} as watched`,
+    title: done ? 'Watched — tap to undo' : 'Watched it? Tap to tick it off',
+    onclick: () => on.watched(item),
+  }, icon('check'));
+}
+
+/* Under a search, a card that was not found by its name says where it was
+ * found instead — so "juno" turning up Far from the Madding Crowd reads as
+ * Juno Temple's film and not as a mistake. */
+function whyBadge(item, on) {
+  const why = on.why ? on.why(item) : '';
+  return why ? el('span.tag-badge.why', { text: why, title: 'Where the search matched' }) : null;
+}
+
+/* The card's class list, from what the item is and what is happening to it. */
+function mark(node, item, on) {
   if (item.status === 'watched') node.classList.add('is-watched');
   if (item.status === 'dropped') node.classList.add('is-dropped');
   if (item.heart) node.classList.add('is-loved');
+  if (on.leaving && on.leaving(item)) node.classList.add('is-leaving');
+}
+
+export function card(item, on) {
+  const node = el('article.card', { dataset: { id: item.id } });
+  mark(node, item, on);
 
   /* poster */
   const poster = el('button.card-poster', {
@@ -90,6 +125,7 @@ export function card(item, on) {
       onclick: (event) => { event.stopPropagation(); on.tag(tag); },
     })),
     item.runtime ? el('span', { text: `${item.runtime}m` }) : null,
+    whyBadge(item, on),
   ]);
 
   const people = (item.cast || []).slice(0, 3).join(', ');
@@ -135,15 +171,7 @@ export function card(item, on) {
     onclick: () => on.rate(item),
   });
 
-  const check = el('button.act.check', {
-    type: 'button',
-    class: item.status === 'watched' ? 'on' : '',
-    'aria-pressed': String(item.status === 'watched'),
-    'aria-label': item.status === 'watched' ? 'Mark as not watched' : 'Mark as watched',
-    onclick: () => on.watched(item),
-  }, item.status === 'watched' ? icon('check') : null);
-
-  node.append(poster, wrap, el('div.card-side', null, [heart, rate, check]));
+  node.append(poster, wrap, el('div.card-side', null, [heart, rate, checkButton(item, on)]));
   return node;
 }
 
@@ -332,8 +360,10 @@ function restore(anchor) {
   if (Math.abs(drift) > 1) window.scrollBy(0, drift);
 }
 
-export function renderGroups(root, groups, on) {
-  const key = groups.map((g) => `${g.key}#${g.items.map((i) => i.id).join(',')}`).join('|');
+export function renderGroups(root, groups, on, salt = '') {
+  // `salt` is whatever else the cards are drawn from — the search, whose
+  // badges have to be redrawn when it changes even if the cards do not.
+  const key = `${salt}|` + groups.map((g) => `${g.key}#${g.items.map((i) => i.id).join(',')}`).join('|');
 
   // Same cards, same order: swap what changed and leave the page alone.
   if (key === shown.key && shown.settled && shown.head === root.firstElementChild) {
@@ -430,6 +460,93 @@ export function renderGroups(root, groups, on) {
 }
 
 
+/* ------------------------------------------------------------------ strips
+
+   Sections that sit above or below the list rather than in it: the titles
+   just added, and what a search turned up beyond the tab that is open. A
+   heading with a count and, when there is one, a line saying what the rows
+   are and a button doing the one thing worth doing to all of them. */
+
+export function stripSection(cls, { label, count, note, action }, children) {
+  const head = el('div.group-head.static', null, [
+    el('h2', { text: label }),
+    count !== undefined ? el('span.group-count', { text: String(count) }) : null,
+    note ? el('span.strip-note', { text: note }) : null,
+    action ? el('button.btn.sm.ghost.strip-act', {
+      type: 'button', text: action.label, onclick: action.fn,
+    }) : null,
+  ]);
+  return el(`section.group.strip.${cls}`, null, [head, el('div.group-items', null, children)]);
+}
+
+/* One answer from the providers, drawn under a search that found nothing
+ * anywhere else: the artwork, the name and year as the record has them, and
+ * the two ways in — the queue, or straight to the watched pile. `mine` is
+ * the library item it already is, when the search simply spelled it another
+ * way; then the row says so and opens it instead. */
+export function foundRow(row, { badge = '', mine = null, on }) {
+  const body = el('div.result-body', null, [
+    el('h4', { text: row.title || '?' }),
+    el('div.card-meta', null, [
+      row.year ? el('span', { text: String(row.year) }) : null,
+      el('span.tag-badge.type', { text: TYPE_LABEL[row.type] || row.type || '' }),
+      row.creator ? el('span', { text: row.creator }) : null,
+      badge ? el('span.tag-badge', { text: badge }) : null,
+      row.extRating ? el('span', { text: (row.extRating / 10).toFixed(1) }) : null,
+    ]),
+    (row.cast || []).length ? el('div.card-cast', { text: row.cast.slice(0, 3).join(', ') }) : null,
+    row.overview ? el('p', { text: row.overview }) : null,
+  ]);
+
+  const art = row.poster
+    ? el('img', { src: row.poster, alt: '', loading: 'lazy', decoding: 'async' })
+    : el('img', { alt: '' });
+
+  const acts = mine
+    ? [el('button.btn.sm.ghost', {
+        type: 'button', title: `Already in your library — ${TYPE_LABEL[mine.type] || mine.type}`,
+        onclick: () => on.open(mine),
+      }, [icon('check'), 'Added'])]
+    : [
+        el('button.btn.sm.primary', {
+          type: 'button', 'aria-label': `Add ${row.title}`,
+          onclick: () => on.add(row),
+        }, [icon('plus'), 'Add']),
+        el('button.btn.sm.ghost', {
+          type: 'button', 'aria-label': `Add ${row.title} as already watched`,
+          title: 'Seen it — straight to the watched pile',
+          onclick: () => on.watched(row),
+        }, [icon('check'), 'Watched']),
+      ];
+
+  return el('div.result.found', null, [art, body, el('div.found-acts', null, acts)]);
+}
+
+/* Just added. The strip stays until it is cleared, so a title's artwork can
+ * be seen to land — or seen not to, while it is still fresh enough to fix. */
+export function renderStaging(node, items, on, { running, current, onClear }) {
+  clear(node);
+  if (!items.length) { node.hidden = true; return; }
+  node.hidden = false;
+
+  const blank = items.filter((item) => !item.poster).length;
+  const note = running
+    ? `Filling in details${current ? ` — ${current}` : '…'}`
+    : blank ? `${blank} without artwork — open one to look it up`
+      : 'All filled in';
+
+  node.append(stripSection('staging', {
+    label: 'Just added', count: items.length, note,
+    action: { label: 'Clear', fn: onClear },
+  }, items.map((item) => {
+    const box = card(item, on);
+    // Waiting on the pass: a spinner where the poster will go, so a blank
+    // reads as "not yet" rather than "nothing".
+    if (running && !item.poster) box.classList.add('is-pending');
+    return box;
+  })));
+}
+
 /* ------------------------------------------------------------------- queue */
 
 /* The queue is the one list kept in an order you chose, so it is drawn as
@@ -439,7 +556,7 @@ export function renderGroups(root, groups, on) {
 function queueRow(item, index, on) {
   const row = el('div.qrow', { dataset: { id: item.id } });
   if (item.status === 'watching') row.classList.add('is-watching');
-  if (item.heart) row.classList.add('is-loved');
+  mark(row, item, on);
 
   const pos = el('button.qpos', {
     type: 'button',
@@ -475,6 +592,7 @@ function queueRow(item, index, on) {
       onclick: (event) => { event.stopPropagation(); on.tag(tag); },
     })),
     item.links.length ? el('span.qlinks', null, [icon('link'), String(item.links.length)]) : null,
+    whyBadge(item, on),
     refLinks(item),
   ]);
 
@@ -497,13 +615,7 @@ function queueRow(item, index, on) {
     onclick: () => on.heart(item),
   }, icon(item.heart ? 'heart-fill' : 'heart'));
 
-  const check = el('button.act.check', {
-    type: 'button',
-    'aria-label': `Mark ${item.title} as watched`,
-    onclick: () => on.watched(item),
-  });
-
-  row.append(pos, grip, tap, el('div.qside', null, [heart, check]));
+  row.append(pos, grip, tap, el('div.qside', null, [heart, checkButton(item, on)]));
   return row;
 }
 
@@ -523,11 +635,11 @@ function renumber(list) {
 
 let queueKey = '';
 
-export function renderQueue(root, items, on) {
+export function renderQueue(root, items, on, salt = '') {
   /* Same reason the grouped list patches in place: the poll must not yank the
      queue out from under a reader. Rows here carry their position, so an
      order that has not changed is left exactly as it is. */
-  const key = items.map((i) => `${i.id}:${cardSig(i)}`).join('|');
+  const key = `${salt}|` + items.map((i) => `${i.id}:${cardSig(i)}`).join('|');
   if (key === queueKey && root.querySelector('.qlist')) return;
   queueKey = key;
 
@@ -887,7 +999,7 @@ export function wireYearMap(node, bubble, { onJump }) {
 }
 
 export function renderEmpty(node, {
-  view = 'list', searching, filtered, elsewhere, onGo, onClear, onAdd,
+  view = 'list', searching, lookedUp = false, filtered, elsewhere, onGo, onClear, onAdd,
 }) {
   clear(node);
   node.hidden = false;
@@ -900,6 +1012,21 @@ export function renderEmpty(node, {
         onclick: () => onGo(elsewhere),
       })
     : null;
+
+  if (searching && lookedUp) {
+    // The library, the lists and the providers were all asked. What is left
+    // is the box, which takes a link where a name found nothing.
+    node.append(
+      el('h3', { text: 'Nothing matches anywhere' }),
+      el('p', { text: 'Not in your library, not in the lists, and nothing the providers '
+                    + 'know by that name. A link works where a name did not.' }),
+      el('div.chip-row', null, [
+        el('button.btn.primary', { type: 'button', text: 'Add it anyway', onclick: onAdd }),
+        el('button.btn.ghost', { type: 'button', text: 'Clear filters', onclick: onClear }),
+      ]),
+    );
+    return;
+  }
 
   if (searching || filtered) {
     node.append(

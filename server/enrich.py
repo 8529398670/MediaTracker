@@ -12,6 +12,7 @@ import re
 import socket
 import threading
 import time
+from collections import deque
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -641,6 +642,11 @@ class Enricher:
         self.lock = threading.RLock()
         self.thread: threading.Thread | None = None
         self.stopping = False
+        # What the running pass still has to do: (item id, fields it may
+        # overwrite, fields it is after). A title handed in while a pass is
+        # running joins the back of this rather than being dropped.
+        self.jobs: deque = deque()
+        self.queued: set = set()
         self.reset()
 
     def reset(self) -> None:
@@ -734,12 +740,25 @@ class Enricher:
         already in the library to do it.
         """
         with self.lock:
+            replace = self.SCOPES.get(scope, ())
+            want = self.WANTS.get(scope, ENRICH_CORE)
             if self.running:
+                # A pass is under way. Named titles join the back of it, with
+                # the scope they were asked under, so two films added a few
+                # seconds apart both get their artwork rather than only the
+                # first. A second full sweep is still one too many.
+                if ids and not self.stopping:
+                    fresh = [i for i in ids if i not in self.queued]
+                    for item_id in fresh:
+                        self.jobs.append((item_id, replace, want))
+                        self.queued.add(item_id)
+                    self.total += len(fresh)
+                    if fresh:
+                        self.note = f"{self.total} titles queued"
                 return self.status()
             if not NET_ENABLED:
                 self.note = "lookups are switched off in this container"
                 return self.status()
-            replace = self.SCOPES.get(scope, ())
             if ids:
                 wanted = set(ids)
                 rows = [i for i in self.library.snapshot()["items"]
@@ -761,10 +780,9 @@ class Enricher:
                 self.running = False
                 self.note = "nothing matches that"
                 return self.status()
-            self.thread = threading.Thread(
-                target=self._work, args=([r["id"] for r in rows], replace,
-                                         self.WANTS.get(scope, ENRICH_CORE)),
-                daemon=True, name="enrich")
+            self.jobs = deque((r["id"], replace, want) for r in rows)
+            self.queued = {r["id"] for r in rows}
+            self.thread = threading.Thread(target=self._work, daemon=True, name="enrich")
             self.thread.start()
             return self.status()
 
@@ -774,19 +792,22 @@ class Enricher:
             self.note = "stopping…"
         return self.status()
 
-    def _work(self, ids: list[str], replace: tuple = (),
-              want: tuple = ENRICH_CORE) -> None:
-        log(f"enrich: starting on {len(ids)} titles"
-            + (f", replacing {', '.join(replace)}" if replace else ""))
+    def _work(self) -> None:
+        with self.lock:
+            log(f"enrich: starting on {len(self.jobs)} titles ({self.scope})"
+                + (" — replacing what is there" if self.replacing else ""))
         pending: dict[str, dict] = {}
         try:
-            for item_id in ids:
+            while True:
                 with self.lock:
-                    if self.stopping:
+                    if self.stopping or not self.jobs:
                         break
+                    item_id, replace, want = self.jobs.popleft()
                 item = next((i for i in self.library.snapshot()["items"]
                              if i["id"] == item_id), None)
                 if item is None or item.get("deleted"):
+                    with self.lock:
+                        self.done += 1
                     continue
                 with self.lock:
                     self.current = item.get("title", "")
@@ -805,9 +826,20 @@ class Enricher:
                     if problems and not patch:
                         self.errors += 1
                         self.trouble = problems[0][:120]
+                # A provider that raised is worth a line even when another
+                # answered: a poster missing from a title that has everything
+                # else is otherwise a mystery with nothing in the log.
+                if problems:
+                    log(f"enrich: {item.get('title')!r}: {'; '.join(problems)[:300]}")
                 if patch:
                     pending[item_id] = patch
-                if len(pending) >= 8:
+                with self.lock:
+                    self.queued.discard(item_id)
+                    last = not self.jobs
+                # Written in batches, so a sweep of a thousand does not rewrite
+                # the file a thousand times — but the last one in the queue is
+                # written now, because someone is usually watching for it.
+                if pending and (len(pending) >= 8 or last):
                     self.library.patch_many(pending)
                     pending = {}
                 time.sleep(ENRICH_DELAY)

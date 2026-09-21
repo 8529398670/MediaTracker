@@ -11,7 +11,7 @@
  */
 
 import {
-  api, addMany, newItem, live, titleKey, state, sync, refresh,
+  api, addMany, newItem, live, titleKey, fillIn, stage,
   TYPES, STATUSES, TYPE_LABEL,
 } from './store.js';
 import { el, field, openSheet, segmented, toast } from './ui.js';
@@ -28,26 +28,6 @@ const RESOLVE_LIMIT = 30;
 const LANES = 4;
 
 const looksLikeLink = (text) => /^(?:https?:\/\/|www\.)|^tt\d{6,10}$/i.test(text.trim());
-
-/* Pull down what the fill-in pass writes, until it stops.
- *
- * The pass runs on the server and writes there; this page polls on a slow
- * timer of its own, so without this the artwork it finds would appear a
- * minute later, or on the next visit. One watcher at a time. */
-let watcher = 0;
-
-function watchFillIn(onDone) {
-  if (watcher) return;
-  watcher = setInterval(async () => {
-    let running = false;
-    try {
-      running = (await api('GET', '/enrich')).running;
-      await refresh({ force: true });
-    } catch { /* offline for a moment; the next tick tries again */ }
-    onDone();
-    if (!running) { clearInterval(watcher); watcher = 0; }
-  }, 2500);
-}
 
 /* ------------------------------------------------------------- one entry */
 
@@ -106,18 +86,18 @@ async function pool(list, lanes, work, onStep) {
 
 /* ------------------------------------------------------------ the item it makes */
 
-/** What goes into the library for one entry. */
-function toItem(item, opts) {
-  // The guess goes in as shown. It was on the screen, with its artwork, next
-  // to a tick that could have been cleared — which is the whole difference
-  // between this and the background pass, where nothing uncertain is written.
-  const row = item.row || (item.state === 'unsure' ? item.candidates[0] : null) || {};
+/** What the server said a line was, as the item it becomes.
+ *
+ * Shared with the search box, which looks a title up the same way when it
+ * finds nothing anywhere else. `link` is the line itself when it was a link,
+ * so the page that was pasted stays on the card. */
+export function rowToItem(row, { type = 'movie', status = 'queue', link = '' } = {}) {
   const base = {
-    title: row.title || item.title || item.raw,
-    year: row.year || item.year || null,
+    title: row.title || '',
+    year: row.year || null,
     // A link says what it is: a series stays a series even on the film list.
-    type: row.type || opts.type,
-    status: opts.status,
+    type: row.type || (type === 'any' ? 'other' : type),
+    status,
     poster: row.poster || '',
     overview: row.overview || '',
     genres: row.genres || [],
@@ -133,7 +113,7 @@ function toItem(item, opts) {
     links: [],
   };
   if (base.status === 'watched') base.watchedAt = new Date().toISOString();
-  for (const url of [row.link, item.via.endsWith('-id') || item.via === 'page' ? item.raw : null]) {
+  for (const url of [row.link, link]) {
     if (url && /^https?:/i.test(url) && !base.links.some((l) => l.url === url)) {
       base.links.push({ label: '', url });
     }
@@ -141,9 +121,25 @@ function toItem(item, opts) {
   return base;
 }
 
+/** What goes into the library for one entry. */
+function toItem(item, opts) {
+  // The guess goes in as shown. It was on the screen, with its artwork, next
+  // to a tick that could have been cleared — which is the whole difference
+  // between this and the background pass, where nothing uncertain is written.
+  const row = item.row || (item.state === 'unsure' ? item.candidates[0] : null) || {};
+  const made = rowToItem(row, {
+    type: opts.type,
+    status: opts.status,
+    link: item.via.endsWith('-id') || item.via === 'page' ? item.raw : '',
+  });
+  made.title = row.title || item.title || item.raw;
+  made.year = row.year || item.year || null;
+  return made;
+}
+
 /* ================================ the panel ============================= */
 
-export function universalPanel(onDone, { defaultType = 'movie' } = {}) {
+export function universalPanel(onDone, { defaultType = 'movie', text = '' } = {}) {
   const wrap = el('div');
   const opts = { type: defaultType === 'any' ? 'movie' : defaultType, status: 'queue' };
 
@@ -381,23 +377,15 @@ export function universalPanel(onDone, { defaultType = 'movie' } = {}) {
     return { added: fresh.length, already, ids: fresh.map((i) => i.id) };
   }
 
-  /** Fill in what these titles are still missing, and show it landing.
-   *
-   * Three things have to happen in this order, and getting it wrong is why
-   * nothing appeared before: the items have to reach the server, because the
-   * pass works from the server's copy and adding only marks the library
-   * dirty; the pass has to be told which titles, or it sweeps the whole
-   * library; and what it writes has to be pulled back down, because it
-   * writes on the server and this page would not otherwise ask again for a
-   * minute.
-   */
-  async function fillInTheRest(ids) {
-    if (!ids.length || !state.config || !state.config.network) return;
-    try {
-      await sync();
-      await api('POST', '/enrich', { action: 'start', scope: 'missing', ids });
-    } catch { /* Settings still has the button */ return; }
-    watchFillIn(onDone);
+  /* What was added goes to the strip at the top of the library, where the
+   * fill-in pass can be watched dressing it, and then to the pass itself. */
+  async function landed(report) {
+    stage(report.ids);
+    onDone();
+    // Every added title, not only the ones that came back blank: a match
+    // carries artwork and a cast, and the age rating and the Wikipedia
+    // article still have to be gone and fetched.
+    await fillIn(report.ids);
   }
 
   async function importBulk() {
@@ -408,8 +396,7 @@ export function universalPanel(onDone, { defaultType = 'movie' } = {}) {
     said(report, bulk.items.length);
     area.value = '';
     read();
-    onDone();
-    await fillInTheRest(report.ids);
+    await landed(report);
   }
 
   async function addChosen() {
@@ -421,11 +408,7 @@ export function universalPanel(onDone, { defaultType = 'movie' } = {}) {
     said(report, chosen.length);
     area.value = '';
     read();
-    onDone();
-    // Every added title, not only the ones that came back blank: a match
-    // carries artwork and a cast, and the age rating and the Wikipedia
-    // article still have to be gone and fetched.
-    await fillInTheRest(report.ids);
+    await landed(report);
   }
 
   function said(report, asked) {
@@ -475,6 +458,9 @@ export function universalPanel(onDone, { defaultType = 'movie' } = {}) {
     footer,
   );
   paintFooter();
+  // Opened with a line already in hand — the search box's, when it found
+  // nothing — the box starts on it rather than waiting to be typed into.
+  if (text) { area.value = text; read(); }
   return wrap;
 }
 
@@ -495,4 +481,4 @@ const VIA_LABEL = {
   search: 'matched',
 };
 
-function viaLabel(via) { return VIA_LABEL[via] || 'matched'; }
+export function viaLabel(via) { return VIA_LABEL[via] || 'matched'; }

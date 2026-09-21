@@ -12,7 +12,7 @@
  */
 
 import {
-  api, live, titleKey, addItem, nowISO, state, TYPE_LABEL,
+  api, live, titleKey, addItem, nowISO, state, TYPE_LABEL, fillIn, stage,
 } from './store.js';
 import {
   el, icon, field, openSheet, setChildren, toast,
@@ -100,7 +100,7 @@ export function setView(patch) {
  * it is the one identifier both sides carry and it tells The Killers of 1946
  * from The Killers of 1964 — then on the folded title and year, which is the
  * same key the importer de-duplicates with. */
-function libraryIndex() {
+export function libraryIndex() {
   const byWiki = new Map();
   const byKey = new Map();
   for (const item of live()) {
@@ -309,7 +309,7 @@ export async function fillFacts() {
   }
 }
 
-function row(film, on, mine) {
+function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
   const node = el('article.disco', { dataset: { key: film.key } });
   if (mine) node.classList.add('is-mine');
 
@@ -385,7 +385,7 @@ function row(film, on, mine) {
   // Passing on one is a verdict too, and the only one that makes the page
   // smaller — so it is a button on the row, not something behind a menu.
   // Already-yours rows have nothing to pass on.
-  const pass = discover.showSkipped
+  const pass = skipped
     ? el('button.btn.sm.ghost.disco-act', {
       type: 'button', 'aria-label': `Put ${film.title} back`,
       title: 'Put this back among the rest',
@@ -461,12 +461,37 @@ export function addFilm(film, { status = 'queue' } = {}) {
     tags,
     notes: [film.studio, film.gross].filter(Boolean).join(' · '),
   });
-  // Artwork, cast and the IMDb id, for this one title rather than the library.
-  if (state.config?.network) {
-    api('POST', '/enrich', { action: 'start', scope: 'missing', ids: [item.id] })
-      .catch(() => { /* it will be picked up by the next full pass */ });
-  }
+  // To the strip at the top of the library, and to the fill-in pass for the
+  // artwork, the IMDb id and the rest — this one title, not the library.
+  stage([item.id]);
+  fillIn([item.id]);
   return item;
+}
+
+/* --------------------------------------------------------------- searching */
+
+/* The catalogue asked one question from outside its own tab: the search box
+ * on the library, which should find a film wherever it is — and a film that
+ * is not in the library yet is in here. No filters but the words, because a
+ * search is a question about everything, not about the decade Discover was
+ * last left showing. */
+export async function searchCatalogue(text, { limit = 8 } = {}) {
+  const query = new URLSearchParams({
+    q: text, sort: 'notable', skipped: 'hide', limit: String(limit), offset: '0',
+  });
+  const answer = await api('GET', `/lists/films?${query}`);
+  if (answer.coverage) cache.coverage = answer.coverage;
+  return { films: answer.films || [], total: answer.total || 0 };
+}
+
+/** Rows for these films, drawn the way the Discover tab draws them. */
+export function catalogueRows(films, on) {
+  const mineOf = libraryIndex();
+  drawn = [];
+  // Never the skipped ones, whatever the Discover tab was left showing.
+  const rows = films.map((film) => row(film, on, mineOf(film), { skipped: false }));
+  if (state.config?.network) fillFacts();
+  return rows;
 }
 
 /* --------------------------------------------------------------- verdicts */

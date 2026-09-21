@@ -11,7 +11,7 @@
 import './dom.mjs';
 
 const store = await import('./store.js');
-const { filters, apply } = await import('./filters.js');
+const { filters, apply, titleMatches, whyMatched } = await import('./filters.js');
 const { fold, titleKey } = store;
 
 let failures = 0;
@@ -101,6 +101,24 @@ check('and one that is not still looks for what was asked',
 check('an operator nobody has anywhere finds nothing',
   titles('director:hitchcock'), []);
 check('nothing matches nothing', titles('zzzz'), []);
+
+/* A card found through its cast is not a card found by name: "juno" is Juno
+   Temple's films and, somewhere under them, Juno. The name is checked on its
+   own, and a card not found by it says where it was found. */
+const madding = make('Far from the Madding Crowd', { year: 2015, cast: ['Carey Mulligan', 'Juno Temple'] });
+const juno = make('Juno', { year: 2007, id: 'juno' });
+check('a search matches through the cast', (filters.q = 'juno', apply([madding, juno]).length), 2);
+check('but only one of them by name',
+  [titleMatches(madding.title, 'juno'), titleMatches(juno.title, 'juno')], [false, true]);
+check('and the other says where it matched', whyMatched(madding, 'juno'), 'cast · Juno Temple');
+check('a name match says nothing', whyMatched(juno, 'juno'), '');
+check('a tag, a note and a director are named too',
+  [whyMatched(make('X', { tags: ['noir'] }), 'noir'),
+   whyMatched(make('Y', { notes: 'a remake' }), 'remake'),
+   whyMatched(make('Z', { creator: 'George Cukor' }), 'cukor')],
+  ['#noir', 'notes', 'George Cukor']);
+check('every word has to be in the name', titleMatches('Juno and the Paycock', 'juno paycock'), true);
+check('not just one of them', titleMatches('Juno', 'juno temple'), false);
 
 filters.q = '';
 console.log(failures ? `\n${failures} failed` : '\nall good');

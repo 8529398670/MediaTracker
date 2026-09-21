@@ -462,6 +462,14 @@ a { color: var(--accent-2); }
   color: var(--text-3);
 }
 .tag-badge.genre:hover { color: var(--text-2); border-style: solid; }
+/* Where a search matched, when it was not the name: dotted, in the link
+   colour, so it reads as a note about the search rather than about the film. */
+.tag-badge.why {
+  border-style: dotted;
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, transparent);
+  background: transparent;
+}
 /* The age rating filters on tap, the same as the chip in the filter sheet. */
 .tag-badge.cert { cursor: pointer; }
 .tag-badge.cert:hover { border-color: var(--line); color: var(--text-1); }
@@ -508,17 +516,44 @@ a { color: var(--accent-2); }
 }
 .act:active { background: var(--surface-2); }
 .act.heart.on { color: var(--heart); }
+/* The watched tick. Unticked it carries a ghost of the mark it is waiting
+   for, so it reads as a box to tick rather than an empty square nobody can
+   name; ticked it fills in green. */
 .act.check {
-  border: 1.6px solid var(--line);
+  border: 1.6px dashed var(--line);
   width: 30px;
   height: 30px;
   border-radius: 9px;
+  color: var(--text-3);
 }
+.act.check .ico { width: 17px; height: 17px; opacity: .3; stroke-width: 2.2; }
+.act.check:hover { border-style: solid; border-color: var(--ok); color: var(--ok); }
+.act.check:hover .ico { opacity: .75; }
 .act.check.on {
   background: var(--ok);
+  border-style: solid;
   border-color: var(--ok);
   color: var(--on-accent);
 }
+.act.check.on .ico { opacity: 1; }
+
+/* Ticked and on its way out: greyed and crossed out like any watched card,
+   with a line draining along the bottom for the few seconds it still has —
+   the seconds in which a second tap puts it back. */
+.qrow.is-watched { opacity: .58; }
+.qrow.is-watched .qtitle { text-decoration: line-through; text-decoration-thickness: 1px; }
+.qrow.is-leaving { position: relative; overflow: hidden; }
+.card.is-leaving::after, .qrow.is-leaving::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--ok);
+  animation: drain var(--linger, 5s) linear forwards;
+}
+@keyframes drain { to { width: 0; } }
 .act.rate {
   font-size: 13px;
   font-weight: 700;
@@ -1692,3 +1727,75 @@ body.discovering .yearmap { display: none; }
     grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   }
 }
+
+/* ------------------------------------------------------------------ strips
+
+   Sections above and below the list rather than in it: the titles just
+   added, waiting on their artwork, and what a search found past the tab
+   that is open. The heading carries a line saying what the rows are and,
+   on the right, the one thing worth doing to all of them. */
+
+.strip { margin-bottom: 22px; }
+.strip .group-head { flex-wrap: wrap; row-gap: 4px; }
+.strip-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.strip-act { margin-left: auto; min-height: 28px; padding: 0 10px; font-size: 12px; }
+
+/* Just added sits on a tinted ground so it reads as a tray rather than as
+   the first year in the list. */
+.strip.staging {
+  padding: 8px 8px 2px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line-soft));
+}
+.strip.staging .group-head {
+  position: static;
+  background: none;
+  border-bottom: 0;
+  padding-top: 2px;
+}
+.strip.staging .group-head h2 { color: var(--accent); }
+
+/* Waiting on the fill-in pass: a spinner where the poster will go. */
+.card.is-pending .card-poster { position: relative; color: transparent; }
+.card.is-pending .card-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+
+/* Nothing here, but something below: one line, not a whole empty state. */
+.miss-note {
+  margin: 4px 2px 14px;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+
+/* Catalogue rows under a search want the same wider column they get on
+   their own tab, or the cast list runs one name per line. */
+@media (min-width: 720px) {
+  .strip.catalogue .group-items {
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  }
+}
+
+/* A title the providers found under a search, with its two ways in. In a
+   strip the grid spaces the rows, so the row's own margin comes off. */
+.strip.lookup .result { margin-bottom: 0; }
+.found-acts { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.found-acts .btn { justify-content: center; white-space: nowrap; }
+.result.found .result-body h4 { font-size: 15px; }
+.result.found .card-cast { font-size: 12px; color: var(--text-2); margin-top: 3px; }

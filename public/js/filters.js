@@ -42,6 +42,15 @@ export function inView(item, view = filters.view) {
   return !allowed || allowed.includes(item.status);
 }
 
+/* Titles that have just been ticked out of the list on screen and are being
+ * given a moment before they go. A tick on the queue would otherwise take
+ * the row away under the finger that pressed it, and a slip is only
+ * undoable if the thing slipped on is still there to press again. While an
+ * id is in here the status filters let it through; the card is drawn with
+ * its new status, greyed and crossed out, so it is plain what is about to
+ * happen. Not saved: a reload is a fresh look. */
+export const lingering = new Set();
+
 export const filters = {
   section: 'movie',
   view: 'list',
@@ -107,7 +116,7 @@ export function resetFilters() {
 const QUOTED = /["\u201c\u201d\u2033]([^"\u201c\u201d\u2033]+)["\u201c\u201d\u2033]|(\S+)/g;
 
 /** Splits `matrix tag:noir year:1999 -remake` into terms and field filters. */
-function parseQuery(raw) {
+export function parseQuery(raw) {
   const terms = [];
   const fields = [];
   const negatives = [];
@@ -217,22 +226,63 @@ function matchesQuery(item, parsed) {
   return true;
 }
 
+/** The words of a query with the operators taken out — what to ask a
+ * catalogue that only knows how to match words. */
+export function plainTerms(raw) {
+  return parseQuery(raw).terms.join(' ').trim();
+}
+
+/* A search finds a card through anything on it, and that is right — but a
+ * card found through its cast is a different kind of answer from one found
+ * by name. "juno" is Juno Temple's films and, somewhere below them, Juno.
+ * So the name is checked on its own: what matched by name goes first, and
+ * what did not says where it matched. */
+
+const every = (hay, terms) => terms.every((term) => hay.includes(fold(term)));
+
+export function titleMatches(title, terms) {
+  const words = typeof terms === 'string' ? plainTerms(terms).split(' ') : terms;
+  return words.length > 0 && every(fold(title), words);
+}
+
+/** Where a card that was not found by name was found — "cast · Juno
+ * Temple", "#noir", "notes" — or nothing when the name itself matched. */
+export function whyMatched(item, raw) {
+  const words = plainTerms(raw).split(' ').filter(Boolean);
+  if (!words.length || titleMatches(item.title, words)) return '';
+  const name = (item.cast || []).find((n) => every(fold(n), words));
+  if (name) return `cast · ${name}`;
+  if ((item.cast || []).length && every(fold(item.cast.join(' ')), words)) return 'cast';
+  if (item.creator && every(fold(item.creator), words)) return item.creator;
+  const tag = item.tags.find((t) => every(fold(t), words));
+  if (tag) return `#${tag}`;
+  if (genreTerms(item).some((g) => every(fold(g), words))) return 'genre';
+  if (every(fold(item.notes), words)) return 'notes';
+  if (every(fold(item.overview), words)) return 'overview';
+  if (item.links.some((l) => every(fold(`${l.label} ${l.url}`), words))) return 'link';
+  return '';
+}
+
 /* ------------------------------------------------------------------ filter */
 
-export function apply(items = live()) {
+/* `everywhere` lifts the section and the list: the same search, asked of the
+ * whole library rather than of the tab that happens to be open. The filters
+ * you set on purpose — tags, a year range, loved only — still hold. */
+export function apply(items = live(), { everywhere = false } = {}) {
   const parsed = parseQuery(filters.q);
   const searching = Boolean(filters.q.trim());
 
   return items.filter((item) => {
-    if (sectionOf(item) !== filters.section) return false;
-    if (!inView(item)) return false;
+    const stays = lingering.has(item.id);
+    if (!everywhere && sectionOf(item) !== filters.section) return false;
+    if (!everywhere && !stays && !inView(item)) return false;
     // While searching, watched items stay visible - you are looking for them.
-    if (filters.hideWatched && filters.view === 'list' && !searching
+    if (!everywhere && !stays && filters.hideWatched && filters.view === 'list' && !searching
         && item.status === 'watched') return false;
     if (filters.heartsOnly && !item.heart) return false;
     if (filters.unratedOnly && item.rating) return false;
     if (filters.types.length && !filters.types.includes(item.type)) return false;
-    if (filters.statuses.length && !filters.statuses.includes(item.status)) return false;
+    if (!stays && filters.statuses.length && !filters.statuses.includes(item.status)) return false;
     if (filters.tags.length && !filters.tags.every((t) => item.tags.includes(t))) return false;
     if (filters.certs.length && !filters.certs.includes(item.certification || '')) return false;
     if (filters.minRating > 0 && (item.rating || 0) < filters.minRating) return false;

@@ -41,9 +41,27 @@ export const state = {
   online: true,
   saving: false,
   dirty: false,
-  error: '',
+  edits: 0,             // bumped on every local change, so a save can tell
+  error: '',            // whether anything landed while it was in flight
   lastSaved: null,
 };
+
+/* Which fields of which items this browser has changed and not yet pushed.
+ *
+ * The server's fill-in pass writes to the same items you are editing — you
+ * add a title, it goes to fetch the poster, you fix the year while it is
+ * away — and "newest copy wins" throws one side's work out: either your year
+ * or its poster, whichever was written first. So the merge is by field.
+ * Nothing here is sent anywhere; it is only the memory of what is yours. */
+const touched = new Map();      // id -> Set of field names
+
+function note(item, fields) {
+  let set = touched.get(item.id);
+  for (const key of Object.keys(fields)) {
+    if (!set) { set = new Set(); touched.set(item.id, set); }
+    set.add(key);
+  }
+}
 
 /* ------------------------------------------------------------------ utils */
 
@@ -206,6 +224,8 @@ function writeLocal() {
       items: state.items,
       sources: state.sources,
       dirty: state.dirty,
+      // Unsent edits survive a reload, so what made them must too.
+      touched: Object.fromEntries([...touched].map(([id, set]) => [id, [...set]])),
       savedAt: nowISO(),
     }));
   } catch {
@@ -215,6 +235,31 @@ function writeLocal() {
 
 /* ------------------------------------------------------------------ merge */
 
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/* One item, both copies. The fields you changed here are yours whichever
+ * copy is newer; every other field is whatever the server has, because a
+ * difference in a field you never touched can only have come from there —
+ * the fill-in pass, or the phone. Only when nothing is known about what
+ * changed does it fall back to the newer copy wholesale. */
+function mergeItem(mine, remote) {
+  const keys = touched.get(remote.id);
+  const theirsNewer = (remote.updatedAt || '') > (mine.updatedAt || '');
+  if (!keys || !keys.size) return { item: theirsNewer ? remote : mine, ahead: !theirsNewer };
+
+  const merged = { ...remote };
+  let ahead = false;
+  for (const key of keys) {
+    // Already the same on the server: nothing left to defend.
+    if (key === 'updatedAt' || same(merged[key], mine[key])) { keys.delete(key); continue; }
+    merged[key] = mine[key];
+    ahead = true;
+  }
+  if (!keys.size) touched.delete(remote.id);
+  if (ahead) merged.updatedAt = nowISO();
+  return { item: merged, ahead };
+}
+
 function mergeServer(lib) {
   const byId = new Map(state.items.map((i) => [i.id, i]));
   let localAhead = false;
@@ -223,10 +268,10 @@ function mergeServer(lib) {
     const mine = byId.get(remote.id);
     if (!mine) {
       byId.set(remote.id, remote);
-    } else if ((remote.updatedAt || '') > (mine.updatedAt || '')) {
-      byId.set(remote.id, remote);
-    } else if ((mine.updatedAt || '') > (remote.updatedAt || '')) {
-      localAhead = true;
+    } else if ((remote.updatedAt || '') !== (mine.updatedAt || '') || touched.has(remote.id)) {
+      const { item, ahead } = mergeItem(mine, remote);
+      byId.set(remote.id, item);
+      if (ahead) localAhead = true;
     }
   }
   // Items only we know about still need pushing.
@@ -247,6 +292,7 @@ let backoff = 1000;
 
 export function markDirty() {
   state.dirty = true;
+  state.edits += 1;
   writeLocal();
   emit();
   clearTimeout(timer);
@@ -262,6 +308,10 @@ export async function sync(attempt = 0) {
   emit();
 
   inFlight = (async () => {
+    // What this save carries. An edit made while it is on the wire is not in
+    // it, and must not be marked as sent when it comes back.
+    const edits = state.edits;
+    const sent = new Map([...touched].map(([id, set]) => [id, new Set(set)]));
     try {
       const res = await api('PUT', '/library', {
         rev: state.rev,
@@ -269,10 +319,17 @@ export async function sync(attempt = 0) {
         sources: state.sources,
       });
       state.rev = res.rev;
-      state.dirty = false;
       state.online = true;
       state.lastSaved = new Date();
       backoff = 1000;
+      for (const [id, keys] of sent) {
+        const set = touched.get(id);
+        if (!set) continue;
+        for (const key of keys) set.delete(key);
+        if (!set.size) touched.delete(id);
+      }
+      if (state.edits === edits) state.dirty = false;
+      else { clearTimeout(timer); timer = setTimeout(() => { sync(); }, SYNC_DEBOUNCE); }
       writeLocal();
     } catch (err) {
       if (err.status === 409 && err.payload && err.payload.library && attempt < 4) {
@@ -322,6 +379,9 @@ export async function boot() {
     state.sources = local.sources || [];
     state.rev = local.rev || 0;
     state.dirty = !!local.dirty;
+    for (const [id, keys] of Object.entries(local.touched || {})) {
+      if (Array.isArray(keys) && keys.length) touched.set(id, new Set(keys));
+    }
   }
 
   try {
@@ -339,6 +399,7 @@ export async function boot() {
   }
 
   state.loading = false;
+  readStaging();
   emit();
 
   addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
@@ -346,6 +407,122 @@ export async function boot() {
   setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
   // Best effort flush if the tab is closed mid-edit.
   addEventListener('pagehide', () => { if (state.dirty) writeLocal(); });
+}
+
+/* ----------------------------------------------------------------- fill-in */
+
+/* The server's fill-in pass, as this page last heard of it.
+ *
+ * A title just added is handed to it, and what it writes is pulled straight
+ * back down while it runs — it writes on the server, and left to itself this
+ * page would not ask again for a minute, so the artwork it found would turn
+ * up on the next visit rather than in front of you. One watcher, however
+ * many titles asked for it. */
+export const enrich = {
+  running: false, current: '', done: 0, total: 0, filled: 0,
+  // What this page has asked for, cleared with the strip that shows it.
+  asked: 0,
+};
+
+let watcher = 0;
+
+export function watchEnrich() {
+  if (watcher) return;
+  const tick = async () => {
+    let running = false;
+    try {
+      const status = await api('GET', '/enrich');
+      Object.assign(enrich, {
+        running: !!status.running, current: status.current || '',
+        done: status.done || 0, total: status.total || 0, filled: status.filled || 0,
+      });
+      running = enrich.running;
+      await refresh({ force: true });
+    } catch { /* offline for a moment; the next tick tries again */ }
+    emit();
+    watcher = running ? setTimeout(tick, 2500) : 0;
+  };
+  watcher = setTimeout(tick, 1200);
+}
+
+/** Fill in what these titles are missing, and watch it land.
+ *
+ * The items have to reach the server first, because the pass works from the
+ * server's copy and adding only marks the library dirty; and the pass has to
+ * be told which titles, or it sweeps the whole library for them. */
+export async function fillIn(ids) {
+  if (!ids.length || !state.config || !state.config.network) return false;
+  try {
+    await sync();
+    await api('POST', '/enrich', { action: 'start', scope: 'missing', ids });
+  } catch { return false; }
+  enrich.running = true;
+  enrich.asked += ids.length;
+  emit();
+  watchEnrich();
+  return true;
+}
+
+/* ---------------------------------------------------------------- staging */
+
+/* Everything added since the strip at the top of the library was last
+ * cleared, newest first. A title goes in as a bare name and the fill-in pass
+ * dresses it a few seconds later; the strip is where that can be watched
+ * happening — and where a title it could not place is seen to be blank,
+ * rather than found blank under its year a month on. */
+const STAGE_KEY = 'mt.staging.v1';
+const STAGE_MAX = 40;
+
+export const staging = [];        // item ids
+
+function readStaging() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STAGE_KEY) || '[]');
+    if (Array.isArray(raw)) staging.push(...raw.filter((id) => typeof id === 'string'));
+  } catch { /* first run */ }
+}
+
+function writeStaging() {
+  try { localStorage.setItem(STAGE_KEY, JSON.stringify(staging)); } catch { /* ignore */ }
+}
+
+/** Put these at the top of the strip, the last one added first. */
+export function stage(ids) {
+  const fresh = ids.filter((id) => id && !staging.includes(id));
+  if (!fresh.length) return;
+  staging.unshift(...fresh.reverse());
+  staging.length = Math.min(staging.length, STAGE_MAX);
+  writeStaging();
+  emit();
+}
+
+/** Take these out of the strip — or everything, when nothing is named. */
+export function unstage(ids = null) {
+  const gone = ids ? new Set(ids) : null;
+  const keep = gone ? staging.filter((id) => !gone.has(id)) : [];
+  if (keep.length === staging.length) return;
+  staging.splice(0, staging.length, ...keep);
+  if (!staging.length) enrich.asked = 0;
+  writeStaging();
+  emit();
+}
+
+/** The staged titles that still exist, in strip order. One that has been
+ * deleted since is dropped from the strip on the way past. */
+export function staged() {
+  const out = [];
+  const keep = [];
+  for (const id of staging) {
+    const item = getItem(id);
+    if (!item || item.deleted) continue;
+    out.push(item);
+    keep.push(id);
+  }
+  if (keep.length !== staging.length && !state.loading) {
+    staging.splice(0, staging.length, ...keep);
+    writeStaging();
+  }
+  return out;
 }
 
 /* -------------------------------------------------------------- mutations */
@@ -394,7 +571,15 @@ export function getItem(id) {
 export function patchItem(id, fields) {
   const item = getItem(id);
   if (!item) return null;
-  Object.assign(item, fields);
+  // Only what actually changes is yours to defend in a merge: the editor
+  // saves every field it shows, edited or not.
+  const changed = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (!same(item[key], value)) changed[key] = value;
+  }
+  if (!Object.keys(changed).length) return item;
+  Object.assign(item, changed);
+  note(item, changed);
   touch(item);
   markDirty();
   return item;
@@ -403,11 +588,7 @@ export function patchItem(id, fields) {
 export function removeItem(id) {
   const item = getItem(id);
   if (!item) return null;
-  item.deleted = true;
-  item.deletedAt = nowISO();
-  touch(item);
-  markDirty();
-  return item;
+  return patchItem(id, { deleted: true, deletedAt: nowISO() });
 }
 
 /** Status changes carry the watched date with them. */
@@ -452,6 +633,7 @@ export function reorderQueue(ids) {
     if (next === undefined || item.order === next) continue;
     item.order = next;
     item.updatedAt = stamp;
+    note(item, { order: next });
     changed = true;
   }
   if (changed) markDirty();

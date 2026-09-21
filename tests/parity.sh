@@ -22,6 +22,7 @@ export const live=()=>[];export const newItem=(x)=>x;export const titleKey=(t,y)
 export const addMany=()=>{};export const replaceAll=()=>{};export const addSource=()=>{};
 export const checkpoint=()=>{};export const api=async()=>({});export const addItem=(x)=>x;
 export const sync=async()=>{};export const refresh=async()=>{};
+export const fillIn=async()=>false;export const stage=()=>{};
 export const fold=(t)=>String(t??'').toLowerCase();
 EOF
 cat > "$work/ui.js" <<'EOF'

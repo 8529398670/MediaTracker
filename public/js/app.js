@@ -3,28 +3,45 @@
 import {
   api, state, boot, onChange, notify, refresh, sync, live, stats, allTags,
   toggleHeart, toggleWatched, removeSource, addSource, checkpoint, undo,
-  reorderQueue, patchItem, TYPE_LABEL, STATUS_LABEL,
+  reorderQueue, patchItem, getItem, addItem, titleKey, fillIn, stage,
+  TYPE_LABEL, STATUS_LABEL,
+  enrich, watchEnrich, staging, staged, unstage,
 } from './store.js';
 import {
   el, icon, $, openSheet, closeAll, toast, field, fmtAgo, fmtDate, hostOf,
   confirmSheet, segmented,
 } from './ui.js';
 import {
-  filters, loadView, saveView, activeCount, resetFilters,
+  filters, loadView, saveView, activeCount, resetFilters, lingering, plainTerms,
+  titleMatches, whyMatched,
   apply, sortItems, groupItems, openFilterSheet, queueOrder,
   SECTIONS, SECTION_LABEL, VIEWS, sectionOf, inView,
 } from './filters.js';
 import {
   renderGroups, renderQueue, renderStats, renderEmpty, renderYearMap, wireYearMap,
+  renderStaging, stripSection, card, foundRow,
 } from './views.js';
 import { openItem, openRating, openAdd } from './editor.js';
 import { openPortingSheet } from './porting.js';
+import { rowToItem, viaLabel } from './importer.js';
 import {
   loadDiscover, setView, buildTools, renderDiscover, refreshDiscover, toggleGenre,
   toggleRating,
   discoverStats, discoverState, openHarvest, addFilm, ensureCatalogue,
-  setVerdict, setActor,
+  setVerdict, setActor, searchCatalogue, catalogueRows, libraryIndex,
 } from './discover.js';
+
+/* The list is three boxes on top of each other: what was just added, the
+ * list itself, and what a search found beyond this tab. Each is painted on
+ * its own, so the middle one can keep its cards in place under a reader
+ * while the other two come and go. */
+const list = $('#list');
+const boxes = {
+  staging: el('div.list-staging', { hidden: true }),
+  main: el('div.list-main'),
+  more: el('div.list-more', { hidden: true }),
+};
+list.append(boxes.staging, boxes.main, boxes.more);
 
 const dom = {
   q: $('#q'),
@@ -54,19 +71,39 @@ const dom = {
 
 /* -------------------------------------------------------------- rendering */
 
+/* How long a ticked title stays on screen before it leaves for the other
+ * list — long enough to see what happened and tap it back. */
+const LINGER_MS = 5000;
+const lingerTimers = new Map();
+
 const handlers = {
   open: (item) => openItem(item, { onChange: render, onDeleted: render }),
   heart: (item) => { toggleHeart(item.id); },
   rate: (item) => openRating(item, render),
-  watched: (item) => {
+  leaving: (item) => lingering.has(item.id),
+  why: (item) => (filters.q.trim() ? whyMatched(item, filters.q) : ''),
+  watched: (shown) => {
+    // The card may be holding a copy a sync has since replaced; go by id.
+    const item = getItem(shown.id) || shown;
     const wasWatched = item.status === 'watched';
     toggleWatched(item.id);
-    // If the tick has just taken it out of the list you are looking at, say so.
-    const leaves = !wasWatched && (filters.view === 'queue'
-      || (filters.view === 'list' && filters.hideWatched && !filters.q));
-    if (leaves) {
-      toast(`"${item.title}" marked watched`, {
-        action: { label: 'Undo', fn: () => { toggleWatched(item.id); } },
+    // Does the tick take it out of the list on screen? Then it is held there,
+    // greyed out, for a moment first. A second tap inside that moment puts it
+    // back as if nothing happened; the same tap after it has gone is a trip
+    // to the other list.
+    clearTimeout(lingerTimers.get(item.id));
+    lingerTimers.delete(item.id);
+    lingering.delete(item.id);
+    const gone = !apply([item]).length;
+    if (gone) {
+      lingering.add(item.id);
+      lingerTimers.set(item.id, setTimeout(() => {
+        lingering.delete(item.id);
+        lingerTimers.delete(item.id);
+        render();
+      }, LINGER_MS));
+      toast(`"${item.title}" ${wasWatched ? 'back in the queue' : 'watched'}`, {
+        action: { label: 'Undo', fn: () => handlers.watched(item) },
       });
     }
   },
@@ -82,7 +119,7 @@ const handlers = {
        quoted because "Romantic Comedy" has a space in it. */
     dom.q.value = `"genre:${genre.toLowerCase()}"`;
     filters.q = dom.q.value;
-    render();
+    searched();
   },
   cert: (cert) => {
     /* Unlike a genre, this one is a real saved facet — the very chip the
@@ -148,12 +185,49 @@ function paint() {
   if (inDiscover()) { paintTabs(everything); paintDiscover(); return; }
   showLibraryChrome();
 
+  const searching = Boolean(filters.q.trim());
   const filtered = apply(everything);
   const isQueue = filters.view === 'queue';
 
+  // A search does not stop at the tab that is open. The rest of the library
+  // is asked the same question, and so is the catalogue — a title that is
+  // not in the library yet is exactly the one worth finding from here.
+  const terms = searching ? plainTerms(filters.q) : '';
+  const byName = (title) => titleMatches(title, terms);
+  // Found by name first, then found through the cast, the notes, a tag.
+  const nameFirst = (rows, title) => [
+    ...rows.filter((row) => byName(title(row))), ...rows.filter((row) => !byName(title(row)))];
+
+  const shownIds = new Set(filtered.map((item) => item.id));
+  const elsewhere = searching
+    ? nameFirst(sortItems(apply(everything, { everywhere: true })
+        .filter((item) => !shownIds.has(item.id))), (item) => item.title)
+    : [];
+  const found = searching && catalogue.q === terms ? catalogue.films : [];
+  const mineOf = found.length ? libraryIndex() : null;
+  const fresh = nameFirst(found.filter((film) => !mineOf(film)), (film) => film.title);
+
+  // No title anywhere that matches the words? Then the providers are asked,
+  // the way the + box asks them — after the catalogue has had its say, so
+  // the lookup is the last resort and not a request on every keystroke. A
+  // match through the cast does not count: "juno" finding Juno Temple's
+  // films is not the same as finding Juno.
+  const noTitle = searching && terms.length > 0
+    && ![...filtered, ...elsewhere].some((item) => byName(item.title))
+    && !fresh.some((film) => byName(film.title));
+  if (noTitle && catalogue.q === terms) considerLookup(terms);
+  lookup.eager = false;
+  // "Looking" from the moment no name matched until the providers have
+  // answered for these words — the catalogue's turn, the pause, and the
+  // request itself all read the same from outside.
+  const canLook = terms.length >= 2 && Boolean(state.config && state.config.network);
+  const looked = noTitle && lookup.q === terms ? lookup : null;
+  const looking = noTitle && canLook && !looked;
+
   // The strip counts the section you are looking at, not the whole library.
   const here = everything.filter((item) => sectionOf(item) === filters.section);
-  renderStats(dom.stats, stats(here), filtered.length);
+  renderStats(dom.stats, stats(here), filtered.length,
+    { elsewhere: elsewhere.length, discover: fresh.length });
   paintTabs(everything);
   paintActiveFilters();
 
@@ -163,36 +237,209 @@ function paint() {
   dom.wrapGroup.hidden = isQueue;
   dom.hideWatched.hidden = filters.view !== 'list';
 
+  paintStaging(searching);
+
   if (!filtered.length) {
-    dom.list.replaceChildren();
+    boxes.main.replaceChildren();
     paintYearMap(null);
-    renderEmpty(dom.empty, {
-      view: filters.view,
-      section: filters.section,
-      searching: Boolean(filters.q.trim()),
-      filtered: activeCount() > 0,
-      elsewhere: matchesElsewhere(everything),
-      onGo: (where) => { setPlace(where.section, where.view); },
-      onClear: () => { resetFilters(); syncControls(); render(); },
-      onAdd: () => addHere(),
-    });
+    const view = VIEWS.find((v) => v.id === filters.view);
+    const here = `${SECTION_LABEL[filters.section]} · ${view ? view.label : ''}`;
+    if (looking || (looked && looked.rows.length)) {
+      dom.empty.hidden = true;
+      boxes.main.append(el('p.miss-note', {
+        text: `No title in the library or the lists is called that — ${looking ? 'looking it up…' : 'looked it up:'}`,
+      }));
+    } else if (elsewhere.length || fresh.length) {
+      // Not here, but somewhere: a line, and then the somewhere.
+      dom.empty.hidden = true;
+      boxes.main.append(el('p.miss-note', { text: `Nothing in ${here} for that — but:` }));
+    } else {
+      renderEmpty(dom.empty, {
+        view: filters.view,
+        section: filters.section,
+        searching,
+        // The providers were asked too and had nothing: say so, and offer
+        // the box, which takes a link where a name found nothing.
+        lookedUp: Boolean(looked),
+        filtered: activeCount() > 0,
+        elsewhere: searching ? null : matchesElsewhere(everything),
+        onGo: (where) => { setPlace(where.section, where.view); },
+        onClear: () => { resetFilters(); syncControls(); render(); },
+        onAdd: () => addHere(searching ? filters.q : ''),
+      });
+    }
   } else {
     dom.empty.hidden = true;
     if (isQueue) {
-      renderQueue(dom.list, queueOrder(filtered), handlers);
+      renderQueue(boxes.main, queueOrder(filtered), handlers, terms);
       paintYearMap(null);
     } else {
       const groups = groupItems(sortItems(filtered));
-      renderGroups(dom.list, groups, handlers);
+      renderGroups(boxes.main, groups, handlers, terms);
       paintYearMap(groups);
     }
   }
+
+  paintExtras(elsewhere, fresh, { looking, looked, terms });
 
   const count = activeCount();
   dom.filterBadge.hidden = count === 0;
   dom.filterBadge.textContent = String(count);
   dom.qClear.hidden = !dom.q.value;
 }
+
+/* ----------------------------------------------------------------- staging */
+
+/* Everything added since the strip was last cleared, pinned above the list
+ * so the fill-in pass can be watched dressing it. Put away while searching:
+ * the results are the point then. */
+function paintStaging(searching) {
+  renderStaging(boxes.staging, searching ? [] : staged(), handlers, {
+    running: enrich.running,
+    current: enrich.current,
+    onClear: () => { unstage(); render(); },
+  });
+}
+
+/* ---------------------------------------------------------- beyond the tab */
+
+/* The catalogue's answer to the search box, kept beside the query it
+ * answered so a stale answer is never drawn under a newer question. */
+const catalogue = { q: '', films: [], asked: '', seq: 0 };
+
+async function pullCatalogueHits({ force = false } = {}) {
+  const q = plainTerms(filters.q);
+  if (q === catalogue.asked && !force) return;      // answered, or on its way
+  catalogue.asked = q;
+  const mine = ++catalogue.seq;
+  if (!q || !(discoverState().coverage || {}).films) {
+    Object.assign(catalogue, { q, films: [] });
+    return;
+  }
+  let films = [];
+  try { ({ films } = await searchCatalogue(q, { limit: 12 })); } catch { films = []; }
+  if (mine !== catalogue.seq) return;
+  Object.assign(catalogue, { q, films });
+  render();
+}
+
+function paintExtras(elsewhere, films, { looking = false, looked = null, terms = '' } = {}) {
+  const parts = [];
+  // What the providers found leads when it runs at all: it only runs when
+  // nothing below was found by name.
+  if (looking) {
+    parts.push(stripSection('lookup', {
+      label: 'Looking it up',
+      note: 'asking the providers, the way the + box does — a name nothing is '
+          + 'called can take twenty seconds to give up on',
+    }, [el('div.center-note', null, [el('div.spinner'), 'Looking…'])]));
+  } else if (looked && looked.rows.length) {
+    // A title found this way may already be yours under another spelling
+    // — the search missed it, the record's own name does not.
+    const byKey = new Map();
+    for (const item of live()) byKey.set(titleKey(item.title, item.year), item);
+    const others = looked.rows.length - 1;
+    const how = looked.via === 'search' ? 'a sure match' : viaLabel(looked.via);
+    parts.push(stripSection('lookup', {
+      label: 'Looked it up', count: looked.rows.length,
+      note: looked.note || (looked.confident
+        ? `${how}${others ? `, and ${others} more like it` : ''}`
+        : 'not certain which — check before adding'),
+      action: { label: 'Open in the add box', fn: () => addHere(terms) },
+    }, looked.rows.map((row, at) => foundRow(row, {
+      badge: at === 0 && looked.confident ? 'best match' : '',
+      mine: byKey.get(titleKey(row.title, row.year)) || null,
+      on: foundHandlers,
+    }))));
+  }
+  if (elsewhere.length) {
+    parts.push(stripSection('elsewhere', {
+      label: 'Elsewhere in the library', count: elsewhere.length,
+      note: 'other sections and lists',
+    }, elsewhere.map((item) => card(item, handlers))));
+  }
+  if (films.length) {
+    parts.push(stripSection('catalogue', {
+      label: 'Discover', count: films.length, note: 'not in your library yet',
+      action: { label: 'Open in Discover', fn: () => setPlace(DISCOVER.id, null) },
+    }, catalogueRows(films, stripHandlers)));
+  }
+  boxes.more.replaceChildren(...parts);
+  boxes.more.hidden = !parts.length;
+}
+
+/* ------------------------------------------------------------- looked up */
+
+/* The providers' answer to a search that found nothing anywhere: the same
+ * question the + box asks of /resolve, kept beside the words it answered. It
+ * is asked once the catalogue has answered and typing has paused, and asked
+ * at once on Enter. */
+const lookup = { q: '', asked: '', pending: '', busy: false, rows: [], via: '', note: '',
+                 confident: false, seq: 0, eager: false };
+let lookupTimer = 0;
+
+/** What kind of thing the tab on screen holds, for the providers. */
+function sectionKind() {
+  const section = SECTIONS.find((s) => s.id === filters.section);
+  return section && section.id !== 'other' ? section.types[0] : 'any';
+}
+
+function considerLookup(terms) {
+  if (!terms || terms.length < 2 || !state.config || !state.config.network) return;
+  if (lookup.asked === terms) return;              // on its way, or answered
+  if (lookup.pending === terms && !lookup.eager) return;   // already waiting to ask
+  clearTimeout(lookupTimer);
+  lookup.pending = terms;
+  lookupTimer = setTimeout(() => pullLookup(terms), lookup.eager ? 0 : 450);
+}
+
+async function pullLookup(terms) {
+  lookup.asked = terms;
+  lookup.busy = true;
+  const mine = ++lookup.seq;
+  render();
+  let answer = null;
+  try {
+    answer = await api('POST', '/resolve', { text: terms, type: sectionKind(), limit: 6 });
+  } catch { answer = null; }
+  if (mine !== lookup.seq) return;
+  const rows = (answer && answer.candidates) || [];
+  Object.assign(lookup, {
+    q: terms, busy: false, rows,
+    via: (answer && answer.via) || '',
+    note: (answer && !rows.length && answer.note) || '',
+    confident: Boolean(answer && answer.confident),
+  });
+  render();
+}
+
+/* Adding what was found: the same item the + box would make, to the strip
+ * of what was just added and to the fill-in pass, and the search then finds
+ * it — which is the whole point. */
+function takeFound(row, status) {
+  const made = rowToItem(row, { type: sectionKind(), status });
+  const already = live().find((item) =>
+    titleKey(item.title, item.year) === titleKey(made.title, made.year));
+  if (already) {
+    toast(`"${already.title}" is already in your library`, {
+      action: { label: 'Open', fn: () => handlers.open(already) },
+    });
+    return;
+  }
+  const item = addItem(made);
+  stage([item.id]);
+  render();
+  fillIn([item.id]);
+  toast(`"${item.title}" added ${status === 'watched' ? 'as watched' : 'to the queue'}`, {
+    action: { label: 'Open', fn: () => handlers.open(item) },
+  });
+}
+
+const foundHandlers = {
+  open: (item) => handlers.open(item),
+  add: (row) => takeFound(row, 'queue'),
+  watched: (row) => takeFound(row, 'watched'),
+};
 
 /* ---------------------------------------------------------------- discover
 
@@ -205,6 +452,11 @@ function showLibraryChrome() {
   dom.discoTools.hidden = true;
   dom.btnFilters.hidden = false;
   document.body.classList.remove('discovering');
+  // Discover paints straight into the list; the three boxes go back when
+  // the library does, with the cards they were holding still in them.
+  if (list.firstElementChild !== boxes.staging) {
+    list.replaceChildren(boxes.staging, boxes.main, boxes.more);
+  }
 }
 
 const discoHandlers = {
@@ -243,6 +495,38 @@ const discoHandlers = {
     render();
     toast(`"${item.title}" added as watched`, {
       action: { label: 'Open', fn: () => discoHandlers.open(item) },
+    });
+  },
+};
+
+/* The same rows drawn under a search on a library tab. Adding works the
+ * same; everything that would narrow the Discover list — a genre, a name, a
+ * rating — goes and does it there, since there is no Discover list here to
+ * narrow. A skip takes the row out of the answer rather than repainting the
+ * catalogue's toolbar, which is not on the page. */
+const stripHandlers = {
+  ...discoHandlers,
+  genre: (genre) => { toggleGenre(genre); setPlace(DISCOVER.id, null); },
+  rating: (id) => { toggleRating(id); setPlace(DISCOVER.id, null); },
+  actor: (name) => { setActor(name); setPlace(DISCOVER.id, null); },
+  topic: (id) => { setView({ filter: `topic:${id}` }); setPlace(DISCOVER.id, null); },
+  skip: async (film, restore) => {
+    try {
+      await setVerdict(film, 'skip');
+    } catch (err) {
+      restore();
+      toast(err.message || 'could not save that', { error: true });
+      return;
+    }
+    catalogue.films = catalogue.films.filter((f) => f.key !== film.key);
+    toast(`"${film.title}" skipped`, {
+      action: {
+        label: 'Undo',
+        fn: async () => {
+          try { await setVerdict(film, '', { shown: 1 }); } catch { return; }
+          pullCatalogueHits({ force: true });
+        },
+      },
     });
   },
 };
@@ -559,10 +843,11 @@ wireYearMap(dom.yearmap, dom.bubble, { onJump: jumpToGroup });
 /* Two rows of navigation: which part of the library (Movies, TV, Other) and
  * which of its three lists. Both remember where you were. */
 
-/** New titles start as whatever the section you are looking at holds. */
-function addHere() {
+/** New titles start as whatever the section you are looking at holds. A
+ * line handed in — the search that found nothing — is already in the box. */
+function addHere(text = '') {
   const section = SECTIONS.find((s) => s.id === filters.section) || SECTIONS[0];
-  return openAdd(render, { defaultType: section.types[0] });
+  return openAdd(render, { defaultType: section.types[0], text });
 }
 
 function setPlace(section, view) {
@@ -679,7 +964,17 @@ dom.group.addEventListener('change', () => { filters.group = dom.group.value; sa
  * the catalogue is asked of the server. Discover waits a beat longer, since
  * every keystroke there is a request rather than a substring test. */
 let searchTimer = 0;
-const searched = () => { if (inDiscover()) pullDiscover(); else render(); };
+let catalogueTimer = 0;
+const searched = () => {
+  if (inDiscover()) { pullDiscover(); return; }
+  clearTimeout(lookupTimer);
+  lookup.pending = '';
+  render();
+  // The catalogue is a request rather than a substring test, so it waits a
+  // beat longer than the library does and lands when it lands.
+  clearTimeout(catalogueTimer);
+  catalogueTimer = setTimeout(pullCatalogueHits, 200);
+};
 
 dom.q.addEventListener('input', () => {
   clearTimeout(searchTimer);
@@ -687,7 +982,8 @@ dom.q.addEventListener('input', () => {
   searchTimer = setTimeout(() => { filters.q = dom.q.value; searched(); },
     inDiscover() ? 320 : 160);
 });
-dom.q.addEventListener('search', () => { filters.q = dom.q.value; searched(); });
+// Enter: whatever is still to be asked is asked now rather than after the pause.
+dom.q.addEventListener('search', () => { filters.q = dom.q.value; lookup.eager = true; searched(); });
 dom.qClear.addEventListener('click', () => {
   dom.q.value = '';
   filters.q = '';
@@ -1019,6 +1315,9 @@ boot().then(async () => {
   if (!state.online) {
     toast("Server unreachable - using the copy saved on this device", { error: true, ms: 6000 });
   }
+  // A strip left from last time may still be being filled in on the server;
+  // one look at the pass says whether to keep watching it.
+  if (staging.length && state.online) watchEnrich();
   // What has been collected, for the tab's count and the harvest sheet. One
   // small call; the catalogue itself is only read when you go and look at it.
   await ensureCatalogue();

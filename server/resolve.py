@@ -617,12 +617,21 @@ TRAILING_YEAR = re.compile(r"^(.{2,}?)[\s\-–—]+((?:18|19|20)\d{2})$")
 
 
 def readings(title: str, year: int | None) -> list[tuple[str, int | None]]:
-    """The ways one line can be read. The first is the literal one."""
+    """The ways one line can be read. The first is the literal one.
+
+    A year given alongside does not settle it: "johnny allegro 1949" with the
+    year 1949 on the card is still a title with the year stuck to it — that
+    is how it was typed, and the card's year was read off the same line. So
+    the stripped reading is kept whenever the number on the end is the year
+    given, or there is no year given; only "Blade Runner 2049" dated 2017 is
+    left as it is.
+    """
     out = [(title, year)]
-    if year is None:
-        match = TRAILING_YEAR.match(title.strip())
-        if match:
-            out.append((match.group(1).strip(), int(match.group(2))))
+    match = TRAILING_YEAR.match(title.strip())
+    if match:
+        tail = int(match.group(2))
+        if year is None or abs(tail - year) <= 1:
+            out.append((match.group(1).strip(), tail))
     return out
 
 
