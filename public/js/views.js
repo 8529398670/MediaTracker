@@ -70,7 +70,14 @@ function mark(node, item, on) {
   if (item.status === 'dropped') node.classList.add('is-dropped');
   if (item.heart) node.classList.add('is-loved');
   if (on.leaving && on.leaving(item)) node.classList.add('is-leaving');
+  if (on.selected && on.selected(item)) node.classList.add('is-selected');
 }
+
+/* The tick box a card turns into while several are being picked (select.js).
+ * Always there and shown only then, so starting and stopping is a class on
+ * the page rather than a thousand cards drawn again. The card is what gets
+ * pressed, so the box itself is only a picture of the answer. */
+const pickBox = () => el('span.sel', { 'aria-hidden': 'true' });
 
 export function card(item, on) {
   const node = el('article.card', { dataset: { id: item.id } });
@@ -171,7 +178,8 @@ export function card(item, on) {
     onclick: () => on.rate(item),
   });
 
-  node.append(poster, wrap, el('div.card-side', null, [heart, rate, checkButton(item, on)]));
+  node.append(pickBox(), poster, wrap,
+    el('div.card-side', null, [heart, rate, checkButton(item, on)]));
   return node;
 }
 
@@ -326,7 +334,8 @@ let renderToken = 0;
 /** Everything `card` draws, so two renders can be compared without drawing. */
 function cardSig(item) {
   return JSON.stringify([
-    item.title, item.year, item.type, item.status, item.watchedAt, item.addedAt,
+    item.title, item.year, item.type, TYPE_LABEL[item.type], item.status, item.watchedAt,
+    item.addedAt,
     item.certification, item.genres, item.tags, item.runtime, item.cast,
     item.poster, item.rating, item.heart, item.imdbId, item.wikiUrl, item.links,
   ]);
@@ -615,7 +624,7 @@ function queueRow(item, index, on) {
     onclick: () => on.heart(item),
   }, icon(item.heart ? 'heart-fill' : 'heart'));
 
-  row.append(pos, grip, tap, el('div.qside', null, [heart, checkButton(item, on)]));
+  row.append(pickBox(), pos, grip, tap, el('div.qside', null, [heart, checkButton(item, on)]));
   return row;
 }
 

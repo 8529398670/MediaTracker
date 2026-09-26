@@ -84,7 +84,19 @@ BACKUP_DIR = DATA_DIR / "backups"
 # /app/seed; running from a checkout they are simply the project root.
 SEED_DIR = Path(env("MT_SEED_DIR", str(APP_ROOT))).resolve()
 SEED_ENABLED = env_flag("MT_SEED", True)
-TOKEN = env("MT_TOKEN")
+# Where the app is reached from outside, if it is — the tunnel's address. A
+# login link is built on it, so the link works for whoever it is sent to and
+# not only on this wifi. Empty: the link is built on wherever the person making
+# it is looking at the app from.
+PUBLIC_URL = (env("MT_PUBLIC_URL") or "").strip().rstrip("/")
+if not re.fullmatch(r"https?://[^/\s]+", PUBLIC_URL):
+    PUBLIC_URL = ""
+# How long a login link nobody has opened keeps working. The sign-in it makes
+# does not expire at all.
+try:
+    LINK_DAYS = min(3650.0, max(0.01, float(env("MT_LINK_DAYS", "7"))))
+except ValueError:
+    LINK_DAYS = 7.0
 MAX_BODY = int(env("MT_MAX_BODY", str(32 * 1024 * 1024)))
 NET_ENABLED = env_flag("MT_ENABLE_NET", True)
 IMG_ALLOW_ANY = env_flag("MT_IMG_ALLOW_ANY", False)
@@ -139,6 +151,8 @@ BASE_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
+    # Nothing here is for a search engine, the page a stranger gets least of all.
+    "X-Robots-Tag": "noindex, nofollow",
     "Permissions-Policy": (
         "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
         "magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()"
@@ -168,8 +182,18 @@ EXTRA_TYPES = {
     ".webp": "image/webp",
 }
 
-ITEM_TYPES = {"movie", "tv", "anime", "doc", "book", "game", "podcast", "other"}
+ITEM_TYPES = {"movie", "tv", "anime", "doc", "book", "game", "audiobook", "podcast", "other"}
+
+# The kinds of search the providers can be asked for. The types in Other are
+# the library's own list (``types`` in library.json), made and renamed in the
+# app; each one says which of these it is looked up as.
+LOOKUP_KINDS = {"movie", "tv", "anime", "doc", "book", "game", "podcast", "other"}
 STATUSES = {"queue", "watching", "watched", "dropped"}
+
+# What a kind is to the providers, where that differs from what it is here.
+# No catalogue files an audio book apart from the book it was read from, so it
+# is looked up as one — Open Library's cover is the audio book's cover.
+LOOKUP_AS = {"audiobook": "book"}
 
 MAX_ITEMS = 100_000
 MAX_SOURCES = 20_000

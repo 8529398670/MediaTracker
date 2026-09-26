@@ -1799,3 +1799,245 @@ body.discovering .yearmap { display: none; }
 .found-acts .btn { justify-content: center; white-space: nowrap; }
 .result.found .result-body h4 { font-size: 15px; }
 .result.found .card-cast { font-size: 12px; color: var(--text-2); margin-top: 3px; }
+
+/* ----------------------------------------------------------------- users */
+
+/* One card per person: who, where they are signed in, and the two things
+   anyone can do about them. Links nobody has opened yet hang underneath. */
+.user-row {
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  margin-bottom: 8px;
+}
+.user-top { display: flex; align-items: center; gap: 10px; }
+.user-main { flex: 1; min-width: 0; }
+.user-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.user-name .tag-badge { font-size: 11px; font-weight: 600; }
+.user-top .card-meta { margin-top: 2px; }
+.user-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.user-actions .btn { white-space: nowrap; }
+.user-actions .btn .ico { width: 16px; height: 16px; }
+.user-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-soft);
+  font-size: 12px;
+  color: var(--text-3);
+}
+.user-pending span { flex: 1; min-width: 0; }
+.user-pending .btn { flex: none; }
+.user-add .btn { flex: none; }
+
+/* The link itself: long, unbroken, and meant to be copied whole. */
+.link-box {
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-2);
+}
+
+/* ------------------------------------------------------------------ kinds
+
+   Other holds several kinds of thing, so its toolbar ends in a chip for each
+   — after the grouping, any mix of them on at once. */
+
+.kinds { display: flex; align-items: center; gap: 6px; flex: none; }
+.kinds .chip { padding: 0 10px 0 12px; }
+.kinds .chip-count, .type-pick .chip-count { margin-left: -2px; }
+/* A kind with nothing in it yet: there, so it can be picked, but quiet. */
+.chip.is-empty { color: var(--text-3); border-style: dashed; }
+.chip.is-empty[aria-pressed="true"] { border-style: solid; color: var(--accent); }
+
+/* ---------------------------------------------------------------- picking
+
+   Select turns every card into a tick box (select.js). The box is on every
+   card all along and shown only now, so starting and stopping is this class
+   on the body; the side buttons go while it is on, since a tap on the card
+   means "pick this" and nothing else. */
+
+.icon-btn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.sel { display: none; }
+body.selecting .sel {
+  display: grid;
+  place-items: center;
+  flex: none;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+}
+body.selecting .is-selected > .sel { background: var(--accent); border-color: var(--accent); }
+body.selecting .is-selected > .sel::after {
+  content: "";
+  width: 6px;
+  height: 11px;
+  margin-top: -2px;
+  border: solid var(--on-accent);
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+body.selecting .card,
+body.selecting .qrow { cursor: pointer; -webkit-user-select: none; user-select: none; }
+body.selecting .card.is-selected,
+body.selecting .qrow.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+body.selecting .card-side,
+body.selecting .qside,
+body.selecting .qgrip,
+body.selecting .fab-dock { display: none; }
+
+/* Room for the bar under the last card, the toasts and the year rail. */
+body.selecting .library { padding-bottom: calc(160px + var(--safe-b)); }
+body.selecting .toast-host { bottom: calc(132px + var(--safe-b)); }
+body.selecting .yearmap { bottom: calc(126px + var(--safe-b)); }
+
+/* The bar: the count and the way to pick everything on top, the four things
+   to do underneath — one row, once there is room for it. */
+.select-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto auto;
+  grid-template-areas: "count note all cancel" "acts acts acts acts";
+  align-items: center;
+  gap: 8px 6px;
+  padding: 10px calc(12px + var(--safe-r)) calc(10px + var(--safe-b)) calc(12px + var(--safe-l));
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 22px rgba(20, 32, 47, .10);
+  animation: rise .18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .select-bar { animation: none; } }
+
+.sel-count {
+  grid-area: count;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 2px;
+}
+.sel-note {
+  grid-area: note;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--warn);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sel-all { grid-area: all; }
+.sel-cancel { grid-area: cancel; }
+.sel-cancel .ico { width: 16px; height: 16px; }
+/* The smallest phones: the cross alone, so the count keeps its room. */
+@media (max-width: 360px) {
+  .sel-cancel { padding: 0 9px; }
+  .sel-cancel span { display: none; }
+}
+
+.sel-acts {
+  grid-area: acts;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.sel-act {
+  flex-direction: column;
+  gap: 3px;
+  min-height: 54px;
+  padding: 6px 4px;
+  font-size: 12px;
+}
+.sel-act .ico { width: 19px; height: 19px; }
+.sel-act:not(:disabled):not(.danger):hover { border-color: var(--accent); color: var(--accent); }
+.sel-act.danger:not(:disabled):hover { background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
+
+@media (min-width: 720px) {
+  .select-bar {
+    bottom: calc(16px + var(--safe-b));
+    width: min(880px, calc(100% - 32px));
+    margin: 0 auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "count note all acts cancel";
+    padding: 8px 8px 8px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+  }
+  .sel-acts { display: flex; }
+  .sel-act { flex-direction: row; gap: 6px; min-height: 38px; padding: 0 12px; font-size: 13.5px; }
+  .sel-act .ico { width: 17px; height: 17px; }
+  body.selecting .library { padding-bottom: calc(110px + var(--safe-b)); }
+  body.selecting .toast-host { bottom: calc(92px + var(--safe-b)); }
+  body.selecting .yearmap { bottom: calc(84px + var(--safe-b)); }
+}
+
+/* What a change is about to touch, named, in the sheet that asks. */
+.confirm-list {
+  margin: 0 0 6px;
+  padding: 8px 12px 8px 28px;
+  max-height: 38dvh;
+  overflow-y: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.confirm-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.type-pick { margin: 2px 0 4px; }
+.type-pick + .hint { margin: 8px 0 10px; min-height: 1.5em; }
+
+/* ------------------------------------------------------------------ types
+
+   Other's types, each with its two things to do: a name and a line saying how
+   many titles it holds and where it is looked up, then Rename and Delete. */
+
+.kinds-edit .ico { width: 14px; height: 14px; }
+.type-intro { margin: 0 0 12px; }
+.type-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.type-main { flex: 1; min-width: 0; }
+.type-main b { display: block; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.type-main small { display: block; color: var(--text-3); font-size: 12px; }
+.type-row .btn { flex: none; }
+.type-row .btn .ico { width: 16px; height: 16px; }
+.type-clash { color: var(--warn); min-height: 1.5em; margin-top: 6px; }
+/* A phone: the icons alone, with their names kept for a screen reader. */
+@media (max-width: 460px) {
+  .type-row .btn span { display: none; }
+  .type-row .btn { padding: 0 10px; }
+}

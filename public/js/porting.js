@@ -151,6 +151,8 @@ function typeHint(text) {
   if (/\btv\b|series|shows?\b/.test(t)) return 'tv';
   if (/documentar/.test(t)) return 'doc';
   if (/podcast|radio/.test(t)) return 'podcast';
+  // Before the books: "Audio Books" is a heading of its own in Misc.md.
+  if (/\baudio\s*-?\s*books?\b/.test(t)) return 'audiobook';
   if (/\bbooks?\b|reading/.test(t)) return 'book';
   if (/\bgames?\b/.test(t)) return 'game';
   if (/movies?|films?/.test(t)) return 'movie';

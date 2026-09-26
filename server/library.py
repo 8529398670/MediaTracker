@@ -19,7 +19,7 @@ import seed
 from config import (BACKUP_DIR, BACKUP_EVERY, BACKUP_KEEP, DATA_DIR,
                     LIBRARY_PATH, MAX_ITEMS, MAX_SOURCES, SCHEMA,
                     TOMBSTONE_DAYS, log, now_iso)
-from normalize import _int, _iso, _s, normalize_item, normalize_source
+from normalize import _int, _iso, _s, normalize_item, normalize_source, normalize_types
 
 
 # --------------------------------------------------------------------------
@@ -70,6 +70,7 @@ class Library:
         items = [i for i in (normalize_item(i, now) for i in raw.get("items") or []) if i]
         sources = [s for s in (normalize_source(s, now) for s in raw.get("sources") or []) if s]
         seeds = raw.get("seeds")
+        types = normalize_types(raw.get("types"))
         self.data = {
             "schema": SCHEMA,
             "rev": _int(raw.get("rev"), 0, 2**62) or 0,
@@ -78,6 +79,10 @@ class Library:
             "sources": sources,
             "seeds": seeds if isinstance(seeds, dict) else {},
         }
+        # Absent until the app first writes it: until then the app shows its
+        # own starting list, and the providers go by the built-in types.
+        if types:
+            self.data["types"] = types
         self._purge_tombstones()
         log(f"loaded {len(items)} items, {len(sources)} sources (rev {self.data['rev']})")
 
@@ -129,6 +134,14 @@ class Library:
         with self.lock:
             return json.loads(json.dumps(self.data))
 
+    def lookup_for(self, type_id: str) -> str | None:
+        """What one of Other's types is looked up as, when the library's own
+        list names it. None for a type the list does not have."""
+        for entry in self.data.get("types") or []:
+            if entry["id"] == type_id:
+                return entry["lookup"]
+        return None
+
     def meta(self) -> dict:
         with self.lock:
             live = [i for i in self.data["items"] if not i.get("deleted")]
@@ -156,6 +169,11 @@ class Library:
             if sources is not None:
                 clean = [s for s in (normalize_source(s, now) for s in sources) if s]
                 self.data["sources"] = clean[:MAX_SOURCES]
+            # An older page sends no list, and an empty one is never meant:
+            # either way the list already here stands.
+            types = normalize_types(payload.get("types"))
+            if types:
+                self.data["types"] = types
             self.data["items"] = items
             return True, self._commit()
 

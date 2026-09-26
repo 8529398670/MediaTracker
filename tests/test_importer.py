@@ -6,15 +6,39 @@ does not say what it is about. Run it against a server that has a TMDB key
 and a network:
 
     MT_PORT=8699 MT_DATA_DIR=/tmp/mt python3 server/app.py &
-    python3 tests/test_importer.py            # or MT_BASE=... to point elsewhere
+    MT_DATA_DIR=/tmp/mt python3 tests/test_importer.py   # or MT_BASE=... to point elsewhere
+
+The server lets nobody in without a session, so the test signs itself in the
+way ./dockerRun.sh link does — which is why it wants the server's data
+directory. Against a server elsewhere, hand it one in MT_SESSION instead.
 
 It calls the live providers on purpose. Their data moves, so a title drifting
 out of this list is worth reading before it is worth "fixing" — but a whole
 column of failures means the matcher has regressed.
 """
-import json, os, sys, time, urllib.parse, urllib.request
+import json, os, pathlib, subprocess, sys, time, urllib.parse, urllib.request
 
-BASE = os.environ.get("MT_BASE", "http://127.0.0.1:8699") + "/api/resolve"
+ORIGIN = os.environ.get("MT_BASE", "http://127.0.0.1:8699")
+BASE = ORIGIN + "/api/resolve"
+AUTH = pathlib.Path(__file__).resolve().parent.parent / "server" / "auth.py"
+
+
+def signed_in() -> str:
+    """A session on the server under test: MT_SESSION if one is given, or a
+    one-time link made for "importer-test" and spent straight away."""
+    if os.environ.get("MT_SESSION"):
+        return os.environ["MT_SESSION"]
+    made = subprocess.run([sys.executable, str(AUTH), "link", "importer-test"],
+                          capture_output=True, text=True, check=True)
+    token = made.stdout.strip().splitlines()[-1].split("#", 1)[1]
+    request = urllib.request.Request(
+        ORIGIN + "/api/auth/redeem", data=json.dumps({"token": token}).encode(),
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=30) as r:
+        return json.load(r)["token"]
+
+
+COOKIE = f"mt_session={signed_in()}"
 
 # (input, kind, expected title fragment or None for "must not be confident")
 CASES = [
@@ -66,7 +90,8 @@ CASES = [
 
 def call(text, kind):
     url = f"{BASE}?q={urllib.parse.quote(text)}&type={kind}"
-    with urllib.request.urlopen(url, timeout=90) as r:
+    request = urllib.request.Request(url, headers={"Cookie": COOKIE})
+    with urllib.request.urlopen(request, timeout=90) as r:
         return json.load(r)
 
 good = bad = 0

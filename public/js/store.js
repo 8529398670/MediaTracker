@@ -11,16 +11,34 @@ const LS_KEY = 'mt.library.v2';
 const SYNC_DEBOUNCE = 700;
 const POLL_MS = 60000;
 
-export const TYPES = [
-  { id: 'movie',   label: 'Movie' },
-  { id: 'tv',      label: 'TV' },
-  { id: 'anime',   label: 'Anime' },
-  { id: 'doc',     label: 'Documentary' },
-  { id: 'book',    label: 'Book' },
-  { id: 'game',    label: 'Game' },
-  { id: 'podcast', label: 'Podcast' },
-  { id: 'other',   label: 'Other' },
+/* Movies and TV are tabs of their own. Everything else is Other, and what
+ * Other is split into is the library's own list — added to, renamed and
+ * deleted in the app (types.js), kept in library.json beside the titles and
+ * synced with them. A type keeps its id for good, so a rename touches no
+ * title; and it says what it is looked up as, since no provider has heard of
+ * "Stand-up". This is the list a library starts with. */
+export const DEFAULT_TYPES = [
+  { id: 'anime',     label: 'Anime',       lookup: 'anime' },
+  { id: 'doc',       label: 'Documentary', lookup: 'doc' },
+  { id: 'book',      label: 'Book',        lookup: 'book' },
+  { id: 'game',      label: 'Game',        lookup: 'game' },
+  { id: 'audiobook', label: 'Audio Book',  lookup: 'book' },
+  { id: 'other',     label: 'Other',       lookup: 'other' },
 ];
+
+/* What a type the list does not name is called: one a provider handed back
+ * (a podcast), or one a document filed a title under after it was deleted. */
+const BUILT_IN_LABEL = {
+  movie: 'Movie', tv: 'TV', anime: 'Anime', doc: 'Documentary', book: 'Book',
+  game: 'Game', audiobook: 'Audio Book', podcast: 'Podcast', other: 'Other',
+};
+
+/* Every type there is to pick — the two tabs, then Other's list — and what
+ * each is called. Both are refilled in place when the list changes, so every
+ * module holding them sees a rename; `typesVersion` counts the refills. */
+export const TYPES = [];
+export const TYPE_LABEL = {};
+export let typesVersion = 0;
 
 export const STATUSES = [
   { id: 'queue',    label: 'Queue' },
@@ -29,7 +47,6 @@ export const STATUSES = [
   { id: 'dropped',  label: 'Skipped' },
 ];
 
-export const TYPE_LABEL = Object.fromEntries(TYPES.map((t) => [t.id, t.label]));
 export const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.id, s.label]));
 
 export const state = {
@@ -44,7 +61,54 @@ export const state = {
   edits: 0,             // bumped on every local change, so a save can tell
   error: '',            // whether anything landed while it was in flight
   lastSaved: null,
+  types: DEFAULT_TYPES.map((t) => ({ ...t })),   // Other's types, in chip order
+  typesDirty: false,    // changed here and not yet taken by the server
+  typesEdits: 0,
 };
+
+/* ------------------------------------------------------------------ types */
+
+function applyTypes() {
+  const list = otherTypes();
+  TYPES.splice(0, TYPES.length, { id: 'movie', label: 'Movie' }, { id: 'tv', label: 'TV' },
+    ...list.map((t) => ({ id: t.id, label: t.label })));
+  for (const key of Object.keys(TYPE_LABEL)) delete TYPE_LABEL[key];
+  Object.assign(TYPE_LABEL, BUILT_IN_LABEL);
+  for (const t of list) TYPE_LABEL[t.id] = t.label;
+  typesVersion += 1;
+}
+
+/** Other's types, in the order its chips show them. */
+export function otherTypes() {
+  return Array.isArray(state.types) && state.types.length ? state.types : DEFAULT_TYPES;
+}
+
+/** What a title filed under Other with no type in mind becomes: Other's own
+ * "Other" while there is one, or else the first type it has. */
+export function defaultOther() {
+  const list = otherTypes();
+  return (list.find((t) => t.id === 'other') || list[0]).id;
+}
+
+/** What a type is looked up as, when a provider is asked about it. */
+export function lookupKind(type) {
+  if (type === 'movie' || type === 'tv' || type === 'any') return type;
+  const own = otherTypes().find((t) => t.id === type);
+  if (own) return own.lookup;
+  if (type === 'audiobook') return 'book';
+  return BUILT_IN_LABEL[type] ? type : 'other';
+}
+
+/** Other's types, replaced: one added, renamed or taken away. */
+export function setOtherTypes(list) {
+  state.types = list.map(({ id, label, lookup }) => ({ id, label, lookup }));
+  state.typesDirty = true;
+  state.typesEdits += 1;
+  applyTypes();
+  markDirty();
+}
+
+applyTypes();
 
 /* Which fields of which items this browser has changed and not yet pushed.
  *
@@ -186,6 +250,18 @@ export { emit as notify };
 
 /* --------------------------------------------------------------- transport */
 
+/* The session this page was opened with is gone: the person was removed, or
+ * the cookie was. The page is loaded again from the top and the server
+ * decides — the gate puts the session back from what this browser kept, or
+ * it is Google. Unsent edits are already in localStorage and wait there. */
+let leaving = false;
+function signedOut() {
+  if (leaving) return;
+  leaving = true;
+  writeLocal();
+  globalThis.location?.reload();
+}
+
 async function api(method, path, body) {
   const res = await fetch(`/api${path}`, {
     method,
@@ -194,6 +270,7 @@ async function api(method, path, body) {
     cache: 'no-store',
     credentials: 'same-origin',
   });
+  if (res.status === 401) signedOut();
   const text = await res.text();
   let payload = null;
   try { payload = text ? JSON.parse(text) : null; } catch { /* non-JSON error page */ }
@@ -224,6 +301,8 @@ function writeLocal() {
       items: state.items,
       sources: state.sources,
       dirty: state.dirty,
+      types: state.types,
+      typesDirty: state.typesDirty,
       // Unsent edits survive a reload, so what made them must too.
       touched: Object.fromEntries([...touched].map(([id, set]) => [id, [...set]])),
       savedAt: nowISO(),
@@ -231,6 +310,15 @@ function writeLocal() {
   } catch {
     /* private mode or quota — the server copy is still authoritative */
   }
+}
+
+/** Everything this browser keeps of the library, gone — for signing out on
+ * a machine that is not yours. */
+export function forgetLocal() {
+  try {
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(STAGE_KEY);
+  } catch { /* nothing was kept */ }
 }
 
 /* ------------------------------------------------------------------ merge */
@@ -280,6 +368,13 @@ function mergeServer(lib) {
 
   state.items = [...byId.values()];
   if (Array.isArray(lib.sources) && !state.sources.length) state.sources = lib.sources;
+  // The server's list, unless this browser has changed it and not sent it yet.
+  // A library that has never had one keeps the starting list.
+  if (state.typesDirty) localAhead = true;
+  else if (Array.isArray(lib.types) && lib.types.length && !same(lib.types, state.types)) {
+    state.types = lib.types;
+    applyTypes();
+  }
   state.rev = lib.rev || 0;
   return localAhead;
 }
@@ -311,12 +406,14 @@ export async function sync(attempt = 0) {
     // What this save carries. An edit made while it is on the wire is not in
     // it, and must not be marked as sent when it comes back.
     const edits = state.edits;
+    const typesEdits = state.typesEdits;
     const sent = new Map([...touched].map(([id, set]) => [id, new Set(set)]));
     try {
       const res = await api('PUT', '/library', {
         rev: state.rev,
         items: state.items,
         sources: state.sources,
+        types: state.types,
       });
       state.rev = res.rev;
       state.online = true;
@@ -328,6 +425,7 @@ export async function sync(attempt = 0) {
         for (const key of keys) set.delete(key);
         if (!set.size) touched.delete(id);
       }
+      if (state.typesEdits === typesEdits) state.typesDirty = false;
       if (state.edits === edits) state.dirty = false;
       else { clearTimeout(timer); timer = setTimeout(() => { sync(); }, SYNC_DEBOUNCE); }
       writeLocal();
@@ -379,6 +477,11 @@ export async function boot() {
     state.sources = local.sources || [];
     state.rev = local.rev || 0;
     state.dirty = !!local.dirty;
+    if (Array.isArray(local.types) && local.types.length) {
+      state.types = local.types;
+      state.typesDirty = !!local.typesDirty;
+      applyTypes();
+    }
     for (const [id, keys] of Object.entries(local.touched || {})) {
       if (Array.isArray(keys) && keys.length) touched.set(id, new Set(keys));
     }
@@ -568,21 +671,38 @@ export function getItem(id) {
   return state.items.find((i) => i.id === id) || null;
 }
 
-export function patchItem(id, fields) {
-  const item = getItem(id);
-  if (!item) return null;
-  // Only what actually changes is yours to defend in a merge: the editor
-  // saves every field it shows, edited or not.
+/* Only what actually changes is yours to defend in a merge: the editor saves
+ * every field it shows, edited or not. True when anything did change. */
+function change(item, fields) {
   const changed = {};
   for (const [key, value] of Object.entries(fields)) {
     if (!same(item[key], value)) changed[key] = value;
   }
-  if (!Object.keys(changed).length) return item;
+  if (!Object.keys(changed).length) return false;
   Object.assign(item, changed);
   note(item, changed);
   touch(item);
-  markDirty();
+  return true;
+}
+
+export function patchItem(id, fields) {
+  const item = getItem(id);
+  if (!item) return null;
+  if (change(item, fields)) markDirty();
   return item;
+}
+
+/** The same patch as patchItem, to many titles and saved once — a hundred
+ * titles ticked at a time would otherwise write the library out a hundred
+ * times over. Takes [[id, fields], …]; answers how many actually changed. */
+export function patchMany(patches) {
+  let changed = 0;
+  for (const [id, fields] of patches) {
+    const item = getItem(id);
+    if (item && change(item, fields)) changed += 1;
+  }
+  if (changed) markDirty();
+  return changed;
 }
 
 export function removeItem(id) {
@@ -592,13 +712,17 @@ export function removeItem(id) {
 }
 
 /** Status changes carry the watched date with them. */
-export function setStatus(id, status) {
-  const item = getItem(id);
-  if (!item) return null;
+export function statusFields(item, status) {
   const fields = { status };
   if (status === 'watched' && !item.watchedAt) fields.watchedAt = nowISO();
   if (status !== 'watched') fields.watchedAt = null;
-  return patchItem(id, fields);
+  return fields;
+}
+
+export function setStatus(id, status) {
+  const item = getItem(id);
+  if (!item) return null;
+  return patchItem(id, statusFields(item, status));
 }
 
 export function toggleWatched(id) {

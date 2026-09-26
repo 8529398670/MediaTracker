@@ -12,7 +12,11 @@ import urllib.parse
 import uuid
 from datetime import datetime
 
-from config import ITEM_TYPES, STATUSES, now_iso
+from config import ITEM_TYPES, LOOKUP_KINDS, STATUSES, now_iso
+
+# What a type the app made up is called inside: "stand-up-comedy".
+TYPE_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
+MAX_TYPES = 60
 
 
 # --------------------------------------------------------------------------
@@ -228,7 +232,7 @@ def normalize_item(raw: object, now: str | None = None) -> dict | None:
         "id": item_id,
         "title": title,
         "year": _int(raw.get("year"), 1870, 2200),
-        "type": raw.get("type") if raw.get("type") in ITEM_TYPES else "movie",
+        "type": _type_id(raw.get("type")),
         "status": raw.get("status") if raw.get("status") in STATUSES else "queue",
         "rating": _int(raw.get("rating"), 1, 10),
         "heart": bool(raw.get("heart")),
@@ -256,6 +260,36 @@ def normalize_item(raw: object, now: str | None = None) -> dict | None:
     if deleted:
         item["deletedAt"] = _iso(raw.get("deletedAt"), now)
     return item
+
+
+def _type_id(value: object) -> str:
+    """A type the server knows, or one the library's list made up."""
+    if value in ITEM_TYPES:
+        return value
+    return value if isinstance(value, str) and TYPE_ID.fullmatch(value) else "movie"
+
+
+def normalize_types(raw: object) -> list[dict]:
+    """Other's types as the app keeps them: an id that never changes, the name
+    it is shown under, and what it is looked up as. Movies and TV are tabs of
+    their own, not types in this list."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for entry in raw if isinstance(raw, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        type_id = _s(entry.get("id"), 32).lower()
+        label = _s(entry.get("label"), 40)
+        if (not TYPE_ID.fullmatch(type_id) or type_id in ("movie", "tv")
+                or type_id in seen or not label):
+            continue
+        lookup = entry.get("lookup")
+        seen.add(type_id)
+        out.append({"id": type_id, "label": label,
+                     "lookup": lookup if lookup in LOOKUP_KINDS else "other"})
+        if len(out) >= MAX_TYPES:
+            break
+    return out
 
 
 def normalize_source(raw: object, now: str | None = None) -> dict | None:

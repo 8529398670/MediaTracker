@@ -150,6 +150,9 @@ def type_hint(text: str) -> str | None:
         return "doc"
     if re.search(r"podcast|radio", t):
         return "podcast"
+    # Before the books: "Audio Books" is a heading of its own in Misc.md.
+    if re.search(r"\baudio\s*-?\s*books?\b", t):
+        return "audiobook"
     if re.search(r"\bbooks?\b|reading", t):
         return "book"
     if re.search(r"\bgames?\b", t):

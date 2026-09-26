@@ -20,6 +20,7 @@ modules import in this order — each one only ever reaches leftwards:
     match ──────────────────────┴→ resolve ───┴→ enrich → httpd
     wiki → lists ─────────────────────────────────────────┘
     config → certs ──┘  (and verdicts beside it, the same way)
+    config → auth ────────────────────────────────────────┘  (who may ask at all)
 
 `match` imports nothing at all: it is the measures, with no provider and no
 network anywhere near them.  `wiki` is the same idea one level up: it turns
@@ -34,9 +35,10 @@ import signal
 import sys
 import threading
 
+import auth
 from config import (ENV_COUNT, ENV_FILE, EXTRA_TYPES, HOST, LIBRARY_PATH,
-                    NET_ENABLED, OMDB_KEY, PORT, PUBLIC_DIR, SEED_DIR,
-                    SEED_ENABLED, TMDB_KEY, TOKEN, VERSION, log)
+                    NET_ENABLED, OMDB_KEY, PORT, PUBLIC_DIR, PUBLIC_URL, SEED_DIR,
+                    SEED_ENABLED, TMDB_KEY, VERSION, log)
 from httpd import Handler, Server
 from library import LIBRARY
 import lists
@@ -80,7 +82,12 @@ def main() -> int:
     rated = lists.CERTIFIER.status()
     log(f"  ratings     {rated['rated']} rated, {rated['asked'] - rated['rated']} with none"
         f", {rated['unknown']} not looked up")
-    log(f"  auth        {'token required' if TOKEN else 'open'}")
+    people = auth.ACCOUNTS.users()
+    log(f"  users       {len(people)}, signed in on"
+        f" {sum(p['devices'] for p in people)} browser(s)"
+        f"{f' — links built on {PUBLIC_URL}' if PUBLIC_URL else ''}")
+    if not people:
+        log("  nobody can get in yet — ./dockerRun.sh link <name> makes the first login link")
     if ENV_COUNT:
         log(f"  settings    {ENV_FILE} ({ENV_COUNT} read)")
     try:

@@ -12,7 +12,7 @@
 
 import {
   api, addMany, newItem, live, titleKey, fillIn, stage,
-  TYPES, STATUSES, TYPE_LABEL,
+  TYPES, STATUSES, TYPE_LABEL, lookupKind, defaultOther,
 } from './store.js';
 import { el, field, openSheet, segmented, toast } from './ui.js';
 import { parseAny, isPlaceholder } from './porting.js';
@@ -91,12 +91,28 @@ async function pool(list, lanes, work, onStep) {
  * Shared with the search box, which looks a title up the same way when it
  * finds nothing anywhere else. `link` is the line itself when it was a link,
  * so the page that was pasted stays on the card. */
+/* What a provider's answer and a type's lookup have in common: to TMDB a
+ * documentary is a film, and anime is television. */
+const FAMILY = { movie: 'film', doc: 'film', tv: 'tv', anime: 'tv', book: 'book',
+                 podcast: 'podcast', game: 'game' };
+
+/* A link says what it is: a series stays a series even on the film list.
+ * Except under one of Other's own types, when the answer is the kind of thing
+ * that type is looked up as — a book found for Audio Book is the audio book,
+ * a film found for Documentary is the documentary — or the type takes anything. */
+function typeFor(row, type) {
+  if (type === 'any') return row.type || defaultOther();
+  if (type === 'movie' || type === 'tv') return row.type || type;
+  const as = lookupKind(type);
+  if (!row.type || as === 'other' || FAMILY[as] === FAMILY[row.type]) return type;
+  return row.type;
+}
+
 export function rowToItem(row, { type = 'movie', status = 'queue', link = '' } = {}) {
   const base = {
     title: row.title || '',
     year: row.year || null,
-    // A link says what it is: a series stays a series even on the film list.
-    type: row.type || (type === 'any' ? 'other' : type),
+    type: typeFor(row, type),
     status,
     poster: row.poster || '',
     overview: row.overview || '',
@@ -445,13 +461,20 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '' } = {}
     read();
   });
 
+  // The first five, and whatever this was opened as when it is not one of
+  // them — the Other tab adds as Other, or as the kind picked out there.
+  const kinds = TYPES.slice(0, 5);
+  if (!kinds.some((t) => t.id === opts.type)) {
+    kinds.push(TYPES.find((t) => t.id === opts.type) || { id: opts.type, label: opts.type });
+  }
+
   wrap.append(
     field('Paste anything', area,
       'A link is looked up exactly. A title is matched even when the year is '
       + 'off or the spelling is not quite right.'),
     el('div.field', null, [file]),
     field('Treat untyped entries as',
-      segmented(TYPES.slice(0, 5), opts.type, (v) => { opts.type = v; read(); })),
+      segmented(kinds, opts.type, (v) => { opts.type = v; read(); })),
     field('Status', segmented(STATUSES, opts.status, (v) => { opts.status = v; read(); })),
     status,
     list,

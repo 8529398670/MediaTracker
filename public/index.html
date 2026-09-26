@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/favicon.svg">
-<link rel="manifest" href="/manifest.webmanifest">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
 <link rel="stylesheet" href="/css/app.css">
 <script type="module" src="/js/app.js"></script>
 </head>
@@ -40,6 +40,10 @@
     <button class="icon-btn" id="btn-filters" type="button" aria-label="Filters">
       <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
       <span class="dot-badge" id="filter-badge" hidden></span>
+    </button>
+    <button class="icon-btn" id="btn-select" type="button" aria-label="Select several"
+            aria-pressed="false" title="Select several (s)">
+      <svg class="ico" aria-hidden="true"><use href="#i-select"></use></svg>
     </button>
     <button class="icon-btn" id="btn-menu" type="button" aria-label="Menu">
       <svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg>
@@ -92,6 +96,8 @@
         <option value="none">No grouping</option>
       </select>
     </label>
+    <span class="bar-sep" id="kind-sep" aria-hidden="true" hidden></span>
+    <div class="kinds" id="kinds" role="group" aria-label="Show only these types" hidden></div>
   </div>
 </header>
 
@@ -110,6 +116,8 @@
     <svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg>
   </button>
 </div>
+
+<div class="select-bar" id="select-bar" role="region" aria-label="Selected titles" hidden></div>
 
 <div class="sheet-host" id="sheet-host" hidden></div>
 <div class="toast-host" id="toast-host" aria-live="polite"></div>
@@ -148,6 +156,9 @@
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.7"/><path d="M4.6 20.2a7.4 7.4 0 0 1 14.8 0"/></symbol>
+  <symbol id="i-select" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M8.2 12.3l2.6 2.6 5-5.4"/></symbol>
+  <symbol id="i-skip" viewBox="0 0 24 24"><path d="M6 6.5l8.5 5.5L6 17.5z"/><path d="M18 6.5v11"/></symbol>
   <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M4 6h4l8 12h4M4 18h4l2-3M16 6h4M18 4l2 2-2 2M18 16l2 2-2 2"/></symbol>
 </svg>
 

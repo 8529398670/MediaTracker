@@ -5,7 +5,7 @@ import {
   toggleHeart, toggleWatched, removeSource, addSource, checkpoint, undo,
   reorderQueue, patchItem, getItem, addItem, titleKey, fillIn, stage,
   TYPE_LABEL, STATUS_LABEL,
-  enrich, watchEnrich, staging, staged, unstage,
+  enrich, watchEnrich, staging, staged, unstage, otherTypes,
 } from './store.js';
 import {
   el, icon, $, openSheet, closeAll, toast, field, fmtAgo, fmtDate, hostOf,
@@ -16,13 +16,19 @@ import {
   titleMatches, whyMatched,
   apply, sortItems, groupItems, openFilterSheet, queueOrder,
   SECTIONS, SECTION_LABEL, VIEWS, sectionOf, inView,
+  pickedTypes, pickType, sectionKinds, addingType,
 } from './filters.js';
 import {
   renderGroups, renderQueue, renderStats, renderEmpty, renderYearMap, wireYearMap,
   renderStaging, stripSection, card, foundRow,
 } from './views.js';
 import { openItem, openRating, openAdd } from './editor.js';
+import {
+  picking, isPicked, startPicking, stopPicking, wirePicking, paintPicking,
+} from './select.js';
 import { openPortingSheet } from './porting.js';
+import { openUsers } from './users.js';
+import { openTypes } from './types.js';
 import { rowToItem, viaLabel } from './importer.js';
 import {
   loadDiscover, setView, buildTools, renderDiscover, refreshDiscover, toggleGenre,
@@ -58,6 +64,7 @@ const dom = {
   activeFilters: $('#active-filters'),
   filterBadge: $('#filter-badge'),
   btnFilters: $('#btn-filters'),
+  btnSelect: $('#btn-select'),
   btnMenu: $('#btn-menu'),
   btnAdd: $('#btn-add'),
   hideWatched: $('#t-hide-watched'),
@@ -67,6 +74,10 @@ const dom = {
   group: $('#sel-group'),
   toolbar: $('#toolbar'),
   discoTools: $('#disco-tools'),
+  kinds: $('#kinds'),
+  kindSep: $('#kind-sep'),
+  selectBar: $('#select-bar'),
+  sheetHost: $('#sheet-host'),
 };
 
 /* -------------------------------------------------------------- rendering */
@@ -81,6 +92,7 @@ const handlers = {
   heart: (item) => { toggleHeart(item.id); },
   rate: (item) => openRating(item, render),
   leaving: (item) => lingering.has(item.id),
+  selected: (item) => isPicked(item),
   why: (item) => (filters.q.trim() ? whyMatched(item, filters.q) : ''),
   watched: (shown) => {
     // The card may be holding a copy a sync has since replaced; go by id.
@@ -229,6 +241,7 @@ function paint() {
   renderStats(dom.stats, stats(here), filtered.length,
     { elsewhere: elsewhere.length, discover: fresh.length });
   paintTabs(everything);
+  paintKinds(everything);
   paintActiveFilters();
 
   // The queue keeps the order you gave it, so sorting and grouping are not
@@ -281,11 +294,46 @@ function paint() {
   }
 
   paintExtras(elsewhere, fresh, { looking, looked, terms });
+  paintPicking({ ids: filtered.map((item) => item.id), discover: false });
 
   const count = activeCount();
   dom.filterBadge.hidden = count === 0;
   dom.filterBadge.textContent = String(count);
   dom.qClear.hidden = !dom.q.value;
+}
+
+/* ------------------------------------------------------------------ kinds */
+
+/* On Other — documentaries, books and audio books, the old radio serials,
+ * whatever types it has been given — a chip for each, after the grouping, and
+ * Edit at the end to add, rename or delete them. Any mix of the chips can be
+ * on at once; none on is all of them. Only redrawn when what it shows has
+ * changed, so a chip keeps its focus through the poll. */
+let kindsDrawn = '';
+function paintKinds(everything) {
+  const kinds = sectionKinds(everything);
+  const show = filters.section === 'other';
+  dom.kinds.hidden = !show;
+  dom.kindSep.hidden = !show;
+  const picked = pickedTypes();
+  const drawn = show ? JSON.stringify([filters.section, picked, kinds]) : '';
+  if (drawn === kindsDrawn) return;
+  kindsDrawn = drawn;
+  if (!show) { dom.kinds.replaceChildren(); return; }
+
+  const chip = (label, n, on, fn) => el('button.chip.chip-toggle', {
+    type: 'button', 'aria-pressed': String(on), class: n ? null : 'is-empty', onclick: fn,
+  }, [el('span', { text: label }), el('span.chip-count', { text: String(n) })]);
+  dom.kinds.replaceChildren(
+    chip('All', kinds.reduce((sum, kind) => sum + kind.count, 0), !picked.length,
+      () => { pickType(null); render(); }),
+    ...kinds.map((kind) => chip(kind.label, kind.count, picked.includes(kind.id),
+      () => { pickType(kind.id); render(); })),
+    el('button.chip.ghost-chip.kinds-edit', {
+      type: 'button', title: 'Add, rename or delete the types in Other',
+      onclick: () => openTypes(render),
+    }, [icon('edit'), el('span', { text: 'Edit' })]),
+  );
 }
 
 /* ----------------------------------------------------------------- staging */
@@ -378,10 +426,12 @@ const lookup = { q: '', asked: '', pending: '', busy: false, rows: [], via: '', 
                  confident: false, seq: 0, eager: false };
 let lookupTimer = 0;
 
-/** What kind of thing the tab on screen holds, for the providers. */
+/** What kind of thing the tab on screen holds, for the providers. Other
+ * holds several, so it is "any" there — unless one kind is picked out. */
 function sectionKind() {
   const section = SECTIONS.find((s) => s.id === filters.section);
-  return section && section.id !== 'other' ? section.types[0] : 'any';
+  if (!section) return 'any';
+  return section.types.length > 1 && pickedTypes().length !== 1 ? 'any' : addingType();
 }
 
 function considerLookup(terms) {
@@ -566,12 +616,15 @@ function paintVerdict() {
 
 /** Ask the server again, then repaint. The search box is the query. */
 async function pullDiscover({ more = false } = {}) {
+  paintPicking({ ids: [], discover: true });
   if (!more) dom.list.replaceChildren(
     el('div.center-note', null, [el('div.spinner'), 'Reading the lists…']));
   if (await refreshDiscover(filters.q, { more })) paintDiscover();
 }
 
 function paintDiscover() {
+  // A pick is of library titles; it waits, out of the way, until one is back.
+  paintPicking({ ids: [], discover: true });
   dom.toolbar.hidden = true;
   dom.discoTools.hidden = false;
   dom.btnFilters.hidden = true;
@@ -625,9 +678,6 @@ function paintActiveFilters() {
 
   for (const tag of filters.tags) {
     drop(`#${tag}`, () => { filters.tags = filters.tags.filter((t) => t !== tag); });
-  }
-  for (const type of filters.types) {
-    drop(TYPE_LABEL[type] || type, () => { filters.types = filters.types.filter((t) => t !== type); });
   }
   for (const status of filters.statuses) {
     drop(STATUS_LABEL[status] || status, () => { filters.statuses = filters.statuses.filter((s) => s !== status); });
@@ -843,11 +893,11 @@ wireYearMap(dom.yearmap, dom.bubble, { onJump: jumpToGroup });
 /* Two rows of navigation: which part of the library (Movies, TV, Other) and
  * which of its three lists. Both remember where you were. */
 
-/** New titles start as whatever the section you are looking at holds. A
- * line handed in — the search that found nothing — is already in the box. */
+/** New titles start as whatever the section you are looking at holds — on
+ * Other, the kind picked out in the toolbar, when one is. A line handed in —
+ * the search that found nothing — is already in the box. */
 function addHere(text = '') {
-  const section = SECTIONS.find((s) => s.id === filters.section) || SECTIONS[0];
-  return openAdd(render, { defaultType: section.types[0], text });
+  return openAdd(render, { defaultType: addingType(), text });
 }
 
 function setPlace(section, view) {
@@ -992,6 +1042,9 @@ dom.qClear.addEventListener('click', () => {
 });
 
 dom.btnFilters.addEventListener('click', () => openFilterSheet(() => { syncControls(); render(); }));
+wirePicking({
+  list: dom.list, barNode: dom.selectBar, button: dom.btnSelect, changed: render,
+});
 dom.btnAdd.addEventListener('click', () => addHere());
 dom.btnMenu.addEventListener('click', openMenu);
 
@@ -999,6 +1052,7 @@ dom.btnMenu.addEventListener('click', openMenu);
 
 function openMenu() {
   const s = stats();
+  const me = state.config && state.config.me;
   const body = el('div.menu-list');
 
   const entry = (iconName, label, hint, fn) => el('button.menu-item', {
@@ -1011,10 +1065,14 @@ function openMenu() {
     entry('shuffle', 'Surprise me', 'Pick something from the queue at random', pickRandom),
     entry('star', 'Statistics', `${s.total} tracked · ${s.watched} watched`,
       () => { handle.close(); openStats(); }),
+    entry('tag', 'Types in Other', `${otherTypes().length} types · add, rename or delete them`,
+      () => { handle.close(); openTypes(render); }),
     entry('link', 'Source links', `${state.sources.length} saved`,
       () => { handle.close(); openSources(); }),
     entry('refresh', 'Sync & storage', state.online ? 'Connected' : 'Offline — changes are queued',
       () => { handle.close(); openSync(); }),
+    entry('user', 'Users', me ? `Signed in as ${me.name} · add people, make login links`
+      : 'Add people, make login links', () => { handle.close(); openUsers(); }),
     entry('note', 'Search tips', 'tag:, genre:, cert:, year:, -exclude',
       () => { handle.close(); openHelp(); }),
     entry('sparkle', 'Fill in the details', 'Artwork, cast, genres, ages and IMDb ids',
@@ -1044,8 +1102,9 @@ function openMenu() {
 }
 
 function pickRandom() {
-  const pool = live().filter((item) =>
-    sectionOf(item) === filters.section && inView(item, 'queue'));
+  const kinds = pickedTypes();
+  const pool = live().filter((item) => sectionOf(item) === filters.section
+    && inView(item, 'queue') && (!kinds.length || kinds.includes(item.type)));
   if (!pool.length) { toast(`Nothing in the ${SECTION_LABEL[filters.section]} queue`, { error: true }); return; }
   const pick = pool[Math.floor(Math.random() * pool.length)];
   closeAll();
@@ -1245,7 +1304,7 @@ function openHelp() {
     row('"genre:romantic comedy"', 'by genre — quote it if it has a space'),
     row('cert:pg-13', 'by age rating — cert:none for the unrated'),
     row('year:1949', 'released that year'),
-    row('type:tv', 'movies, tv, anime, doc, book, game, podcast'),
+    row('type:audio', 'by type — its name or the start of it'),
     row('status:watched', 'queue, watching, watched, dropped'),
     row('rating:9', 'rated exactly 9'),
     row('is:loved', 'hearted'),
@@ -1258,7 +1317,9 @@ function openHelp() {
     row('n', 'add something'),
     row('f', 'filters'),
     row('w', 'toggle hide watched'),
-    row('Esc', 'close the sheet'),
+    row('s', 'select several'),
+    row('shift-click', 'while selecting: everything in between'),
+    row('Esc', 'close the sheet, or stop selecting'),
   ])));
 
   openSheet({ title: 'Search tips', body });
@@ -1281,6 +1342,13 @@ trackHeaderHeight();
 addEventListener('keydown', (event) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
   if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+  // A sheet takes Escape first (ui.js); only with none open does it stop a pick.
+  if (event.key === 'Escape') {
+    if (picking.on && !event.defaultPrevented && dom.sheetHost.hidden && !inDiscover()) {
+      stopPicking();
+    }
+    return;
+  }
   if (event.key === '/') { event.preventDefault(); dom.q.focus(); dom.q.select(); }
   else if (event.key === 'n') { event.preventDefault(); addHere(); }
   else if (event.key >= '1' && event.key <= '4') {
@@ -1292,6 +1360,7 @@ addEventListener('keydown', (event) => {
   else if (inDiscover()) { /* nothing further */ }
   else if (event.key === 'f') { event.preventDefault(); openFilterSheet(() => { syncControls(); render(); }); }
   else if (event.key === 'w') { event.preventDefault(); dom.hideWatched.click(); }
+  else if (event.key === 's') { event.preventDefault(); dom.btnSelect.click(); }
   else if (event.key === 'q' || event.key === 'l' || event.key === 'v') {
     event.preventDefault();
     setPlace(null, event.key === 'q' ? 'queue' : event.key === 'l' ? 'list' : 'watched');

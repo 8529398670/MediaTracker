@@ -24,6 +24,7 @@ export const checkpoint=()=>{};export const api=async()=>({});export const addIt
 export const sync=async()=>{};export const refresh=async()=>{};
 export const fillIn=async()=>false;export const stage=()=>{};
 export const fold=(t)=>String(t??'').toLowerCase();
+export const lookupKind=(t)=>t;export const defaultOther=()=>'other';
 EOF
 cat > "$work/ui.js" <<'EOF'
 export const el=()=>({append(){},replaceChildren(){},style:{setProperty(){}},addEventListener(){}});

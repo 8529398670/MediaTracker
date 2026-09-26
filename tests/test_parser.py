@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "server"))
 
-from seed import is_placeholder, split_title           # noqa: E402
+from seed import is_placeholder, split_title, type_hint  # noqa: E402
 
 # (line, title, year, notes)
 CASES = [
@@ -42,6 +42,14 @@ CASES = [
 ]
 
 PLACEHOLDERS = ["asdf", "asdfasdf", "qwerty", "zxcv", "", "   ", "asdf123"]
+
+# A heading in a document, and the kind of thing listed under it. Misc.md has
+# a "# Audio Books" heading of its own, which is not the same as a book.
+HEADINGS = [
+    ("Audio Books", "audiobook"), ("Audiobooks", "audiobook"), ("Audio-book", "audiobook"),
+    ("Books", "book"), ("Reading list", "book"), ("Documentaries", "doc"),
+    ("Anime", "anime"), ("Radio", "podcast"), ("Games", "game"), ("Drama", None),
+]
 NOT_PLACEHOLDERS = ["Alien", "M", "1917", "Se7en", "Up"]
 
 def main() -> int:
@@ -63,7 +71,12 @@ def main() -> int:
             bad += 1
             print(f"FAIL {text!r} is a title, not a placeholder")
 
-    total = len(CASES) + len(PLACEHOLDERS) + len(NOT_PLACEHOLDERS)
+    for heading, kind in HEADINGS:
+        if type_hint(heading) != kind:
+            bad += 1
+            print(f"FAIL heading {heading!r} should list {kind}, not {type_hint(heading)}")
+
+    total = len(CASES) + len(PLACEHOLDERS) + len(NOT_PLACEHOLDERS) + len(HEADINGS)
     print(f"\n{total - bad} passed, {bad} failed")
     return 1 if bad else 0
 

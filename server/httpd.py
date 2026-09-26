@@ -16,9 +16,10 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import auth
 from config import (BASE_HEADERS, COMPRESSIBLE, EXTRA_TYPES, IMG_ALLOW_ANY,
-                    ITEM_TYPES, LIBRARY_PATH, MAX_BODY, NET_ENABLED, OMDB_KEY,
-                    PUBLIC_DIR, SCHEMA, TMDB_KEY, TOKEN, UA, VERSION,
+                    ITEM_TYPES, LIBRARY_PATH, LOOKUP_AS, MAX_BODY, NET_ENABLED, OMDB_KEY,
+                    PUBLIC_DIR, PUBLIC_URL, SCHEMA, TMDB_KEY, UA, VERSION,
                     env_flag, log)
 from enrich import ENRICHER, Enricher
 from library import LIBRARY
@@ -104,20 +105,58 @@ class Handler(BaseHTTPRequestHandler):
             self._fail(400, "body must be JSON")
             return None
 
-    def _authorized(self, path: str) -> bool:
-        if not TOKEN:
-            return True
-        if path in ("/api/health", "/favicon.svg"):
-            return True
-        header = self.headers.get("X-HMT-Token")
-        if header and _constant_eq(header, TOKEN):
-            return True
-        cookies = self.headers.get("Cookie") or ""
-        for part in cookies.split(";"):
-            name, _, value = part.strip().partition("=")
-            if name == "hmt" and _constant_eq(urllib.parse.unquote(value), TOKEN):
-                return True
-        return False
+    # -- who is asking -------------------------------------------------
+
+    def _cookie(self, name: str) -> str:
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == name:
+                return value.strip()
+        return ""
+
+    def _https(self) -> bool:
+        """Came in over https — through the tunnel, which says so."""
+        proto = (self.headers.get("X-Forwarded-Proto") or "").lower()
+        return proto == "https" or '"https"' in (self.headers.get("CF-Visitor") or "")
+
+    def _session_cookie(self, token: str) -> str:
+        # Lax, not Strict: a Strict cookie is left off a link followed from
+        # another site, so opening the app from a message would bounce you to
+        # Google. Secure only over https — a browser on the LAN address would
+        # otherwise refuse to keep it at all.
+        return (f"{auth.COOKIE}={token}; Path=/; Max-Age={auth.COOKIE_AGE}; HttpOnly; "
+                f"SameSite=Lax{'; Secure' if self._https() else ''}")
+
+    def _client(self) -> str:
+        """Who is knocking, for the throttle. Behind the tunnel every request
+        comes from the same address, and the tunnel names the real one."""
+        forwarded = (self.headers.get("CF-Connecting-IP")
+                     or (self.headers.get("X-Forwarded-For") or "").split(",")[0]).strip()
+        return forwarded or (self.client_address[0] if self.client_address else "?")
+
+    def _navigating(self) -> bool:
+        """A page being opened, as opposed to a script, a poster or a fetch."""
+        mode = self.headers.get("Sec-Fetch-Mode")
+        if mode:
+            return mode == "navigate"
+        return "text/html" in (self.headers.get("Accept") or "")
+
+    def _same_origin(self) -> bool:
+        """Whether a write came from this app's own pages.
+
+        SameSite keeps the cookie off a cross-site POST, but not off one from
+        another port on the same host — and on the LAN, every app on this box
+        is the same host. The browser says where a request came from; anything
+        that says somewhere else is refused.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site:
+            return site in ("same-origin", "none")
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True                 # not a browser: nothing ambient to abuse
+        hosts = {self.headers.get("Host") or "", self.headers.get("X-Forwarded-Host") or ""}
+        return urllib.parse.urlsplit(origin).netloc in hosts - {""}
 
     # -- verbs ---------------------------------------------------------
 
@@ -149,21 +188,22 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.unquote(parsed.path)
         query = urllib.parse.parse_qs(parsed.query)
 
-        # A token in the URL is exchanged once for a session cookie.
-        if TOKEN and query.get("k") and _constant_eq(query["k"][0], TOKEN):
-            self._send(302, b"", "text/plain", {
-                "Location": path or "/",
-                "Set-Cookie": (f"hmt={urllib.parse.quote(TOKEN)}; Path=/; HttpOnly; "
-                               "SameSite=Strict; Max-Age=31536000"),
-            })
-            return
-
-        if not self._authorized(path):
-            self._fail(401, "a token is required — open the app with ?k=<token>")
-            return
+        # One handler can serve several requests on a kept-alive connection,
+        # so who is asking is worked out afresh every time.
+        self.token = self._cookie(auth.COOKIE)
+        self.user = None
 
         try:
-            if path.startswith("/api/"):
+            self.user = auth.ACCOUNTS.user_for(self.token) if self.token else None
+            if method != "GET" and not self._same_origin():
+                self._fail(403, "refused: that came from another site")
+            elif path == "/login" and method == "GET":
+                # A login link's page is the same whoever opens it: the one
+                # opening it may be signed in as somebody else already.
+                self._gate()
+            elif self.user is None:
+                self._stranger(method, path)
+            elif path.startswith("/api/"):
                 self._api(method, path, query)
             elif method == "GET":
                 self._static(path)
@@ -173,6 +213,39 @@ class Handler(BaseHTTPRequestHandler):
             log(f"!! {method} {path}: {type(exc).__name__}: {exc}")
             self._fail(500, "internal error")
 
+    # -- without a session ---------------------------------------------
+
+    def _stranger(self, method: str, path: str) -> None:
+        """All that anyone without a session gets: a way in, and Google."""
+        if path == "/api/health":
+            # The container's own health check. It says nothing but "up".
+            self._json(200, {"ok": True})
+        elif path in auth.OPEN_FILES and method == "GET":
+            self._static(path)
+        elif path.startswith("/api/auth/") and method == "POST":
+            self._api_auth(method, [p for p in path.split("/") if p][1:])
+        elif self._navigating():
+            self._gate()
+        elif path.startswith("/api/"):
+            self._fail(401, "sign in first")
+        else:
+            self._send(302, b"", "text/plain", {"Location": auth.AWAY})
+
+    def _gate(self) -> None:
+        """The page a browser without a session is given in place of any other.
+
+        No app and no data in it: one script, which spends a login link if
+        there is one in the address, or hands back the session this browser
+        kept in localStorage if its cookie went missing — and otherwise
+        leaves for Google, which is all a stranger ever sees.
+        """
+        target = self._resolve("/gate.html")
+        try:
+            body = target.read_bytes() if target else b""
+        except OSError:
+            body = b""
+        self._send(200, body, "text/html; charset=utf-8")
+
     def _api(self, method: str, path: str, query: dict) -> None:
         parts = [p for p in path.split("/") if p][1:]  # drop "api"
         head = parts[0] if parts else ""
@@ -181,8 +254,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "version": VERSION, **LIBRARY.meta()})
             return
 
+        if head == "auth":
+            self._api_auth(method, parts)
+            return
+
         if head == "config":
             self._json(200, {
+                "me": self.user,
+                "publicUrl": PUBLIC_URL,
                 "version": VERSION,
                 "schema": SCHEMA,
                 "network": NET_ENABLED,
@@ -261,7 +340,9 @@ class Handler(BaseHTTPRequestHandler):
             if not text:
                 self._fail(400, "q is required")
                 return
-            kind = (query.get("type") or ["any"])[0][:16]
+            kind = (query.get("type") or ["any"])[0][:32]
+            # One of Other's own types asks the way its list says to.
+            kind = LIBRARY.lookup_for(kind) or kind
             if kind not in ITEM_TYPES:
                 kind = "any"
             limit = max(1, min(_int((query.get("limit") or ["8"])[0], 1, 20) or 8, 20))
@@ -289,12 +370,156 @@ class Handler(BaseHTTPRequestHandler):
                 if not term:
                     self._fail(400, "q is required")
                     return
-                kind = (query.get("type") or ["any"])[0][:16]
+                kind = (query.get("type") or ["any"])[0][:32]
+                kind = LIBRARY.lookup_for(kind) or LOOKUP_AS.get(kind, kind)
                 limit = max(1, min(_int((query.get("limit") or ["12"])[0], 1, 40) or 12, 40))
                 self._json(200, lookup(term, kind, limit))
             return
 
         self._fail(404, "no such endpoint")
+
+    # -- people ----------------------------------------------------------
+
+    def _api_auth(self, method: str, parts: list[str]) -> None:
+        """Signing in and out, and the people who can.
+
+        Everyone signed in may do all of it — there are no roles, only names.
+        """
+        one = parts[1] if len(parts) > 1 else ""
+
+        # The two ways in, open to anyone, since getting in is what they are for.
+        if one in ("redeem", "resume") and method == "POST":
+            who = self._client()
+            if auth.THROTTLE.blocked(who):
+                self._fail(429, "slow down")
+                return
+            payload = self._body()
+            if payload is None:
+                return
+            given = _s((payload if isinstance(payload, dict) else {}).get("token"), 200)
+            if one == "redeem":
+                self._redeem(given, who)
+            else:
+                self._resume(given, who)
+            return
+
+        if self.user is None:
+            self._fail(401, "sign in first")
+            return
+
+        if one == "me" and method == "GET":
+            self._json(200, self.user)
+            return
+
+        if one == "logout" and method == "POST":
+            auth.ACCOUNTS.end(self.token)
+            log(f"auth: {self.user['name']} signed out of a browser")
+            self._json(200, {"ok": True}, {"Set-Cookie": (
+                f"{auth.COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+                f"{'; Secure' if self._https() else ''}")})
+            return
+
+        if one == "users":
+            self._api_users(method, parts[2:])
+            return
+
+        # /api/auth/links/<id> — cancel a link nobody has opened yet.
+        if one == "links" and method == "DELETE" and len(parts) > 2:
+            ok = auth.ACCOUNTS.revoke(parts[2])
+            if ok:
+                log(f"auth: {self.user['name']} cancelled an unused login link")
+            self._json(200 if ok else 404, {"ok": ok})
+            return
+
+        self._fail(404, "no such endpoint")
+
+    def _redeem(self, token: str, who: str) -> None:
+        """A login link, opened. It is spent whether or not this goes well."""
+        got = auth.ACCOUNTS.redeem(token, self.headers.get("User-Agent") or "")
+        if not got:
+            auth.THROTTLE.fail(who)
+            self._fail(401, "that link has been used, or has lapsed")
+            return
+        session, user = got
+        # The browser was signed in already: that session is over, not left
+        # behind as a device nobody is using.
+        if self.user:
+            auth.ACCOUNTS.end(self.token)
+        log(f"auth: {user['name']} signed in with a login link")
+        # The token goes back in the body as well as the cookie, for the page
+        # to keep in localStorage — the one copy that outlives a lost cookie.
+        self._json(200, {"token": session, "name": user["name"]},
+                   {"Set-Cookie": self._session_cookie(session)})
+
+    def _resume(self, token: str, who: str) -> None:
+        """Put back a session this browser kept, or confirm the one it has."""
+        user = auth.ACCOUNTS.user_for(token) if token else None
+        if user:
+            self._json(200, {"name": user["name"]},
+                       {"Set-Cookie": self._session_cookie(token)})
+            return
+        if self.user:
+            self._json(200, {"name": self.user["name"]})
+            return
+        auth.THROTTLE.fail(who)
+        self._fail(401, "not signed in")
+
+    def _api_users(self, method: str, rest: list[str]) -> None:
+        me = self.user
+        # /api/auth/users
+        if not rest:
+            if method == "GET":
+                self._json(200, {"me": me["id"], "users": auth.ACCOUNTS.users()})
+                return
+            if method != "POST":
+                self._fail(405, "GET or POST")
+                return
+            payload = self._body()
+            if payload is None:
+                return
+            name = (payload if isinstance(payload, dict) else {}).get("name")
+            user, why = auth.ACCOUNTS.add(name, me["id"])
+            if not user:
+                self._fail(400, why)
+                return
+            log(f"auth: {me['name']} added {user['name']}")
+            # Somebody is added to be let in, so their first link comes with them.
+            made = auth.ACCOUNTS.link(user["id"], me["id"])
+            self._json(201, {"user": user, "link": self._link_out(made)})
+            return
+
+        uid = _s(rest[0], 32)
+        # /api/auth/users/<id>/link — another one-time link for them.
+        if len(rest) == 2 and rest[1] == "link" and method == "POST":
+            made = auth.ACCOUNTS.link(uid, me["id"])
+            if not made:
+                self._fail(404, "nobody by that id")
+                return
+            log(f"auth: {me['name']} made a login link for {made['name']}")
+            self._json(201, self._link_out(made))
+            return
+
+        # /api/auth/users/<id> — take them out, and every browser they are in.
+        if len(rest) == 1 and method == "DELETE":
+            if uid == me["id"]:
+                self._fail(400, "you cannot remove yourself — somebody else can")
+                return
+            name = auth.ACCOUNTS.remove(uid)
+            if name is None:
+                self._fail(404, "nobody by that id")
+                return
+            log(f"auth: {me['name']} removed {name}")
+            self._json(200, {"ok": True})
+            return
+
+        self._fail(405, "GET or POST /users, POST /users/<id>/link, DELETE /users/<id>")
+
+    @staticmethod
+    def _link_out(made: dict | None) -> dict | None:
+        if not made:
+            return None
+        return {"id": made["id"], "path": made["path"], "expiresAt": made["expiresAt"],
+                "url": f"{PUBLIC_URL}{made['path']}" if PUBLIC_URL else ""}
 
     def _api_verdicts(self, method: str, body: object) -> None:
         """What you have said about a film you do not own.
@@ -577,7 +802,11 @@ class Handler(BaseHTTPRequestHandler):
         suffix = target.suffix.lower()
         ctype = EXTRA_TYPES.get(suffix) or mimetypes.guess_type(target.name)[0] \
             or "application/octet-stream"
-        self._send(200, body, ctype)
+        # Opening the app sets the cookie again. A browser drops a cookie 400
+        # days after it was last set, so this is what makes a sign-in for good.
+        renew = ({"Set-Cookie": self._session_cookie(self.token)}
+                 if self.user and target.name == "index.html" else None)
+        self._send(200, body, ctype, renew)
 
     @staticmethod
     def _resolve(path: str) -> Path | None:
@@ -592,15 +821,6 @@ class Handler(BaseHTTPRequestHandler):
         if candidate.is_dir():
             candidate = candidate / "index.html"
         return candidate if candidate.is_file() else None
-
-
-def _constant_eq(a: str, b: str) -> bool:
-    if len(a) != len(b):
-        return False
-    result = 0
-    for x, y in zip(a.encode(), b.encode()):
-        result |= x ^ y
-    return result == 0
 
 
 class Server(ThreadingHTTPServer):

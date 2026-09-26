@@ -17,7 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from config import ENRICH_DELAY, NET_ENABLED, OMDB_KEY, TMDB_KEY, log, now_iso
+from config import (ENRICH_DELAY, LOOKUP_AS, NET_ENABLED, OMDB_KEY, TMDB_KEY, log,
+                    now_iso)
 from library import LIBRARY
 from netio import BREAKER, fetch_json, proxy_img
 from normalize import _s, _url, canon_genres
@@ -531,6 +532,7 @@ def enrich_item(item: dict, problems: list | None = None,
     # cleaned up. A year found in the title is trusted over the stored one,
     # since a span written "1980-1984" was read from the wrong end.
     kind = item.get("type") or "movie"
+    kind = LIBRARY.lookup_for(kind) or LOOKUP_AS.get(kind, kind)
     searchable, in_title, _ = split_title(title)
     if searchable and searchable != title:
         title = searchable

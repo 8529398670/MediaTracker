@@ -25,7 +25,7 @@ import urllib.parse
 from difflib import SequenceMatcher
 from functools import lru_cache
 
-from config import NET_ENABLED, TMDB_KEY, log
+from config import LOOKUP_AS, NET_ENABLED, TMDB_KEY, log
 from match import (ARTICLE, CERTAIN, FLOOR, STOP_WORDS, confident, fold,
                    rank, similarity)
 from netio import BREAKER, fetch_json, fetch_text, proxy_img
@@ -849,6 +849,7 @@ def resolve(text: str, kind: str = "any", limit: int = 8) -> dict:
     arrived at and whether it is safe to apply without being asked.
     """
     raw = _s(text, 600)
+    kind = LOOKUP_AS.get(kind, kind)
     out = {"input": raw, "kind": kind, "via": "", "best": None,
            "confident": False, "candidates": [], "note": ""}
     if not raw:

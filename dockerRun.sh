@@ -9,6 +9,8 @@
 #   ./dockerRun.sh logs       follow the logs
 #   ./dockerRun.sh status     show container state + health
 #   ./dockerRun.sh backup     snapshot data/library.json into data/backups/
+#   ./dockerRun.sh link NAME  a one-time login link for NAME (added if new)
+#   ./dockerRun.sh users      who can sign in
 #
 # Settings can go in a .env file next to this script instead of on the command
 # line; anything already in the environment wins over it.
@@ -18,7 +20,8 @@
 #   BIND=0.0.0.0       host interface (use 127.0.0.1 to keep it local-only)
 #   DATA_DIR=./data    where library.json lives
 #   OFFLINE=1          run with --network none (no metadata lookups)
-#   MT_TOKEN=secret   require ?k=secret once, then a cookie, for every request
+#   MT_PUBLIC_URL=https://…  the address from outside; login links are built on it
+#   MT_LINK_DAYS=7     how long an unopened login link keeps working
 #   TMDB_API_KEY=...   optional, upgrades metadata lookups
 #   OMDB_API_KEY=...   optional
 #   ENV_FILE=path      read settings from somewhere other than ./.env
@@ -205,11 +208,38 @@ run() {
   printf '    data    %s%s%s\n' "$c_d" "$DATA_DIR/library.json" "$c_0"
   printf '    logs    %s./dockerRun.sh logs%s\n' "$c_d" "$c_0"
 
-  if [[ -z "${MT_TOKEN:-}" ]]; then
-    printf '\n  %sno MT_TOKEN set%s - anything that can reach this port can read and\n' "$c_y" "$c_0"
-    printf '  edit the library. Fine on loopback; set one before exposing it publicly.\n'
-  fi
+  printf '    sign in %s./dockerRun.sh link <name>%s  (a one-time login link)\n' "$c_d" "$c_0"
   printf '\n'
+}
+
+need_running() {
+  docker ps -q -f "name=^${NAME}$" -f status=running | grep -q . && return 0
+  warn "${NAME} is not running - start it with ./dockerRun.sh"
+  exit 1
+}
+
+# A one-time login link, made inside the container by the same code the app
+# uses, so it is in the running server a request later. This is how the first
+# person gets in, and how anyone gets back in when nobody inside can make
+# them a link. The name is added if nobody has it yet.
+link() {
+  local name="$*"
+  [[ -n "$name" ]] || { warn "usage: ./dockerRun.sh link <name>"; exit 2; }
+  need_running
+  local path
+  path="$(docker exec "$NAME" python3 /app/server/auth.py link "$name" | tail -n 1)" || exit 1
+  [[ "$path" == /login#* ]] || { warn "could not make a link"; exit 1; }
+
+  printf '\n  %sone-time login link for %s%s\n' "$c_g" "$name" "$c_0"
+  printf '  %sthe first browser to open it is signed in for good; after that it is spent%s\n\n' "$c_d" "$c_0"
+  if [[ -n "${MT_PUBLIC_URL:-}" ]]; then
+    printf '    anywhere     %s%s%s%s\n' "$c_b" "${MT_PUBLIC_URL%/}" "$path" "$c_0"
+  fi
+  local ip; ip="$(lan_ip)"
+  if [[ -n "$ip" && "$BIND" != "127.0.0.1" ]]; then
+    printf '    this wifi    %shttp://%s:%s%s%s\n' "$c_b" "$ip" "$PORT" "$path" "$c_0"
+  fi
+  printf '    this machine %shttp://localhost:%s%s%s\n\n' "$c_b" "$PORT" "$path" "$c_0"
 }
 
 backup() {
@@ -240,5 +270,7 @@ case "${1:-up}" in
     docker ps -a -f "name=^${NAME}$" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
     ;;
   backup)  backup ;;
-  *) warn "unknown command: $1"; sed -n '2,25p' "$0"; exit 2 ;;
+  link)    need_docker; shift; link "$@" ;;
+  users)   need_docker; need_running; docker exec "$NAME" python3 /app/server/auth.py users ;;
+  *) warn "unknown command: $1"; sed -n '2,28p' "$0"; exit 2 ;;
 esac

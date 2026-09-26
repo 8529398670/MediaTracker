@@ -9,7 +9,10 @@ cd "$(dirname "$0")/.."
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-cp public/js/*.js "$work/"
+cp public/js/*.js public/gate.js "$work/"
+# The browser loads every one of these as a module, so node must too — gate.js
+# has no import or export in it, and would otherwise be read as CommonJS.
+echo '{"type":"module"}' > "$work/package.json"
 cp tests/ui/*.mjs "$work/"
 
 # Every runner beside the shim, so a new one joins by being written.

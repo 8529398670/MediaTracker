@@ -6,7 +6,7 @@
 
 import {
   state, api, TYPES, STATUSES, TYPE_LABEL, addItem, patchItem, removeItem,
-  checkpoint, undo, nowISO, genreLabels, fillIn, stage,
+  checkpoint, undo, nowISO, genreLabels, fillIn, stage, lookupKind,
 } from './store.js';
 import {
   el, icon, field, openSheet, toast, confirmSheet, segmented, select,
@@ -111,7 +111,10 @@ export function openItem(item, { onChange, onDeleted }) {
   const year = el('input.input', {
     type: 'number', inputmode: 'numeric', value: draft.year || '', placeholder: 'Year',
   });
-  const type = select(TYPES, draft.type, (v) => { draft.type = v; });
+  // A type no longer in the list is still this title's until it is changed.
+  const type = select(TYPES.some((t) => t.id === draft.type) ? TYPES
+    : [...TYPES, { id: draft.type, label: TYPE_LABEL[draft.type] || draft.type }],
+  draft.type, (v) => { draft.type = v; });
 
   body.append(field('Title', title));
   body.append(el('div.row', null, [field('Year', year), field('Type', type)]));
@@ -355,7 +358,10 @@ const LOOKUP_KINDS = [
 
 export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
                                   actionLabel = 'Use' }) {
-  let mediaKind = ['movie', 'tv', 'book', 'podcast'].includes(kind) ? kind : 'any';
+  // A type of Other's is asked about as whatever its list says it is: an audio
+  // book as the book it was read from.
+  const asked = lookupKind(kind);
+  let mediaKind = ['movie', 'tv', 'book', 'podcast'].includes(asked) ? asked : 'any';
   const input = el('input.input', {
     type: 'search', value: query, placeholder: 'Title, or a link to paste',
     enterkeyhint: 'search', autocapitalize: 'words',

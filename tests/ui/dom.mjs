@@ -5,16 +5,26 @@
  * shim are enough to run the real ui.js against and drive a panel end to end.
  * Nodes remember their children, their classes and their listeners; `find`
  * walks the tree and `fire` dispatches, which is all a test needs. */
+// A Set that answers to the DOMTokenList calls the app makes.
+class ClassList extends Set {
+  remove(...names) { for (const name of names) this.delete(name); }
+  contains(name) { return this.has(name); }
+  toggle(name, force) {
+    const on = force === undefined ? !this.has(name) : Boolean(force);
+    if (on) this.add(name); else this.delete(name);
+    return on;
+  }
+}
 class N {
   constructor(tag, ns) {
     this.tagName = (tag || '').toUpperCase(); this.ns = ns || null;
     this.children = []; this.attrs = {}; this.handlers = {};
     this.style = { setProperty(){}, removeProperty(){} };
-    this.dataset = {}; this.classList = new Set();
+    this.dataset = {}; this.classList = new ClassList();
     this._text = '';
   }
   get className(){ return [...this.classList].join(' '); }
-  set className(v){ this.classList = new Set(String(v || '').split(/\s+/).filter(Boolean)); }
+  set className(v){ this.classList = new ClassList(String(v || '').split(/\s+/).filter(Boolean)); }
   appendChild(n){ if(n){ n.parent = this; this.children.push(n); } return n; }
   append(...kids){ for (const k of kids.flat(9)) { if (k === null || k === undefined || k === false) continue; if (k instanceof N) k.parent = this; this.children.push(k); } }
   replaceChildren(...kids){ this.children = []; this.append(...kids); }

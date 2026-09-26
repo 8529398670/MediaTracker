@@ -3,7 +3,7 @@
 
 import {
   TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, live, genreLabels,
-  fold,
+  fold, otherTypes, defaultOther, typesVersion,
 } from './store.js';
 import { el, field, openSheet, toast } from './ui.js';
 
@@ -11,19 +11,26 @@ const VIEW_KEY = 'mt.view.v2';
 
 /* The library is split into sections, and each section has the same three
  * lists: everything, the queue you keep in order by hand, and the pile you
- * have already watched. TV keeps its own of each. */
+ * have already watched. TV keeps its own of each.
+ *
+ * Movies and TV hold one kind of thing apiece. Everything else is Other —
+ * documentaries and anime too, which is where the documents the library came
+ * from file them — and a row of chips in the toolbar picks one kind of it out,
+ * or any mix. What Other is split into is the library's own list (store.js),
+ * so its types are read afresh each time. A type the list does not name lands
+ * in Other as well, and gets a chip of its own while a title carries it.
+ * `adds` is what a title added from the tab starts out as. */
 export const SECTIONS = [
-  { id: 'movie', label: 'Movies', types: ['movie', 'doc'] },
-  { id: 'tv',    label: 'TV',     types: ['tv', 'anime'] },
-  { id: 'other', label: 'Other',  types: ['book', 'game', 'podcast', 'other'] },
+  { id: 'movie', label: 'Movies', types: ['movie'], adds: 'movie' },
+  { id: 'tv',    label: 'TV',     types: ['tv'], adds: 'tv' },
+  { id: 'other', label: 'Other',
+    get types() { return otherTypes().map((t) => t.id); },
+    get adds() { return defaultOther(); } },
 ];
 
 export const SECTION_LABEL = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label]));
 
-export const SECTION_OF = Object.fromEntries(
-  SECTIONS.flatMap((section) => section.types.map((type) => [type, section.id])));
-
-export const sectionOf = (item) => SECTION_OF[item.type] || 'other';
+export const sectionOf = (item) => (item.type === 'movie' || item.type === 'tv' ? item.type : 'other');
 
 export const VIEWS = [
   { id: 'list',    label: 'List' },
@@ -42,6 +49,50 @@ export function inView(item, view = filters.view) {
   return !allowed || allowed.includes(item.status);
 }
 
+/* ------------------------------------------------------------------- kinds */
+
+/** The kinds picked out of a section in the toolbar; none means all of them. */
+export function pickedTypes(section = filters.section) {
+  const list = (filters.sectionTypes || {})[section];
+  return Array.isArray(list) ? list : [];
+}
+
+/** Pick a kind out, or put it back. `null` puts every kind back. */
+export function pickType(type, section = filters.section) {
+  const now = pickedTypes(section);
+  const next = type === null ? []
+    : now.includes(type) ? now.filter((t) => t !== type) : [...now, type];
+  const all = { ...filters.sectionTypes };
+  if (next.length) all[section] = next; else delete all[section];
+  filters.sectionTypes = all;
+  saveView();
+}
+
+/** A chip for each kind a section is made of — and for any other kind that
+ * has turned up in it — with how many the list on screen holds before
+ * anything else narrows it. In the order the type menu lists them. */
+export function sectionKinds(items, section = filters.section, view = filters.view) {
+  const home = (SECTIONS.find((s) => s.id === section) || { types: [] }).types;
+  const count = new Map();
+  for (const item of items) {
+    if (sectionOf(item) !== section || !inView(item, view)) continue;
+    count.set(item.type, (count.get(item.type) || 0) + 1);
+  }
+  // The list's own types in its order, then any other a title still carries.
+  const strays = [...count.keys(), ...pickedTypes(section)]
+    .filter((id, at, all) => !home.includes(id) && all.indexOf(id) === at);
+  return [...home, ...strays]
+    .map((id) => ({ id, label: TYPE_LABEL[id] || id, count: count.get(id) || 0 }));
+}
+
+/** What a title added from the tab starts out as: the one kind picked out
+ * in the toolbar when exactly one is, or else what the section adds. */
+export function addingType(section = filters.section) {
+  const picked = pickedTypes(section);
+  if (picked.length === 1) return picked[0];
+  return (SECTIONS.find((s) => s.id === section) || SECTIONS[0]).adds;
+}
+
 /* Titles that have just been ticked out of the list on screen and are being
  * given a moment before they go. A tick on the queue would otherwise take
  * the row away under the finger that pressed it, and a slip is only
@@ -55,7 +106,9 @@ export const filters = {
   section: 'movie',
   view: 'list',
   q: '',
-  types: [],
+  // Section id -> the kinds picked out of it. Kept apart per section, so
+  // picking Audio Books on Other does not empty Movies.
+  sectionTypes: {},
   statuses: [],
   tags: [],
   certs: [],
@@ -77,6 +130,9 @@ export function loadView() {
     const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
     Object.assign(filters, saved, { q: '' });
   } catch { /* first run */ }
+  // The one type filter used to span every section; it is per section now.
+  delete filters.types;
+  if (!filters.sectionTypes || typeof filters.sectionTypes !== 'object') filters.sectionTypes = {};
   return filters;
 }
 
@@ -86,7 +142,7 @@ export function saveView() {
 
 export function activeCount() {
   let n = 0;
-  if (filters.types.length) n += 1;
+  if (pickedTypes().length) n += 1;
   if (filters.statuses.length) n += 1;
   if (filters.tags.length) n += 1;
   if (filters.certs.length) n += 1;
@@ -101,7 +157,7 @@ export function activeCount() {
 
 export function resetFilters() {
   Object.assign(filters, {
-    types: [], statuses: [], tags: [], certs: [],
+    sectionTypes: {}, statuses: [], tags: [], certs: [],
     hideWatched: false, heartsOnly: false, unratedOnly: false,
     minRating: 0, yearFrom: null, yearTo: null, hasLinks: false, noLinks: false,
   });
@@ -170,10 +226,12 @@ function searchable(item) {
 const hays = new WeakMap();
 
 function haystack(item) {
+  // A renamed type changes what every title of it answers to.
+  const stamp = `${item.updatedAt}|${typesVersion}`;
   const seen = hays.get(item);
-  if (seen && seen.stamp === item.updatedAt) return seen.hay;
+  if (seen && seen.stamp === stamp) return seen.hay;
   const hay = fold(searchable(item));
-  hays.set(item, { stamp: item.updatedAt, hay });
+  hays.set(item, { stamp, hay });
   return hay;
 }
 
@@ -185,7 +243,11 @@ function matchesQuery(item, parsed) {
   for (const [key, value] of parsed.fields) {
     switch (key) {
       case 'tag': if (!item.tags.some((t) => fold(t).includes(fold(value)))) return false; break;
-      case 'type': if (!item.type.startsWith(value)) return false; break;
+      // By id or by the name it goes by: `type:audio` finds Audio Books.
+      case 'type':
+        if (!item.type.startsWith(value)
+            && !fold(TYPE_LABEL[item.type] || '').startsWith(fold(value))) return false;
+        break;
       case 'status': if (!item.status.startsWith(value)) return false; break;
       case 'year': if (String(item.year || '') !== value) return false; break;
       case 'rating': if (String(item.rating || '') !== value) return false; break;
@@ -271,6 +333,9 @@ export function whyMatched(item, raw) {
 export function apply(items = live(), { everywhere = false } = {}) {
   const parsed = parseQuery(filters.q);
   const searching = Boolean(filters.q.trim());
+  // Which kinds of this section are on show is a matter of where you are,
+  // like the section itself, so a search that reaches past it lifts it too.
+  const kinds = everywhere ? [] : pickedTypes();
 
   return items.filter((item) => {
     const stays = lingering.has(item.id);
@@ -281,7 +346,7 @@ export function apply(items = live(), { everywhere = false } = {}) {
         && item.status === 'watched') return false;
     if (filters.heartsOnly && !item.heart) return false;
     if (filters.unratedOnly && item.rating) return false;
-    if (filters.types.length && !filters.types.includes(item.type)) return false;
+    if (kinds.length && !kinds.includes(item.type)) return false;
     if (!stays && filters.statuses.length && !filters.statuses.includes(item.status)) return false;
     if (filters.tags.length && !filters.tags.every((t) => item.tags.includes(t))) return false;
     if (filters.certs.length && !filters.certs.includes(item.certification || '')) return false;
@@ -379,7 +444,8 @@ export function groupItems(items, group = filters.group) {
     groups.sort((a, b) => STATUS_ORDER.indexOf(a.key) - STATUS_ORDER.indexOf(b.key));
   } else if (group === 'type') {
     const order = TYPES.map((t) => t.id);
-    groups.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+    const at = (key) => (order.includes(key) ? order.indexOf(key) : order.length);
+    groups.sort((a, b) => at(a.key) - at(b.key));
   } else {
     // Newest first unless the sort is explicitly ascending; "No year"
     // (key 0000) therefore falls to the bottom either way.
@@ -423,7 +489,15 @@ export function openFilterSheet(onApply) {
     return row;
   };
 
-  body.append(field('Type', multiChips(TYPES, draft.types)));
+  // Only where there is more than one kind to pick from, and the same pick as
+  // the chips in the toolbar — so it is this section's, not every section's.
+  const kinds = sectionKinds(live());
+  if (kinds.length > 1) {
+    const picked = [...pickedTypes()];
+    draft.sectionTypes = { ...draft.sectionTypes, [filters.section]: picked };
+    body.append(field('Type', multiChips(
+      kinds.map((k) => ({ id: k.id, label: `${k.label} ${k.count}` })), picked)));
+  }
   body.append(field('Status', multiChips(STATUSES, draft.statuses)));
 
   const tags = allTags();

@@ -206,12 +206,16 @@ export function toast(message, { action, error = false, ms = 4200 } = {}) {
 
 /* ----------------------------------------------------------------- confirm */
 
-export function confirmSheet({ title, message, confirmLabel = 'Confirm', danger = false }) {
+/* `detail` is a list of lines under the message — the titles a change is
+ * about to touch, so what is being agreed to is in front of you. */
+export function confirmSheet({
+  title, message, detail = null, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false,
+}) {
   return new Promise((resolve) => {
     let answered = false;
     const finish = (value) => { if (!answered) { answered = true; resolve(value); } };
 
-    const cancel = el('button.btn.ghost.grow', { type: 'button', text: 'Cancel' });
+    const cancel = el('button.btn.ghost.grow', { type: 'button', text: cancelLabel });
     const ok = el('button.btn.grow', {
       type: 'button',
       text: confirmLabel,
@@ -221,7 +225,12 @@ export function confirmSheet({ title, message, confirmLabel = 'Confirm', danger 
 
     const handle = openSheet({
       title,
-      body: el('p', { text: message, style: { margin: '4px 0 8px', color: 'var(--text-2)' } }),
+      body: el('div', null, [
+        el('p', { text: message, style: { margin: '4px 0 8px', color: 'var(--text-2)' } }),
+        detail && detail.length
+          ? el('ul.confirm-list', null, detail.map((line) => el('li', { text: line })))
+          : null,
+      ]),
       footer: [cancel, ok],
       onClose: () => finish(false),
     });
@@ -283,6 +292,20 @@ export async function copyText(text) {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    return false;
+    // No clipboard API outside https, which is the app on its LAN address.
+    // The old way still works there.
+    try {
+      const area = el('textarea', {
+        value: text, readOnly: true, 'aria-hidden': 'true',
+        style: { position: 'fixed', top: '0', left: '0', opacity: '0' },
+      });
+      document.body.append(area);
+      area.select();
+      const ok = document.execCommand('copy');
+      area.remove();
+      return ok;
+    } catch {
+      return false;
+    }
   }
 }
