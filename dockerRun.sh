@@ -10,6 +10,8 @@
 #   ./dockerRun.sh status     show container state + health
 #   ./dockerRun.sh backup     snapshot data/library.json into data/backups/
 #   ./dockerRun.sh link NAME  a one-time login link for NAME (added if new)
+#   ./dockerRun.sh key NAME [--read] [--label WHAT]
+#                             an API key that acts as NAME (added if new), for a bot
 #   ./dockerRun.sh users      who can sign in
 #
 # Settings can go in a .env file next to this script instead of on the command
@@ -242,6 +244,34 @@ link() {
   printf '    this machine %shttp://localhost:%s%s%s\n\n' "$c_b" "$PORT" "$path" "$c_0"
 }
 
+# An API key for a bot, made inside the container like a link. It acts as
+# NAME; it is full unless --read, and is labelled with what it is for so its
+# row in the Users sheet says which bot has it. Shown here once, never again.
+key() {
+  local args=() name=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --read)  args+=(--read); shift ;;
+      --label) [[ $# -ge 2 ]] || { warn "--label needs a value"; exit 2; }
+               args+=(--label "$2"); shift 2 ;;
+      *)       name+=("$1"); shift ;;
+    esac
+  done
+  [[ ${#name[@]} -gt 0 ]] || { warn "usage: ./dockerRun.sh key <name> [--read] [--label <what for>]"; exit 2; }
+  need_running
+  local made
+  made="$(docker exec "$NAME" python3 /app/server/auth.py key "${args[@]}" "${name[@]}" | tail -n 1)" || exit 1
+  [[ "$made" == mt_* ]] || { warn "could not make a key"; exit 1; }
+
+  local base="http://localhost:${PORT}"
+  [[ -n "${MT_PUBLIC_URL:-}" ]] && base="${MT_PUBLIC_URL%/}"
+  printf '\n  %sAPI key for %s%s  %s(shown once — only a hash is kept)%s\n\n' \
+    "$c_g" "${name[*]}" "$c_0" "$c_d" "$c_0"
+  printf '    %s%s%s\n\n' "$c_b" "$made" "$c_0"
+  printf '  %stry it:%s\n' "$c_d" "$c_0"
+  printf "    curl -H 'Authorization: Bearer %s' %s/api/library\n\n" "$made" "$base"
+}
+
 backup() {
   local src="$DATA_DIR/library.json"
   [[ -f "$src" ]] || { warn "no library at $src"; exit 1; }
@@ -271,6 +301,7 @@ case "${1:-up}" in
     ;;
   backup)  backup ;;
   link)    need_docker; shift; link "$@" ;;
+  key)     need_docker; shift; key "$@" ;;
   users)   need_docker; need_running; docker exec "$NAME" python3 /app/server/auth.py users ;;
-  *) warn "unknown command: $1"; sed -n '2,28p' "$0"; exit 2 ;;
+  *) warn "unknown command: $1"; sed -n '2,30p' "$0"; exit 2 ;;
 esac

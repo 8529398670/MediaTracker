@@ -13,15 +13,22 @@ The only way in is one of those links. It works once: the first browser to
 open it is signed in as that person for good, and the link is spent. There is
 no password to forget and none to guess — a token is 256 random bits.
 
+A bot gets in another way: an API key, made for one person and acting as
+them, sent as ``Authorization: Bearer <key>``. It reaches the library and
+everything around it, but not the people — a key cannot add anyone, remove
+anyone, or make a link or another key, so one that leaks cannot turn itself
+into a sign-in that outlives revoking it. A key is full or read-only.
+
 What is kept, in ``data/users.json``:
 
     users     id -> name, and who added them
     sessions  sha256(token) -> whose, since when, last seen
     links     sha256(token) -> whose, until when
+    keys      sha256(key) -> whose, what for, full or read, last used
 
 Only hashes are written down. A copy of the file — a backup, a paste into a
 bug report — lets nobody in; the tokens themselves exist only in the browsers
-holding them and in the one link that was sent.
+holding them, in the one link that was sent, and in the bot given the key.
 
 The file has a second writer: ``python3 auth.py link <name>``, which
 ``./dockerRun.sh link`` runs inside the container. That is how the first
@@ -76,9 +83,21 @@ SEEN_EVERY = 3600
 MAX_USERS = 200
 MAX_SESSIONS = 2000
 MAX_LINKS = 500
+MAX_KEYS = 200
 NAME_MAX = 32
 
 TOKEN_SHAPE = re.compile(r"[A-Za-z0-9_-]{20,128}")
+
+# An API key says what it is, so a secret scanner — or a person reading a
+# config file — can tell it from a session. The rest is 256 random bits.
+KEY_PREFIX = "mt_"
+KEY_HINT = 7                        # how much of it is kept to recognise it by
+ACCESS = ("full", "read")
+
+# What each kind of token notes when it is used: a session is "seen", a key
+# is "used". Both go through the same batching, so neither costs a disk write
+# per request.
+SEEN_FIELD = {"sessions": "seenAt", "keys": "usedAt"}
 
 
 def _hash(token: str) -> str:
@@ -116,7 +135,7 @@ def clean_name(raw: object) -> str:
 
 
 def _blank() -> dict:
-    return {"schema": 1, "users": {}, "sessions": {}, "links": {}}
+    return {"schema": 1, "users": {}, "sessions": {}, "links": {}, "keys": {}}
 
 
 def _clean(raw: object) -> dict:
@@ -131,7 +150,7 @@ def _clean(raw: object) -> dict:
                 "createdAt": str(user.get("createdAt") or ""),
                 "createdBy": str(user.get("createdBy") or ""),
             }
-    for kind in ("sessions", "links"):
+    for kind in ("sessions", "links", "keys"):
         for key, entry in (raw.get(kind) or {}).items():
             if (isinstance(key, str) and len(key) == 64 and isinstance(entry, dict)
                     and entry.get("user") in data["users"]):
@@ -163,7 +182,7 @@ class Accounts:
         self.lock = threading.RLock()
         self.data = _blank()
         self.stamp: tuple | None = None
-        self.seen: dict[str, str] = {}      # session -> last seen, not yet written
+        self.seen: dict[str, str] = {}      # session or key -> last used, not yet written
 
     # ---------------------------------------------------------------- disk
 
@@ -209,14 +228,15 @@ class Accounts:
         self.stamp = self._stat()
 
     def _tidy(self) -> bool:
-        """Fold in who has been seen, and drop links that have lapsed."""
+        """Fold in who has been seen and which keys used, and drop links that
+        have lapsed."""
         changed = False
-        sessions = self.data["sessions"]
         for key, when in self.seen.items():
-            session = sessions.get(key)
-            if session and (session.get("seenAt") or "") < when:
-                session["seenAt"] = when
-                changed = True
+            for kind, field in SEEN_FIELD.items():
+                entry = self.data[kind].get(key)
+                if entry and (entry.get(field) or "") < when:
+                    entry[field] = when
+                    changed = True
         self.seen.clear()
         now = now_iso()
         for key in [k for k, link in self.data["links"].items()
@@ -244,30 +264,50 @@ class Accounts:
 
     # ------------------------------------------------------------ sessions
 
-    def user_for(self, token: str) -> dict | None:
-        """Whose session this is, or None. Asked on every request."""
+    def _holder(self, kind: str, token: str) -> tuple[dict, dict] | None:
+        """The session or key this token is, and whose it is — noting that it
+        was used. Asked on every request."""
         if not _well_formed(token):
             return None
         key = _hash(token)
+        field = SEEN_FIELD[kind]
         with self.lock:
             self._fresh()
-            session = self.data["sessions"].get(key)
-            user = self.data["users"].get(session["user"]) if session else None
+            entry = self.data[kind].get(key)
+            user = self.data["users"].get(entry["user"]) if entry else None
             if not user:
                 return None
             now = now_iso()
             self.seen[key] = now
-            stale = _age(session.get("seenAt")) > SEEN_EVERY
+            stale = _age(entry.get(field)) > SEEN_EVERY
             if stale:
-                # A page load is a dozen requests at once; one write is enough.
-                session["seenAt"] = now
-            found = {"id": session["user"], "name": user["name"]}
+                # A page load is a dozen requests at once, and a bot's sweep a
+                # hundred; one write is enough.
+                entry[field] = now
+            found = (dict(entry, id=key[:12]), {"id": entry["user"], "name": user["name"]})
         if stale:
             try:
                 self._change(lambda data: (None, False))
             except OSError as exc:
-                log(f"!! could not note a session as seen: {exc}")
+                log(f"!! could not note a {kind[:-1]} as used: {exc}")
         return found
+
+    def user_for(self, token: str) -> dict | None:
+        """Whose session this is, or None."""
+        held = self._holder("sessions", token)
+        return held[1] if held else None
+
+    def key_for(self, token: str) -> dict | None:
+        """Whose API key this is, and which key, or None."""
+        if not str(token or "").startswith(KEY_PREFIX):
+            return None
+        held = self._holder("keys", token)
+        if not held:
+            return None
+        entry, user = held
+        return {**user, "key": {"id": entry["id"], "label": entry.get("label") or "",
+                                "access": entry.get("access") if entry.get("access") in ACCESS
+                                else "read"}}
 
     def redeem(self, token: str, agent: str = "") -> tuple[str, dict] | None:
         """Spend a link. A new session for whoever it was made for, or None."""
@@ -313,7 +353,8 @@ class Accounts:
 
     def users(self) -> list[dict]:
         """Everyone, with how many browsers each is signed in on and when last
-        seen, and the links made for them that nobody has opened yet."""
+        seen, the links made for them that nobody has opened yet, and the API
+        keys that act as them."""
         with self.lock:
             self._fresh()
             now = now_iso()
@@ -321,7 +362,7 @@ class Accounts:
                             "createdAt": user.get("createdAt") or "",
                             "createdBy": (self.data["users"].get(user.get("createdBy") or "")
                                           or {}).get("name", ""),
-                            "devices": 0, "seenAt": "", "links": []}
+                            "devices": 0, "seenAt": "", "links": [], "keys": []}
                       for uid, user in self.data["users"].items()}
             for key, session in self.data["sessions"].items():
                 person = people.get(session["user"])
@@ -335,8 +376,18 @@ class Accounts:
                 if person and (link.get("expiresAt") or "") > now:
                     person["links"].append({"id": key[:12], "createdAt": link.get("createdAt") or "",
                                             "expiresAt": link.get("expiresAt") or ""})
+            for key, entry in self.data["keys"].items():
+                person = people.get(entry["user"])
+                if person:
+                    person["keys"].append({
+                        "id": key[:12], "label": entry.get("label") or "",
+                        "access": entry.get("access") if entry.get("access") in ACCESS else "read",
+                        "hint": entry.get("hint") or "",
+                        "createdAt": entry.get("createdAt") or "",
+                        "usedAt": max(entry.get("usedAt") or "", self.seen.get(key) or "")})
         for person in people.values():
             person["links"].sort(key=lambda link: link["createdAt"])
+            person["keys"].sort(key=lambda made: made["createdAt"])
         return sorted(people.values(), key=lambda p: p["name"].casefold())
 
     def count(self) -> int:
@@ -372,13 +423,14 @@ class Accounts:
         return self._change(make)
 
     def remove(self, uid: str) -> str | None:
-        """Take someone out, and every browser they are signed in on with them.
-        Their name, or None if there was nobody by that id."""
+        """Take someone out, and every browser they are signed in on and every
+        key that acts as them with them. Their name, or None if there was
+        nobody by that id."""
         def drop(data):
             user = data["users"].pop(uid, None)
             if not user:
                 return None, False
-            for kind in ("sessions", "links"):
+            for kind in ("sessions", "links", "keys"):
                 data[kind] = {k: v for k, v in data[kind].items() if v["user"] != uid}
             return user["name"], True
 
@@ -403,20 +455,58 @@ class Accounts:
 
         return self._change(make)
 
-    def revoke(self, link_id: str) -> bool:
-        """Cancel a link nobody has opened yet, by the id `users()` gave it."""
-        link_id = str(link_id or "").lower()
-        if not re.fullmatch(r"[0-9a-f]{12}", link_id):
-            return False
+    def _revoke(self, kind: str, short: str) -> dict | None:
+        """Drop one link or key by the id `users()` gave it. What was dropped,
+        or None."""
+        short = str(short or "").lower()
+        if not re.fullmatch(r"[0-9a-f]{12}", short):
+            return None
 
         def drop(data):
-            hits = [key for key in data["links"] if key.startswith(link_id)]
+            hits = [key for key in data[kind] if key.startswith(short)]
             if len(hits) != 1:
-                return False, False
-            del data["links"][hits[0]]
-            return True, True
+                return None, False
+            return data[kind].pop(hits[0]), True
 
         return self._change(drop)
+
+    def revoke(self, link_id: str) -> bool:
+        """Cancel a link nobody has opened yet."""
+        return self._revoke("links", link_id) is not None
+
+    # ----------------------------------------------------------------- keys
+
+    def make_key(self, uid: str, label: object = "", access: str = "full",
+                 by: str = "") -> dict | None:
+        """A new API key that acts as this person. Like a link, the key is in
+        the answer and nowhere else: lost, it is made again, not looked up."""
+        label = clean_name(label) or "API key"
+        access = access if access in ACCESS else "full"
+
+        def make(data):
+            if uid not in data["users"]:
+                return None, False
+            token = KEY_PREFIX + secrets.token_urlsafe(32)
+            key = _hash(token)
+            now = now_iso()
+            data["keys"][key] = {"user": uid, "label": label, "access": access,
+                                 "hint": token[:KEY_HINT], "createdAt": now,
+                                 "createdBy": by or ""}
+            _cap(data["keys"], MAX_KEYS, "createdAt")
+            return {"key": token, "id": key[:12], "label": label, "access": access,
+                    "hint": token[:KEY_HINT], "createdAt": now,
+                    "name": data["users"][uid]["name"]}, True
+
+        return self._change(make)
+
+    def revoke_key(self, key_id: str) -> dict | None:
+        """Stop a key working. Its label and whose it was, or None."""
+        gone = self._revoke("keys", key_id)
+        if not gone:
+            return None
+        with self.lock:
+            user = self.data["users"].get(gone["user"]) or {}
+        return {"label": gone.get("label") or "", "name": user.get("name") or ""}
 
 
 class Throttle:
@@ -461,34 +551,66 @@ THROTTLE = Throttle()
 # --------------------------------------------------------------------------
 
 
+USAGE = ("usage: auth.py link <name>  |  auth.py key [--read] [--label <what for>] <name>"
+         "  |  auth.py users")
+
+
+def _someone(name: str) -> str | None:
+    """The id of whoever goes by this name, adding them if nobody does."""
+    uid = ACCOUNTS.find(name)
+    if uid is None:
+        user, why = ACCOUNTS.add(name)
+        if not user:
+            print(why, file=sys.stderr)
+            return None
+        uid = user["id"]
+    return uid
+
+
 def main(argv: list[str]) -> int:
     """Make a login link from outside the app — the first one, or the one that
-    gets somebody back in when nobody left inside can make it for them."""
+    gets somebody back in when nobody left inside can make it for them — or
+    an API key for a bot running on the same machine."""
     if len(argv) >= 2 and argv[0] == "link":
-        name = " ".join(argv[1:])
-        uid = ACCOUNTS.find(name)
-        if uid is None:
-            user, why = ACCOUNTS.add(name)
-            if not user:
-                print(why, file=sys.stderr)
-                return 1
-            uid = user["id"]
-        made = ACCOUNTS.link(uid)
+        uid = _someone(" ".join(argv[1:]))
+        made = ACCOUNTS.link(uid) if uid else None
         if not made:
             print("could not make a link", file=sys.stderr)
             return 1
         print(made["path"])
+        return 0
+    if argv[:1] == ["key"]:
+        rest, access, label = argv[1:], "full", ""
+        while rest and rest[0].startswith("--"):
+            flag = rest.pop(0)
+            if flag == "--read":
+                access = "read"
+            elif flag == "--label" and rest:
+                label = rest.pop(0)
+            else:
+                print(USAGE, file=sys.stderr)
+                return 2
+        if not rest:
+            print(USAGE, file=sys.stderr)
+            return 2
+        uid = _someone(" ".join(rest))
+        made = ACCOUNTS.make_key(uid, label, access) if uid else None
+        if not made:
+            print("could not make a key", file=sys.stderr)
+            return 1
+        print(made["key"])
         return 0
     if argv[:1] == ["users"]:
         people = ACCOUNTS.users()
         for person in people:
             seen = person["seenAt"] or "never"
             print(f"{person['name']:<{NAME_MAX}}  {person['devices']} signed in"
-                  f"  last seen {seen}  {len(person['links'])} unused link(s)")
+                  f"  last seen {seen}  {len(person['links'])} unused link(s)"
+                  f"  {len(person['keys'])} API key(s)")
         if not people:
             print("nobody yet — ./dockerRun.sh link <name>")
         return 0
-    print("usage: auth.py link <name>  |  auth.py users", file=sys.stderr)
+    print(USAGE, file=sys.stderr)
     return 2
 
 

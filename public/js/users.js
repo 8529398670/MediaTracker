@@ -3,11 +3,15 @@
  * Nobody reaches the app without a session, and the only way to get one is a
  * link made here and opened once. Everybody signed in can do all of it — add
  * someone, remove someone, make anyone a link — so it is in the menu for
- * everyone rather than behind a role nobody has. */
+ * everyone rather than behind a role nobody has.
+ *
+ * A bot gets in with an API key instead, made here for one person and acting
+ * as them: full, or read-only. A key reaches the library but never this
+ * sheet — it cannot add anyone, or make a link or another key. */
 
 import { api, state, sync, forgetLocal } from './store.js';
 import {
-  el, icon, openSheet, toast, field, fmtAgo, confirmSheet, copyText, setChildren,
+  el, icon, openSheet, toast, field, fmtAgo, confirmSheet, copyText, setChildren, segmented,
 } from './ui.js';
 
 const KEPT = 'mt.session.v1';           // the copy gate.js keeps of the session
@@ -20,6 +24,13 @@ function linkUrl(made) {
 }
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/** What a key of each kind may do, said the same way wherever it is said. */
+const REACH = {
+  full: (name) => `Reads and changes the library as ${name}: adds, edits, reorders, ticks `
+    + 'and deletes titles. It cannot add or remove people, or make links or keys.',
+  read: (name) => `Reads the library and looks things up as ${name}. It changes nothing.`,
+};
 
 /** "active now" for the last minute — yourself, mostly — then "3 days ago". */
 const active = (iso) => (Date.now() - new Date(iso).getTime() < 60000
@@ -63,6 +74,14 @@ export function openUsers() {
     }, [icon('link'), 'Login link']);
     link.addEventListener('click', () => makeLink(person, link));
 
+    const key = el('button.btn.sm', {
+      type: 'button', 'aria-label': `New API key for ${person.name}`,
+    }, [icon('key'), 'API key']);
+    key.addEventListener('click', () => newKey(person, async (made) => {
+      await load();
+      showKey(person.name, made);
+    }));
+
     // You cannot take yourself out: somebody else has to, which is also what
     // stops the last person in from locking everybody out by accident.
     const drop = isMe ? null : el('button.icon-btn', {
@@ -80,6 +99,21 @@ export function openUsers() {
       }),
     ]));
 
+    const keys = (person.keys || []).map((made) => el('div.user-pending.user-key', null, [
+      icon('key'),
+      el('span', {
+        text: [`“${made.label}”`, made.access === 'read' ? 'read-only' : 'full access',
+          `${made.hint}…`,
+          made.usedAt ? `used ${fmtAgo(made.usedAt)}` : `made ${fmtAgo(made.createdAt)}, never used`,
+        ].join(' · '),
+      }),
+      el('button.btn.sm.ghost', {
+        type: 'button', text: 'Revoke',
+        'aria-label': `Revoke the API key “${made.label}” of ${person.name}`,
+        onclick: () => revokeKey(person, made),
+      }),
+    ]));
+
     return el('div.user-row', { dataset: { id: person.id } }, [
       el('div.user-top', null, [
         el('div.user-main', null, [
@@ -89,9 +123,10 @@ export function openUsers() {
           ]),
           el('div.card-meta', { text: meta.join(' · ') }),
         ]),
-        el('div.user-actions', null, [link, drop]),
+        el('div.user-actions', null, [link, key, drop]),
       ]),
       ...pending,
+      ...keys,
     ]);
   }
 
@@ -154,6 +189,23 @@ export function openUsers() {
     load();
   }
 
+  async function revokeKey(person, made) {
+    const ok = await confirmSheet({
+      title: `Revoke “${made.label}”?`,
+      message: `Whatever uses it stops getting in as ${person.name}, straight away. `
+        + 'A revoked key cannot be put back — only a new one made.',
+      confirmLabel: 'Revoke', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api('DELETE', `/auth/keys/${encodeURIComponent(made.id)}`);
+      toast('Key revoked — it will not work now');
+    } catch (err) {
+      toast(err.message || 'Could not revoke it', { error: true });
+    }
+    load();
+  }
+
   add.addEventListener('click', addPerson);
   name.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') { event.preventDefault(); addPerson(); }
@@ -166,7 +218,8 @@ export function openUsers() {
       field('People', listBox),
       field('Add someone', el('div.row.user-add', null, [name, add]),
         'They get a login link straight away. Everyone here can do everything, '
-        + 'adding and removing people included.'),
+        + 'adding and removing people included. For a bot, add it by name and '
+        + 'give it an API key.'),
       el('div.divider'),
       out,
     ],
@@ -213,6 +266,88 @@ function showLink(name, made) {
       el('p.hint', { text: 'Don’t open it yourself — it would sign this browser in as them.' }),
     ],
     footer: [share, copy],
+  });
+}
+
+/* -------------------------------------------------------------------- key */
+
+/* What the key is for and what it may do, then the key. */
+function newKey(person, onMade) {
+  const label = el('input.input', {
+    type: 'text', placeholder: 'e.g. claude bot', maxLength: 32, autocomplete: 'off',
+    spellcheck: false, enterkeyhint: 'go', 'aria-label': 'What the key is for',
+  });
+  let access = 'full';
+  const reach = el('p.hint', { text: REACH.full(person.name) });
+  const pick = segmented([{ id: 'full', label: 'Full' }, { id: 'read', label: 'Read-only' }],
+    access, (value) => { access = value; reach.textContent = REACH[value](person.name); });
+  const make = el('button.btn.primary.grow', { type: 'button' }, [icon('key'), 'Make key']);
+
+  const handle = openSheet({
+    title: `New API key for ${person.name}`,
+    body: [
+      field('What it’s for', label, 'So its row says which bot has it, and which to revoke.'),
+      field('Access', pick),
+      reach,
+    ],
+    footer: [make],
+  });
+
+  async function go() {
+    make.disabled = true;
+    try {
+      const made = await api('POST', `/auth/users/${encodeURIComponent(person.id)}/keys`,
+        { label: label.value.trim(), access });
+      handle.close();
+      onMade(made);
+    } catch (err) {
+      toast(err.message || 'Could not make a key', { error: true });
+    } finally {
+      make.disabled = false;
+    }
+  }
+
+  make.addEventListener('click', go);
+  label.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); go(); }
+  });
+}
+
+/* The key, once. Like a link, only its hash is kept: closing this is the last
+ * anyone sees of it, and a lost one is revoked and made again. */
+function showKey(name, made) {
+  const box = el('input.input.link-box', {
+    type: 'text', readOnly: true, value: made.key, 'aria-label': `API key for ${name}`,
+  });
+  box.addEventListener('focus', () => box.select());
+  const example = `curl -H 'Authorization: Bearer ${made.key}' `
+    + `${made.url || location.origin}/api/library`;
+
+  const copy = el('button.btn.primary.grow', { type: 'button' }, [icon('copy'), 'Copy']);
+  copy.addEventListener('click', async () => {
+    const ok = await copyText(made.key);
+    if (!ok) { box.focus(); box.select(); }
+    toast(ok ? 'Copied — give it to the bot' : 'Could not copy — select the key and copy it',
+      { error: !ok });
+  });
+  const copyExample = el('button.btn.grow', { type: 'button' }, [icon('copy'), 'Copy example']);
+  copyExample.addEventListener('click', async () => {
+    const ok = await copyText(example);
+    toast(ok ? 'Copied the example' : 'Could not copy it', { error: !ok });
+  });
+
+  openSheet({
+    title: `API key for ${name}`,
+    body: [
+      field(`“${made.label}” · ${made.access === 'read' ? 'read-only' : 'full access'}`, box),
+      el('p.hint', { text: REACH[made.access === 'read' ? 'read' : 'full'](name) }),
+      el('p.hint', {
+        text: 'Shown this once — the server keeps only a fingerprint of it. '
+          + 'Keep it somewhere safe; if it is lost, revoke it and make another.',
+      }),
+      field('Try it', el('div.key-example', { text: example })),
+    ],
+    footer: [copyExample, copy],
   });
 }
 

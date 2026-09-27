@@ -830,7 +830,10 @@ function openEnrich() {
     text: 'IMDb has no public API — theirs is an AWS Data Exchange product, and the '
         + 'Parents Guide is a paid add-on to it. What comes back instead is the age '
         + 'certification, the cast, and an IMDb link on each title so its own '
-        + 'parents guide is one tap away.',
+        + 'parents guide is one tap away. The star scores are IMDb\'s own, from the '
+        + 'ratings file IMDb publishes daily for personal use; a title only needs its '
+        + 'IMDb id to have one. Information courtesy of IMDb (https://www.imdb.com). '
+        + 'Used with permission.',
   }));
 
   const handle = openSheet({
@@ -1071,8 +1074,8 @@ function openMenu() {
       () => { handle.close(); openSources(); }),
     entry('refresh', 'Sync & storage', state.online ? 'Connected' : 'Offline — changes are queued',
       () => { handle.close(); openSync(); }),
-    entry('user', 'Users', me ? `Signed in as ${me.name} · add people, make login links`
-      : 'Add people, make login links', () => { handle.close(); openUsers(); }),
+    entry('user', 'Users', me ? `Signed in as ${me.name} · people, login links, API keys`
+      : 'People, login links, API keys', () => { handle.close(); openUsers(); }),
     entry('note', 'Search tips', 'tag:, genre:, cert:, year:, -exclude',
       () => { handle.close(); openHelp(); }),
     entry('sparkle', 'Fill in the details', 'Artwork, cast, genres, ages and IMDb ids',
@@ -1255,7 +1258,12 @@ function openSync() {
     el('span', null, [el('b', { text: 'Lookups ' }), config.network ? 'enabled' : 'offline mode']),
     el('span', null, [el('b', { text: 'Providers ' }),
       Object.entries(providers).filter(([, on]) => on).map(([name]) => name).join(', ') || 'none']),
+    config.imdb ? el('span', null, [el('b', { text: 'IMDb scores ' }),
+      config.imdb.titles
+        ? `${config.imdb.titles.toLocaleString()} titles, file of ${config.imdb.date || '?'}`
+        : (config.imdb.busy ? 'fetching' : 'not fetched yet')]) : null,
   ])));
+  if (config.imdb) body.append(el('p.hint', { text: config.imdb.attribution }));
 
   const undoBtn = el('button.btn.sm.ghost', { type: 'button', text: 'Undo last bulk change' });
   undoBtn.addEventListener('click', () => {

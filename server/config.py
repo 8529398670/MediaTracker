@@ -109,6 +109,9 @@ LISTS_DIR = DATA_DIR / "lists"
 # are a few kilobytes each; the default budget holds many times the library.
 IMG_CACHE_DIR = DATA_DIR / "cache" / "img"
 IMG_CACHE_BYTES = int(env("MT_IMG_CACHE_MB", "256")) * 1024 * 1024
+# IMDb's daily ratings file, kept as packed arrays so a restart reads it
+# back in milliseconds rather than parsing 1.7 million lines again.
+IMDB_DIR = DATA_DIR / "cache" / "imdb"
 TMDB_KEY = env("TMDB_API_KEY")
 OMDB_KEY = env("OMDB_API_KEY")
 ENRICH_DELAY = float(env("MT_ENRICH_DELAY", "0.25"))

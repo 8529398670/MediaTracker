@@ -259,6 +259,151 @@ run = subprocess.run([sys.executable, str(ROOT / "server" / "auth.py"), "link", 
 check("a second link for a known name is for that person, not a new one",
       [p["name"] for p in auth.ACCOUNTS.users()], ["Alice", "Carol"])
 
+# -------------------------------------------------------------- API keys
+
+auth.THROTTLE.fails.clear()
+
+
+def bearer(key, extra=None):
+    return {"Authorization": f"Bearer {key}", **(extra or {})}
+
+
+status, _, body = ask("POST", f"/api/auth/users/{alice['id']}/keys", {"label": "claude bot"},
+                      headers=SAME, cookie=session)
+check("anyone signed in can make an API key for someone",
+      (status, body.get("access"), body.get("label"), body.get("name")),
+      (201, "full", "claude bot", "Alice"))
+key, key_id = body["key"], body["id"]
+check("  it says what it is", key.startswith("mt_") and len(key) > 40)
+check("  and the file never holds it", key in pathlib.Path(DATA, "users.json").read_text(), False)
+status, _, _ = ask("POST", f"/api/auth/users/{alice['id']}/keys", {"access": "admin"},
+                   headers=SAME, cookie=session)
+check("  a key is full or read, nothing else", status, 400)
+
+status, headers, body = ask("GET", "/api/library", headers=bearer(key))
+check("a key reads the library", (status, "items" in body), (200, True))
+check("  and is given no cookie", "Set-Cookie" in headers, False)
+status, _, body = ask("GET", "/api/auth/me", headers=bearer(key))
+check("  it is the person it was made for, and says which key it is",
+      (body.get("name"), body.get("key", {}).get("label"), body.get("key", {}).get("access")),
+      ("Alice", "claude bot", "full"))
+
+status, _, body = ask("POST", "/api/library/items",
+                      {"title": "The Lady Eve", "year": 1941, "type": "movie"}, headers=bearer(key))
+check("a full key adds a title", (status, body.get("title")), (201, "The Lady Eve"))
+eve = body["id"]
+status, _, body = ask("PATCH", f"/api/library/items/{eve}", {"status": "watched"},
+                      headers=bearer(key))
+check("  ticks it watched, and the date comes with it",
+      (status, body.get("status"), bool(body.get("watchedAt"))), (200, "watched", True))
+status, _, body = ask("PATCH", f"/api/library/items/{eve}", {"status": "queue"},
+                      headers=bearer(key))
+check("  and back, and the date goes", (body.get("status"), body.get("watchedAt")),
+      ("queue", None))
+
+rev = ask("GET", "/api/health", headers=bearer(key))[2]["rev"]
+status, _, body = ask("POST", "/api/library/items", {"items": [
+    {"title": "Ninotchka", "year": 1939}, {"title": "Ball of Fire"}, {"year": 1950}]},
+    headers=bearer(key))
+check("a batch of titles goes in, in one write, leaving out one with no title",
+      (status, [i["title"] for i in body.get("added", [])], body.get("rev")),
+      (201, ["Ninotchka", "Ball of Fire"], rev + 1))
+ids = [i["id"] for i in body["added"]]
+status, _, body = ask("PATCH", "/api/library/items", {
+    ids[0]: {"order": 0, "status": "watched"}, ids[1]: {"deleted": True}, "nope": {"order": 1}},
+    headers=bearer(key))
+check("a batch of changes goes in, in one write, naming what it could not find",
+      (status, body.get("changed"), body.get("missing"), body.get("rev")),
+      (200, 2, ["nope"], rev + 2))
+items = {i["id"]: i for i in ask("GET", "/api/library", headers=bearer(key))[2]["items"]}
+check("  reordered, ticked with a date, and put away",
+      (items[ids[0]]["order"], bool(items[ids[0]]["watchedAt"]), items[ids[1]]["deleted"]),
+      (0, True, True))
+status, _, _ = ask("PATCH", "/api/library/items", [1, 2], headers=bearer(key))
+check("  and a batch that is not one is refused", status, 400)
+status, _, _ = ask("DELETE", f"/api/library/items/{eve}", headers=bearer(key))
+check("a full key deletes", status, 200)
+
+status, _, _ = ask("GET", "/api/auth/users", headers=bearer(key))
+check("a key cannot see the people", status, 403)
+status, _, _ = ask("POST", "/api/auth/users", {"name": "Mallory"}, headers=bearer(key))
+check("  nor add anyone", status, 403)
+status, _, _ = ask("POST", f"/api/auth/users/{alice['id']}/link", headers=bearer(key))
+check("  nor make a login link", status, 403)
+status, _, _ = ask("POST", f"/api/auth/users/{alice['id']}/keys", {}, headers=bearer(key))
+check("  nor another key", status, 403)
+status, _, _ = ask("DELETE", f"/api/auth/keys/{key_id}", headers=bearer(key))
+check("  nor revoke one", status, 403)
+status, _, _ = ask("POST", "/api/auth/logout", headers=bearer(key))
+check("  nor sign anybody out", status, 403)
+status, headers, body = ask("GET", "/", headers=bearer(key, NAVIGATE))
+check("  nor fetch the app", (status, "Set-Cookie" in headers, "app.js" in str(body)),
+      (404, False, False))
+status, _, _ = ask("POST", "/api/library/items", {"title": "x"},
+                   headers=bearer(key, {"Sec-Fetch-Site": "cross-site"}))
+check("  and a write from another site is refused, key or not", status, 403)
+
+fake = "mt_" + "z" * 43
+status, headers, _ = ask("GET", "/api/library", headers=bearer(fake, NAVIGATE), cookie=session)
+check("a key that is no key is refused plainly, whatever cookie comes with it",
+      (status, headers.get("Location")), (401, None))
+status, _, _ = ask("GET", "/api/library", headers={"Authorization": "Basic YTpi"}, cookie=session)
+check("  another kind of Authorization is not a key, and is left alone", status, 200)
+
+status, _, body = ask("POST", f"/api/auth/users/{alice['id']}/keys",
+                      {"label": "reader", "access": "read"}, headers=SAME, cookie=session)
+reader = body["key"]
+check("a read-only key", (status, body.get("access")), (201, "read"))
+status, _, _ = ask("GET", "/api/library", headers=bearer(reader))
+check("  reads", status, 200)
+codes = [ask(method, path, payload, headers=bearer(reader))[0] for method, path, payload in (
+    ("POST", "/api/library/items", {"title": "x"}),
+    ("PATCH", "/api/library/items", {ids[0]: {"order": 3}}),
+    ("PATCH", f"/api/library/items/{ids[0]}", {"order": 3}),
+    ("DELETE", f"/api/library/items/{ids[0]}", None),
+    ("PUT", "/api/library", {"items": []}),
+    ("POST", "/api/enrich", {"action": "start"}),
+    ("POST", "/api/verdicts", {"key": "x", "verdict": "skip"}))]
+check("  and every write is refused", codes, [403] * 7)
+status, _, _ = ask("POST", "/api/resolve", {"text": "the lady eve"}, headers=bearer(reader))
+check("  but a lookup sent as a POST is still a lookup", status, 200)
+
+status, _, body = ask("GET", "/api/auth/users", cookie=session)
+mine = next(p for p in body["users"] if p["name"] == "Alice")["keys"]
+check("the people list shows each person's keys, and when they were last used",
+      ([k["label"] for k in mine], [k["access"] for k in mine], bool(mine[0]["usedAt"]),
+       mine[1]["hint"] == reader[:7]),
+      (["claude bot", "reader"], ["full", "read"], True, True))
+check("  but never a key itself", key in json.dumps(body) or reader in json.dumps(body), False)
+
+status, _, _ = ask("DELETE", f"/api/auth/keys/{key_id}", headers=SAME, cookie=session)
+check("a key can be revoked", status, 200)
+status, _, _ = ask("GET", "/api/library", headers=bearer(key))
+check("  and stops working at once", status, 401)
+status, _, _ = ask("GET", "/api/library", headers=bearer(reader))
+check("  the others go on working", status, 200)
+
+run = subprocess.run([sys.executable, str(ROOT / "server" / "auth.py"),
+                      "key", "--read", "--label", "nightly", "Carol"],
+                     capture_output=True, text=True, env=os.environ, timeout=60)
+carol_key = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
+check("the shell makes a key", (run.returncode, carol_key.startswith("mt_")), (0, True))
+status, _, body = ask("GET", "/api/auth/me", headers=bearer(carol_key))
+check("  and the running server takes it at once",
+      (status, body.get("name"), body.get("key", {}).get("access"),
+       body.get("key", {}).get("label")), (200, "Carol", "read", "nightly"))
+status, _, _ = ask("DELETE", f"/api/auth/users/{auth.ACCOUNTS.find('Carol')}",
+                   headers=SAME, cookie=session)
+status, _, _ = ask("GET", "/api/library", headers=bearer(carol_key))
+check("removing someone stops their keys too", status, 401)
+
+auth.THROTTLE.fails.clear()
+codes = [ask("GET", "/api/library", headers=bearer(fake))[0] for _ in range(32)]
+check("guessing at keys is slowed down", (codes[0], codes[-1]), (401, 429))
+status, _, _ = ask("GET", "/api/library", headers=bearer(reader))
+check("  and so, from the same address, is a good key", status, 429)
+auth.THROTTLE.fails.clear()
+
 # ------------------------------------------------------------ signing out
 
 status, headers, _ = ask("POST", "/api/auth/logout", headers=SAME, cookie=session)

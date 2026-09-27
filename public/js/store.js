@@ -512,6 +512,71 @@ export async function boot() {
   addEventListener('pagehide', () => { if (state.dirty) writeLocal(); });
 }
 
+/* ----------------------------------------------------------------- scores */
+
+/* IMDb's score for each title, by IMDb id, from the server's copy of IMDb's
+ * daily ratings file. Kept beside the library rather than in it: the number
+ * changes every day and is nobody's edit, so it is not synced, merged or
+ * saved — only looked up. `null` is an answer too: asked, and IMDb has none.
+ *
+ * The whole library is asked for once, and again twice a day. Between those,
+ * anything with an id not yet asked about — a title just added, or one the
+ * fill-in pass has just identified — is asked about on the next change. */
+const scores = new Map();
+const asking = new Set();
+const SCORES_EVERY = 12 * 3600 * 1000;
+const SCORES_RETRY = 60 * 1000;
+let scoresAt = 0;
+let scoresFailed = 0;
+let scoresBusy = false;
+
+const imdbKey = (item) => String(item.imdbId || '').trim().toLowerCase();
+
+/** Someone else's score for a title, or null: IMDb's where there is one,
+ * else what TMDB said when the title was filled in. Takes a library item or
+ * a provider's answer, which may carry the IMDb score with it. */
+export function scoreOf(item) {
+  const imdb = item.imdbScore || scores.get(imdbKey(item));
+  if (imdb) return { source: 'imdb', value: imdb[0] / 10, votes: imdb[1] };
+  if (item.extRating) return { source: 'tmdb', value: item.extRating / 10, votes: 0 };
+  return null;
+}
+
+async function wantScores() {
+  if (scoresBusy || state.loading || !state.online) return;
+  if (Date.now() - scoresFailed < SCORES_RETRY) return;
+  const whole = Date.now() - scoresAt > SCORES_EVERY;
+  const ids = whole ? [] : [...new Set(state.items.map(imdbKey))]
+    .filter((id) => id && !scores.has(id) && !asking.has(id)).slice(0, 300);
+  if (!whole && !ids.length) return;
+
+  scoresBusy = true;
+  ids.forEach((id) => asking.add(id));
+  try {
+    const query = new URLSearchParams();
+    for (const id of ids) query.append('id', id);
+    const answer = await api('GET', `/ratings${ids.length ? `?${query}` : ''}`);
+    // The server's file may not have landed yet on a first start. Nothing
+    // asked in that minute is an answer, so none of it is written down.
+    if (!answer || !answer.titles) { scoresFailed = Date.now(); return; }
+    if (whole) { scores.clear(); scoresAt = Date.now(); }
+    for (const [id, found] of Object.entries(answer.ratings || {})) scores.set(id, found);
+    // Only what was named is known to have no score. The whole-library call
+    // asks about the server's copy, which may not have a title added here a
+    // moment ago; those are asked about by name on the next change.
+    for (const id of ids) if (!scores.has(id)) scores.set(id, null);
+    emit();
+  } catch {
+    scoresFailed = Date.now();
+  } finally {
+    ids.forEach((id) => asking.delete(id));
+    scoresBusy = false;
+  }
+}
+// Every change is a chance that a title has an id it did not have before.
+// The check is one pass over the library with nothing to ask, most times.
+listeners.add(() => { wantScores(); });
+
 /* ----------------------------------------------------------------- fill-in */
 
 /* The server's fill-in pass, as this page last heard of it.

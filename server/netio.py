@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import re
 import socket
 import threading
@@ -109,6 +110,60 @@ def fetch_json(url: str, timeout: float = 6.0, limit: int = 4_000_000,
                 after = 0.0
             PACE.throttled(host, after)
     return None
+
+
+def fetch_file(url: str, dest, etag: str = "", modified: str = "",
+               limit: int = 64 * 1024 * 1024, timeout: float = 60.0,
+               tries: int = 2) -> dict:
+    """Download to a file, only if it has changed since last time.
+
+    Streamed to disk rather than read into memory: the one caller is a
+    nine-megabyte data file, in a container that has 256 MB for everything.
+    Written beside the destination and renamed over it, so a download that
+    dies halfway never leaves half a file where a whole one is expected.
+
+    ``{"notModified": True}`` when the server says the copy already held is
+    current; otherwise the validators to send next time.
+    """
+    host = urllib.parse.urlsplit(url).hostname or ""
+    headers = {"User-Agent": UA}
+    if etag:
+        headers["If-None-Match"] = etag
+    if modified:
+        headers["If-Modified-Since"] = modified
+    request = urllib.request.Request(url, headers=headers)
+    tmp = dest.with_name(dest.name + ".part")
+    for attempt in range(max(1, tries)):
+        PACE.wait(host)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                got = 0
+                with open(tmp, "wb") as handle:
+                    while True:
+                        chunk = response.read(256 * 1024)
+                        if not chunk:
+                            break
+                        got += len(chunk)
+                        if got > limit:
+                            raise ValueError(f"{url} is larger than {limit} bytes")
+                        handle.write(chunk)
+                os.replace(tmp, dest)
+                PACE.eased(host)
+                return {"etag": response.headers.get("ETag") or "",
+                        "lastModified": response.headers.get("Last-Modified") or ""}
+        except urllib.error.HTTPError as exc:
+            if exc.code == 304:
+                return {"notModified": True}
+            if exc.code not in (429, 502, 503) or attempt + 1 >= tries:
+                raise
+            try:
+                after = float(exc.headers.get("Retry-After") or 0)
+            except (TypeError, ValueError):
+                after = 0.0
+            PACE.throttled(host, after)
+        finally:
+            tmp.unlink(missing_ok=True)
+    return {}
 
 
 # A poster is drawn in a 52x78 box. Providers hand back something far larger

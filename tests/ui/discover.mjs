@@ -570,5 +570,29 @@ check('the row stays on the page — only a skip takes one off',
 disco.renderDiscover(root, on);
 check('and it is drawn as already yours from then on', actsOn(0), ['Added']);
 
+/* ----------------------------------------------------------- IMDb's score */
+
+// It comes down with the row, from the server's copy of IMDb's ratings
+// file, so it is on the page at the first paint — with how many voted,
+// which is what tells a famous film from one its crew rated.
+FILMS[0].imdbScore = [85, 661592];
+await disco.refreshDiscover('');
+disco.renderDiscover(root, on);
+const scoreOn = (at) => root.find((n) => n.classList.has('disco'))[at]
+  .find((n) => n.classList.has('score'))[0];
+check("IMDb's score sits in the heading, with how many voted",
+  scoreOn(0) && scoreOn(0).text(), '8.5 662k');
+check('and says whose score it is and how many it came from',
+  scoreOn(0).title || scoreOn(0).attrs.title, 'IMDb 8.5/10 from 661,592 votes');
+check('a film with no score has no badge rather than a blank one',
+  scoreOn(1), undefined);
+
+const sortNames = bar.find((n) => n.tagName === 'OPTION').map((o) => o.text());
+check('the sort offers the rating', sortNames.includes('IMDb rating'), true);
+disco.discover.sort = 'imdb';
+await disco.refreshDiscover('');
+check('and asks the server for it by name',
+  calls.filter((c) => c.includes('/lists/films')).pop().includes('sort=imdb'), true);
+
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

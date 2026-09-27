@@ -1,7 +1,7 @@
 /* Rendering: stat strip, year sections, and the item cards themselves. */
 
-import { TYPE_LABEL, STATUS_LABEL, genreLabels } from './store.js';
-import { el, icon, clear, fmtAgo, hostOf } from './ui.js';
+import { TYPE_LABEL, STATUS_LABEL, genreLabels, scoreOf } from './store.js';
+import { el, icon, clear, fmtAgo, hostOf, scoreBadge } from './ui.js';
 
 const COLLAPSE_KEY = 'mt.collapsed.v1';
 
@@ -121,6 +121,7 @@ export function card(item, on) {
       title: `Show everything rated ${item.certification}`,
       onclick: (event) => { event.stopPropagation(); on.cert(item.certification); },
     }) : null,
+    scoreBadge(scoreOf(item)),
     /* Two is what fits beside the rest of the row; the editor lists them all. */
     ...genreLabels(item).slice(0, 2).map((genre) => el('span.tag-badge.genre', {
       text: genre,
@@ -338,6 +339,7 @@ function cardSig(item) {
     item.addedAt,
     item.certification, item.genres, item.tags, item.runtime, item.cast,
     item.poster, item.rating, item.heart, item.imdbId, item.wikiUrl, item.links,
+    scoreOf(item),
   ]);
 }
 
@@ -501,7 +503,7 @@ export function foundRow(row, { badge = '', mine = null, on }) {
       el('span.tag-badge.type', { text: TYPE_LABEL[row.type] || row.type || '' }),
       row.creator ? el('span', { text: row.creator }) : null,
       badge ? el('span.tag-badge', { text: badge }) : null,
-      row.extRating ? el('span', { text: (row.extRating / 10).toFixed(1) }) : null,
+      scoreBadge(scoreOf(row), { votes: true }),
     ]),
     (row.cast || []).length ? el('div.card-cast', { text: row.cast.slice(0, 3).join(', ') }) : null,
     row.overview ? el('p', { text: row.overview }) : null,
@@ -590,6 +592,7 @@ function queueRow(item, index, on) {
 
   const meta = el('span.qmeta', null, [
     item.status === 'watching' ? el('span.tag-badge.st-watching', { text: 'Watching' }) : null,
+    scoreBadge(scoreOf(item)),
     /* One only: the queue row is a single line and the title has to win it. */
     ...genreLabels(item).slice(0, 1).map((genre) => el('span.tag-badge.genre', {
       text: genre,

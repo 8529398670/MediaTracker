@@ -3,7 +3,7 @@
 
 import {
   TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, live, genreLabels,
-  fold, otherTypes, defaultOther, typesVersion,
+  fold, otherTypes, defaultOther, typesVersion, scoreOf,
 } from './store.js';
 import { el, field, openSheet, toast } from './ui.js';
 
@@ -371,6 +371,16 @@ const nullsLast = (a, b, dir) => {
   return a < b ? -dir : dir;
 };
 
+/* IMDb's score, then how many voted for it, so two 7.8s put the one more
+ * people agree on first. TMDB's stands in for a title IMDb has no score for;
+ * one with neither goes to the end. */
+const byScore = (a, b) => {
+  const x = scoreOf(a);
+  const y = scoreOf(b);
+  return nullsLast(x && x.value, y && y.value, -1)
+    || ((y && y.votes) || 0) - ((x && x.votes) || 0);
+};
+
 export const SORTS = {
   'added-desc':   (a, b) => byText(b.addedAt, a.addedAt),
   'added-asc':    (a, b) => byText(a.addedAt, b.addedAt),
@@ -381,6 +391,7 @@ export const SORTS = {
   'year-asc':     (a, b) => nullsLast(a.year, b.year, 1) || byText(a.title, b.title),
   'rating-desc':  (a, b) => nullsLast(a.rating, b.rating, -1) || byText(a.title, b.title),
   'rating-asc':   (a, b) => nullsLast(a.rating, b.rating, 1) || byText(a.title, b.title),
+  'imdb-desc':    (a, b) => byScore(a, b) || byText(a.title, b.title),
   'updated-desc': (a, b) => byText(b.updatedAt, a.updatedAt),
   // Hand-made queue order; anything never placed falls in behind, oldest first.
   'manual':       (a, b) => nullsLast(a.order, b.order, 1) || byText(a.addedAt, b.addedAt),

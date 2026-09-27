@@ -27,6 +27,18 @@ from normalize import _int, _iso, _s, normalize_item, normalize_source, normaliz
 # --------------------------------------------------------------------------
 
 
+def _with_watched(existing: dict, fields: dict, now: str) -> dict:
+    """A change of status carries its watched date along, as the app does it
+    (store.js `setStatus`): stamped when a title becomes watched and has no
+    date yet, cleared when it stops being watched. A date given outright wins.
+    Without this a bot ticking a title watched leaves it with no date."""
+    if "status" not in fields or "watchedAt" in fields:
+        return fields
+    if fields["status"] == "watched":
+        return {**fields, "watchedAt": existing.get("watchedAt") or now}
+    return {**fields, "watchedAt": None}
+
+
 class Library:
     """One JSON document, guarded by a lock and written atomically.
 
@@ -142,6 +154,12 @@ class Library:
                 return entry["lookup"]
         return None
 
+    def imdb_ids(self) -> list[str]:
+        """Every IMDb id the library holds, for looking their scores up."""
+        with self.lock:
+            return sorted({i["imdbId"] for i in self.data["items"]
+                           if i.get("imdbId") and not i.get("deleted")})
+
     def meta(self) -> dict:
         with self.lock:
             live = [i for i in self.data["items"] if not i.get("deleted")]
@@ -178,25 +196,43 @@ class Library:
             return True, self._commit()
 
     def upsert(self, raw: dict) -> dict | None:
+        added = self.upsert_many([raw])
+        return added[0] if added else None
+
+    def upsert_many(self, raws: list) -> list[dict] | None:
+        """Add or replace several titles in one write. The ones that were
+        taken, in the order given — one without a title is left out — or None
+        if that would be more than the library holds."""
         with self.lock:
-            item = normalize_item(raw)
-            if item is None:
+            now = now_iso()
+            taken = [i for i in (normalize_item(raw, now) for raw in raws) if i]
+            index = {item["id"]: at for at, item in enumerate(self.data["items"])}
+            fresh = {i["id"] for i in taken} - index.keys()
+            if len(self.data["items"]) + len(fresh) > MAX_ITEMS:
                 return None
-            for index, existing in enumerate(self.data["items"]):
-                if existing["id"] == item["id"]:
-                    self.data["items"][index] = item
-                    break
-            else:
-                self.data["items"].append(item)
-            self._commit()
-            return item
+            for item in taken:
+                at = index.get(item["id"])
+                if at is None:
+                    index[item["id"]] = len(self.data["items"])
+                    self.data["items"].append(item)
+                else:
+                    self.data["items"][at] = item
+            if taken:
+                self._commit()
+            return taken
+
+    def missing(self, ids) -> list[str]:
+        """Which of these ids the library has no title for."""
+        with self.lock:
+            known = {item["id"] for item in self.data["items"]}
+        return [i for i in ids if i not in known]
 
     def patch(self, item_id: str, fields: dict) -> dict | None:
         with self.lock:
             for index, existing in enumerate(self.data["items"]):
                 if existing["id"] == item_id:
                     merged = dict(existing)
-                    merged.update(fields)
+                    merged.update(_with_watched(existing, fields, now_iso()))
                     merged["id"] = item_id
                     merged["updatedAt"] = now_iso()
                     item = normalize_item(merged)
@@ -345,8 +381,9 @@ class Library:
     def patch_many(self, patches: dict[str, dict]) -> int:
         """Apply a batch of field updates in one write.
 
-        Enrichment touches hundreds of titles; committing each one separately
-        would rewrite the whole document hundreds of times.
+        Enrichment touches hundreds of titles, and so does a bot's clean-up;
+        committing each one separately would rewrite the whole document
+        hundreds of times.
         """
         if not patches:
             return 0
@@ -358,7 +395,8 @@ class Library:
                 at = index.get(item_id)
                 if at is None:
                     continue
-                merged = {**self.data["items"][at], **fields,
+                existing = self.data["items"][at]
+                merged = {**existing, **_with_watched(existing, fields, now),
                           "id": item_id, "updatedAt": now}
                 clean = normalize_item(merged, now)
                 if clean is None:

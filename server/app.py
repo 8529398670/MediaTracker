@@ -36,6 +36,7 @@ import sys
 import threading
 
 import auth
+import imdb
 from config import (ENV_COUNT, ENV_FILE, EXTRA_TYPES, HOST, LIBRARY_PATH,
                     NET_ENABLED, OMDB_KEY, PORT, PUBLIC_DIR, PUBLIC_URL, SEED_DIR,
                     SEED_ENABLED, TMDB_KEY, VERSION, log)
@@ -82,6 +83,12 @@ def main() -> int:
     rated = lists.CERTIFIER.status()
     log(f"  ratings     {rated['rated']} rated, {rated['asked'] - rated['rated']} with none"
         f", {rated['unknown']} not looked up")
+    # Read from the cache before the first request, then kept fresh daily.
+    imdb.STORE.start()
+    scores = imdb.STORE.status()
+    log(f"  imdb        {scores['titles']} titles scored, file of {scores['date']}"
+        if scores["titles"] else
+        f"  imdb        no scores yet{' — fetching them' if NET_ENABLED else ''}")
     people = auth.ACCOUNTS.users()
     log(f"  users       {len(people)}, signed in on"
         f" {sum(p['devices'] for p in people)} browser(s)"

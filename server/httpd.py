@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import auth
+import imdb
 from config import (BASE_HEADERS, COMPRESSIBLE, EXTRA_TYPES, IMG_ALLOW_ANY,
                     ITEM_TYPES, LIBRARY_PATH, LOOKUP_AS, MAX_BODY, NET_ENABLED, OMDB_KEY,
                     PUBLIC_DIR, PUBLIC_URL, SCHEMA, TMDB_KEY, UA, VERSION,
@@ -30,6 +31,18 @@ from normalize import _int, _s
 from providers import lookup, lookup_detail
 from resolve import identify, resolve
 import verdicts
+
+# The one POST a read-only key may make: `/api/resolve` takes its text in a
+# body because a pasted link can be long, but it only looks something up.
+READ_POSTS = frozenset({"resolve"})
+
+# How many titles one batch may carry. A clean-up is a few hundred; these
+# keep a mistake from being a very large one.
+MAX_BATCH_ADD = 500
+MAX_BATCH_PATCH = 2000
+# IMDb ids one /api/ratings call may name. The library as a whole is asked
+# for with no ids at all, so this only has to cover what arrived since.
+MAX_RATING_IDS = 300
 
 
 # --------------------------------------------------------------------------
@@ -134,6 +147,13 @@ class Handler(BaseHTTPRequestHandler):
                      or (self.headers.get("X-Forwarded-For") or "").split(",")[0]).strip()
         return forwarded or (self.client_address[0] if self.client_address else "?")
 
+    def _bearer(self) -> str | None:
+        """The API key a script sent, or None if it sent none. Another kind
+        of Authorization — a proxy's Basic, say — is not a key and is left
+        alone."""
+        scheme, _, value = (self.headers.get("Authorization") or "").strip().partition(" ")
+        return value.strip() if scheme.lower() == "bearer" else None
+
     def _navigating(self) -> bool:
         """A page being opened, as opposed to a script, a poster or a fetch."""
         mode = self.headers.get("Sec-Fetch-Mode")
@@ -192,11 +212,27 @@ class Handler(BaseHTTPRequestHandler):
         # so who is asking is worked out afresh every time.
         self.token = self._cookie(auth.COOKIE)
         self.user = None
+        self.key = None
+        bearer = self._bearer()
 
         try:
-            self.user = auth.ACCOUNTS.user_for(self.token) if self.token else None
+            if bearer is not None:
+                # A key is the whole of who is asking: a cookie alongside it
+                # is not looked at, so a request is one person or the other.
+                self.token = ""
+                if auth.THROTTLE.blocked(self._client()):
+                    self._fail(429, "slow down")
+                    return
+                found = auth.ACCOUNTS.key_for(bearer)
+                if found:
+                    self.key = found.pop("key")
+                    self.user = found
+            else:
+                self.user = auth.ACCOUNTS.user_for(self.token) if self.token else None
             if method != "GET" and not self._same_origin():
                 self._fail(403, "refused: that came from another site")
+            elif bearer is not None:
+                self._keyed(method, path, query)
             elif path == "/login" and method == "GET":
                 # A login link's page is the same whoever opens it: the one
                 # opening it may be signed in as somebody else already.
@@ -212,6 +248,32 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # never leak a traceback to the client
             log(f"!! {method} {path}: {type(exc).__name__}: {exc}")
             self._fail(500, "internal error")
+
+    # -- with an API key ------------------------------------------------
+
+    def _keyed(self, method: str, path: str, query: dict) -> None:
+        """A script carrying an API key. It gets the API and nothing else —
+        no app, no gate, never a redirect to Google: a bot is told plainly."""
+        if self.user is None:
+            auth.THROTTLE.fail(self._client())
+            self._fail(401, "that API key is not valid — it may have been revoked")
+            return
+        if not path.startswith("/api/"):
+            self._fail(404, "an API key reaches /api/ and nothing else")
+            return
+        parts = [p for p in path.split("/") if p][1:]
+        head = parts[0] if parts else ""
+        # People, links and keys are for somebody signed in. A key that could
+        # make a login link could outlive its own revoking.
+        if head == "auth" and not (method == "GET" and parts[1:] == ["me"]):
+            self._fail(403, "an API key cannot manage people, login links or keys")
+            return
+        if self.key["access"] != "full" and method != "GET" and head not in READ_POSTS:
+            self._fail(403, "this API key is read-only")
+            return
+        if method != "GET":
+            log(f"key: {self.user['name']}/{self.key['label']} {method} {path}")
+        self._api(method, path, query)
 
     # -- without a session ---------------------------------------------
 
@@ -268,13 +330,19 @@ class Handler(BaseHTTPRequestHandler):
                 "providers": {
                     "tmdb": bool(TMDB_KEY), "omdb": bool(OMDB_KEY),
                     "itunes": True, "tvmaze": True, "openlibrary": True, "wikipedia": True,
+                    "imdb": bool(imdb.STORE.table),
                 },
+                "imdb": imdb.STORE.status(),
                 "dataPath": str(LIBRARY_PATH),
             })
             return
 
         if head == "library":
             self._api_library(method, parts, query)
+            return
+
+        if head == "ratings":
+            self._api_ratings(method, query)
             return
 
         if head == "enrich":
@@ -346,7 +414,14 @@ class Handler(BaseHTTPRequestHandler):
             if kind not in ITEM_TYPES:
                 kind = "any"
             limit = max(1, min(_int((query.get("limit") or ["8"])[0], 1, 20) or 8, 20))
-            self._json(200, resolve(text, kind, limit))
+            found = resolve(text, kind, limit)
+            # IMDb's score, for any answer that came back knowing its id.
+            for row in [found.get("best"), *(found.get("candidates") or [])]:
+                if isinstance(row, dict) and row.get("imdbId"):
+                    score = imdb.STORE.get(row["imdbId"])
+                    if score:
+                        row["imdbScore"] = list(score)
+            self._json(200, found)
             return
 
         # What a pasted link is, without going and asking anyone. Free, and
@@ -408,7 +483,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if one == "me" and method == "GET":
-            self._json(200, self.user)
+            # A bot asking gets told which key it is holding, too.
+            self._json(200, {**self.user, "key": self.key} if self.key else self.user)
             return
 
         if one == "logout" and method == "POST":
@@ -429,6 +505,15 @@ class Handler(BaseHTTPRequestHandler):
             if ok:
                 log(f"auth: {self.user['name']} cancelled an unused login link")
             self._json(200 if ok else 404, {"ok": ok})
+            return
+
+        # /api/auth/keys/<id> — stop an API key working, at once.
+        if one == "keys" and method == "DELETE" and len(parts) > 2:
+            gone = auth.ACCOUNTS.revoke_key(parts[2])
+            if gone:
+                log(f"auth: {self.user['name']} revoked the API key "
+                    f"“{gone['label']}” of {gone['name']}")
+            self._json(200 if gone else 404, {"ok": bool(gone)})
             return
 
         self._fail(404, "no such endpoint")
@@ -499,6 +584,25 @@ class Handler(BaseHTTPRequestHandler):
             self._json(201, self._link_out(made))
             return
 
+        # /api/auth/users/<id>/keys — an API key that acts as them.
+        if len(rest) == 2 and rest[1] == "keys" and method == "POST":
+            payload = self._body()
+            if payload is None:
+                return
+            given = payload if isinstance(payload, dict) else {}
+            access = _s(given.get("access"), 8) or "full"
+            if access not in auth.ACCESS:
+                self._fail(400, "access is full or read")
+                return
+            made = auth.ACCOUNTS.make_key(uid, given.get("label"), access, me["id"])
+            if not made:
+                self._fail(404, "nobody by that id")
+                return
+            log(f"auth: {me['name']} made a {access} API key “{made['label']}” "
+                f"for {made['name']}")
+            self._json(201, {**made, "url": PUBLIC_URL})
+            return
+
         # /api/auth/users/<id> — take them out, and every browser they are in.
         if len(rest) == 1 and method == "DELETE":
             if uid == me["id"]:
@@ -512,7 +616,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
             return
 
-        self._fail(405, "GET or POST /users, POST /users/<id>/link, DELETE /users/<id>")
+        self._fail(405, "GET or POST /users, POST /users/<id>/link, POST /users/<id>/keys, "
+                        "DELETE /users/<id>")
 
     @staticmethod
     def _link_out(made: dict | None) -> dict | None:
@@ -520,6 +625,23 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return {"id": made["id"], "path": made["path"], "expiresAt": made["expiresAt"],
                 "url": f"{PUBLIC_URL}{made['path']}" if PUBLIC_URL else ""}
+
+    def _api_ratings(self, method: str, query: dict) -> None:
+        """IMDb's score for titles, by IMDb id, from IMDb's own daily file.
+
+        ``?id=tt…`` as many times as needed asks about those; no id at all
+        asks about every title in the library. Kept out of the library itself
+        on purpose: the numbers change every day and are nobody's edit, and
+        writing them onto the items would change every one of them daily.
+        Only the ones that have a score are in the answer.
+        """
+        if method != "GET":
+            self._fail(405, "GET")
+            return
+        asked = [_s(v, 16).lower() for v in (query.get("id") or [])[:MAX_RATING_IDS]]
+        ids = [v for v in asked if imdb.ID.match(v)] if asked else LIBRARY.imdb_ids()
+        self._json(200, {"source": "imdb", **imdb.STORE.status(),
+                         "ratings": imdb.STORE.many(ids)})
 
     def _api_verdicts(self, method: str, body: object) -> None:
         """What you have said about a film you do not own.
@@ -699,9 +821,41 @@ class Handler(BaseHTTPRequestHandler):
                 payload = self._body()
                 if payload is None:
                     return
-                item = LIBRARY.upsert(payload if isinstance(payload, dict) else {})
+                body = payload if isinstance(payload, dict) else {}
+                # {items: [...]} — many in one write, for a bot adding a list.
+                if isinstance(body.get("items"), list):
+                    if len(body["items"]) > MAX_BATCH_ADD:
+                        self._fail(413, f"at most {MAX_BATCH_ADD} titles at a time")
+                        return
+                    added = LIBRARY.upsert_many(body["items"])
+                    if added is None:
+                        self._fail(413, "that is more titles than the library holds")
+                        return
+                    self._json(201 if added else 400,
+                               {"added": added, **LIBRARY.meta()} if added
+                               else {"error": "an item needs at least a title"})
+                    return
+                item = LIBRARY.upsert(body)
                 self._json(201 if item else 400,
                            item or {"error": "an item needs at least a title"})
+                return
+            # PATCH /items {<id>: {fields}, …} — many changes in one write:
+            # watched, reordered, retyped, or {"deleted": true} to put away.
+            if method == "PATCH" and not item_id:
+                payload = self._body()
+                if payload is None:
+                    return
+                if (not isinstance(payload, dict) or not payload
+                        or not all(isinstance(v, dict) for v in payload.values())):
+                    self._fail(400, "expected {<id>: {fields}, …}")
+                    return
+                if len(payload) > MAX_BATCH_PATCH:
+                    self._fail(413, f"at most {MAX_BATCH_PATCH} titles at a time")
+                    return
+                patches = {_s(k, 64): v for k, v in payload.items()}
+                missing = LIBRARY.missing(patches)
+                changed = LIBRARY.patch_many(patches)
+                self._json(200, {"changed": changed, "missing": missing, **LIBRARY.meta()})
                 return
             if method == "PATCH" and item_id:
                 payload = self._body()
@@ -715,7 +869,7 @@ class Handler(BaseHTTPRequestHandler):
                 ok = LIBRARY.delete(item_id, hard)
                 self._json(200 if ok else 404, {"ok": ok, **LIBRARY.meta()})
                 return
-            self._fail(405, "POST /items, PATCH /items/<id>, DELETE /items/<id>")
+            self._fail(405, "POST /items, PATCH /items, PATCH /items/<id>, DELETE /items/<id>")
             return
 
         self._fail(404, "no such endpoint")

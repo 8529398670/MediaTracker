@@ -122,6 +122,9 @@ class Certs:
         self.loaded = False
         self.dirty = False
         self.wrote = 0.0
+        # Bumped on every change, so something worked out from these answers
+        # (the IMDb ranking of the catalogue) can tell when to work it again.
+        self.version = 0
 
     # ---------------------------------------------------------------- disk
 
@@ -142,6 +145,7 @@ class Certs:
                     continue
                 imdb = str(entry[E_IMDB] if len(entry) > E_IMDB else "")[:16]
                 self.data[key] = [imdb, in_order(entry[E_RATINGS:])]
+            self.version += 1
             log(f"certs: {len(self.data)} films, {self.rated()} with a rating")
 
     def flush(self, force: bool = False) -> None:
@@ -188,6 +192,7 @@ class Certs:
                 return
             self.data[key] = [str(imdb or "")[:16], in_order(ratings)]
             self.dirty = True
+            self.version += 1
 
     def get(self, key: str) -> list:
         """``[imdb, [ratings]]`` for a film that has been asked about."""

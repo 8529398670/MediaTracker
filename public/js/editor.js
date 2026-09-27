@@ -6,15 +6,26 @@
 
 import {
   state, api, TYPES, STATUSES, TYPE_LABEL, addItem, patchItem, removeItem,
-  checkpoint, undo, nowISO, genreLabels, fillIn, stage, lookupKind,
+  checkpoint, undo, nowISO, genreLabels, fillIn, stage, lookupKind, scoreOf,
 } from './store.js';
 import {
   el, icon, field, openSheet, toast, confirmSheet, segmented, select,
-  setChildren, fmtDate, isoToDateInput, dateInputToISO, hostOf,
+  setChildren, fmtDate, isoToDateInput, dateInputToISO, hostOf, fmtVotes,
 } from './ui.js';
 import { openPortingSheet } from './porting.js';
 import { universalPanel } from './importer.js';
 import { justWatchUrl } from './views.js';
+
+/* Whose score it is, the score, and how many it came from — "IMDb 7.8 from
+ * 3.2M votes". The sheet has the room the card does not. */
+function scoreFact(score) {
+  if (!score) return null;
+  return el('span', null, [
+    el('b', { text: `${score.source === 'imdb' ? 'IMDb' : 'TMDB'} ` }),
+    score.value.toFixed(1),
+    score.votes ? ` from ${fmtVotes(score.votes)} votes` : '',
+  ]);
+}
 
 /* ---------------------------------------------------------- rating picker */
 
@@ -88,9 +99,7 @@ export function openItem(item, { onChange, onDeleted }) {
       draft.certification
         ? el('span', null, [el('b', { text: 'Rated ' }), draft.certification]) : null,
       genreLabels(draft).length ? el('span', { text: genreLabels(draft).join(', ') }) : null,
-      draft.extRating
-        ? el('span', null, [el('b', { text: (draft.extRating / 10).toFixed(1) }), ' elsewhere'])
-        : null,
+      scoreFact(scoreOf(draft)),
     ]);
   };
   paintFacts();

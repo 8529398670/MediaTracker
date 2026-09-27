@@ -22,6 +22,7 @@
   --warn:      #b06a00;
   --danger:    #d13b3b;
   --ok:        #1a9257;
+  --score:     #c28400;
 
   /* Text that sits on top of a filled accent / ok / danger surface. */
   --on-accent: #ffffff;
@@ -62,6 +63,7 @@
   --warn:      #ffc46b;
   --danger:    #ff6b6b;
   --ok:        #6bdc9a;
+  --score:     #f5c518;
 
   --on-accent: #05231d;
 
@@ -473,6 +475,30 @@ a { color: var(--accent-2); }
 /* The age rating filters on tap, the same as the chip in the filter sheet. */
 .tag-badge.cert { cursor: pointer; }
 .tag-badge.cert:hover { border-color: var(--line); color: var(--text-1); }
+
+/* Someone else's score. The star carries the colour and the number stays
+   text, so it sits beside a year and a genre without shouting over them.
+   TMDB's is an outline, so it is never read as IMDb's at a glance. */
+.score {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.score b { font-weight: 650; color: var(--text); }
+.score .ico {
+  width: 13px;
+  height: 13px;
+  fill: var(--score);
+  stroke: var(--score);
+  stroke-width: 1.2;
+}
+.score.tmdb .ico { fill: none; stroke: var(--text-3); stroke-width: 1.9; }
+.score-votes { margin-left: 3px; color: var(--text-3); font-weight: 500; }
+.disco-title .score { margin-left: 7px; vertical-align: middle; font-size: 12px; }
 
 .card-links { display: flex; gap: 6px; flex-wrap: wrap; }
 .link-chip {
@@ -1811,8 +1837,10 @@ body.discovering .yearmap { display: none; }
   background: var(--surface);
   margin-bottom: 8px;
 }
-.user-top { display: flex; align-items: center; gap: 10px; }
-.user-main { flex: 1; min-width: 0; }
+/* Two buttons and a bin do not fit beside a long name on a phone; they
+   drop under it rather than squeezing it. */
+.user-top { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.user-main { flex: 1 1 9em; min-width: 0; }
 .user-name {
   display: flex;
   align-items: center;
@@ -1836,14 +1864,27 @@ body.discovering .yearmap { display: none; }
   font-size: 12px;
   color: var(--text-3);
 }
-.user-pending span { flex: 1; min-width: 0; }
+.user-pending span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .user-pending .btn { flex: none; }
+.user-key .ico { width: 14px; height: 14px; flex: none; }
 .user-add .btn { flex: none; }
 
 /* The link itself: long, unbroken, and meant to be copied whole. */
 .link-box {
   font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--text-2);
+}
+
+/* A command to try a key with, wrapped rather than scrolled sideways. */
+.key-example {
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 /* ------------------------------------------------------------------ kinds

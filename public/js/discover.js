@@ -15,7 +15,7 @@ import {
   api, live, titleKey, addItem, nowISO, state, TYPE_LABEL, fillIn, stage,
 } from './store.js';
 import {
-  el, icon, field, openSheet, setChildren, toast,
+  el, icon, field, openSheet, setChildren, toast, scoreBadge,
 } from './ui.js';
 
 const VIEW_KEY = 'mt.discover.v1';
@@ -191,7 +191,7 @@ function fold(name) {
  * harvest; IMDb and its parents guide need the film's IMDb id, which arrives
  * with the poster — so they appear when it does, and not before. */
 function linksFor(film) {
-  const { imdb } = factsFor(film.article);
+  const imdb = factsFor(film.article).imdb || film.imdb;
   return [
     film.url ? el('a.link-chip', {
       href: film.url, target: '_blank', rel: 'noopener noreferrer',
@@ -220,11 +220,26 @@ function dressRow(place) {
   const { thumb } = factsFor(film.article);
   const rating = factsFor(film.article).rating || film.rating || '';
   if (thumb) slot.replaceChildren(poster(thumb));
+  // The age rating before the score, whichever of them arrived first.
   if (rating && !place.rated) {
     place.rated = true;
-    heading.append(certBadge(rating, on));
+    heading.insertBefore(certBadge(rating, on), place.scored || null);
+  }
+  if (!place.scored) {
+    place.scored = scoreBadge(scoreFor(film), { votes: true });
+    if (place.scored) heading.append(place.scored);
   }
   setChildren(links, linksFor(film));
+}
+
+/* IMDb's score, which comes down with the row from the ratings file on the
+ * server — or with the poster, for a row whose IMDb id was only learned by
+ * that call. The vote count is shown beside it on a row, not only in the
+ * hover: across four hundred films a year it is what tells the famous one
+ * from the one its cast rated. */
+function scoreFor(film) {
+  const found = film.imdbScore || factsFor(film.article).imdbScore;
+  return found ? { source: 'imdb', value: found[0] / 10, votes: found[1] } : null;
 }
 
 /* The rating on a row is a way into everything else rated the same, the way
@@ -250,7 +265,7 @@ function certBadge(rating, on) {
  */
 const known = new Map();
 
-const NOTHING = { thumb: '', imdb: '', rating: '' };
+const NOTHING = { thumb: '', imdb: '', rating: '', imdbScore: null };
 
 function factsFor(article) { return known.get(article) || NOTHING; }
 
@@ -318,10 +333,12 @@ function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
   // Drawn from what is already known rather than only when the answer
   // arrives, or it would be lost every time the row is painted again.
   const rated = factsFor(film.article).rating || film.rating || '';
+  const scored = scoreBadge(scoreFor(film), { votes: true });
   const heading = el('h3.disco-title', null, [
     film.title,
     film.year ? el('span.disco-year', { text: String(film.year) }) : null,
     rated ? certBadge(rated, on) : null,
+    scored,
   ]);
 
   // Who made it and what it took are off by default. They are facts about
@@ -411,7 +428,7 @@ function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
 
   const slot = artSlot(film);
   if (film.article) {
-    drawn.push({ article: film.article, film, slot, heading, links, on, rated: !!rated });
+    drawn.push({ article: film.article, film, slot, heading, links, on, rated: !!rated, scored });
   }
 
   node.append(slot, body, el('div.disco-acts', null, [add, pass, seen]));
@@ -660,6 +677,7 @@ export function discoverStats(node) {
 
 const SORTS = [
   { id: 'notable', label: 'Most notable' },
+  { id: 'imdb', label: 'IMDb rating' },
   { id: 'year', label: 'Year, new→old' },
   { id: 'year-asc', label: 'Year, old→new' },
   { id: 'title', label: 'Title A→Z' },

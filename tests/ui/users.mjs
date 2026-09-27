@@ -4,8 +4,11 @@
  * listed and you are marked, that you are the one person with no remove
  * button, that a new person's link comes straight up, that a link is built on
  * the public address when there is one, and that removing somebody asks
- * first. And the store: a session that has gone sends the page back through
- * the gate, once, however many requests find out at the same time.
+ * first. That a person's API keys are listed and revoking one asks first,
+ * and that a new key says what it is for and what it may do, and comes up
+ * once, to be copied. And the store: a session that has gone sends the page
+ * back through the gate, once, however many requests find out at the same
+ * time.
  *
  *     ./tests/ui.sh
  */
@@ -24,9 +27,11 @@ const soon = new Date(Date.now() + 6 * 86400000).toISOString();
 const people = () => ({
   me: 'u1',
   users: [
-    { id: 'u1', name: 'Alice', devices: 2, seenAt: new Date().toISOString(), links: [] },
+    { id: 'u1', name: 'Alice', devices: 2, seenAt: new Date().toISOString(), links: [], keys: [
+      { id: '0123456789ab', label: 'claude bot', access: 'full', hint: 'mt_Ab3d',
+        createdAt: new Date().toISOString(), usedAt: new Date().toISOString() }] },
     { id: 'u2', name: 'Bob', devices: 0, seenAt: '', links: [
-      { id: 'abcdef012345', createdAt: new Date().toISOString(), expiresAt: soon }] },
+      { id: 'abcdef012345', createdAt: new Date().toISOString(), expiresAt: soon }], keys: [] },
   ],
 });
 
@@ -41,6 +46,12 @@ globalThis.fetch = async (url, init) => {
     const { name } = JSON.parse(init.body);
     return reply(201, { user: { id: 'u3', name },
       link: { id: 'l3', path: '/login#tokenthree', expiresAt: soon, url: '' } });
+  }
+  if (url === '/api/auth/users/u2/keys') {
+    const { label, access } = JSON.parse(init.body);
+    return reply(201, { key: 'mt_Secretsecretsecretsecretsecretsecret00000', id: 'k2', label,
+      access, hint: 'mt_Secr', name: 'Bob', createdAt: new Date().toISOString(),
+      url: 'https://tracker.example' });
   }
   if (url === '/api/auth/users/u2/link') {
     return reply(201, { id: 'l2', path: '/login#tokentwo', expiresAt: soon,
@@ -79,6 +90,48 @@ check('you are the one person who cannot be removed here',
   [Boolean(button('Remove Alice')), Boolean(button('Remove Bob'))], [false, true]);
 check('a link nobody has opened shows, with a way to cancel it',
   Boolean(button('Cancel the unused link for Bob')), true);
+
+check('a key shows under its person, with what it is for and how far it reaches',
+  find((n) => n.classList.has('user-key')).map((n) => n.find((c) => c.tagName === 'SPAN')[0]
+    .textContent.split(' · ').slice(0, 3)), [['“claude bot”', 'full access', 'mt_Ab3d…']]);
+
+/* ---------------------------------------------------------- a new key */
+
+calls.length = 0;
+button('New API key for Bob').fire('click');
+await tick();
+check('a new key asks what it is for first', sheetTitle(), 'New API key for Bob');
+check('  and nothing is made yet', calls.filter((c) => c.startsWith('POST')), []);
+find((n) => n.tagName === 'INPUT' && n.getAttribute('aria-label') === 'What the key is for')[0]
+  .value = ' nightly tidy ';
+button('Read-only').fire('click');
+button('Make key').fire('click');
+await tick();
+check('it sends what it is for and how far it reaches',
+  calls.filter((c) => c.startsWith('POST')).map((c) => JSON.parse(c.slice(c.indexOf('{')))),
+  [{ label: 'nightly tidy', access: 'read' }]);
+check('the key comes up once, in a sheet of its own', sheetTitle(), 'API key for Bob');
+const keyBox = find((n) => n.classList.has('link-box'))[0];
+check('  whole', keyBox.value, 'mt_Secretsecretsecretsecretsecretsecret00000');
+check('  with a command to try it by, built on the public address',
+  find((n) => n.classList.has('key-example'))[0].textContent,
+  "curl -H 'Authorization: Bearer mt_Secretsecretsecretsecretsecretsecret00000' "
+  + 'https://tracker.example/api/library');
+button('Copy').fire('click');
+await tick();
+check('Copy copies the key', copied, 'mt_Secretsecretsecretsecretsecretsecret00000');
+button('Close').fire('click');
+check('closing it goes back to the list', sheetTitle(), 'Users');
+
+calls.length = 0;
+button('Revoke the API key “claude bot” of Alice').fire('click');
+await tick();
+check('revoking a key asks first', sheetTitle(), 'Revoke “claude bot”?');
+check('  and nothing has gone yet', calls.filter((c) => c.startsWith('DELETE')), []);
+button('Revoke').fire('click');
+await tick();
+check('then it is revoked', calls.filter((c) => c.startsWith('DELETE')),
+  ['DELETE /api/auth/keys/0123456789ab']);
 
 /* --------------------------------------------------------- a new link */
 

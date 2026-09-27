@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import certs
+import imdb
 import verdicts
 import wiki
 from config import LISTS_DIR, NET_ENABLED, log, now_iso
@@ -947,13 +948,56 @@ def coverage() -> dict:
             "films": sum(int(n) for n in (index.get("years") or {}).values())}
 
 
-# `notable` needs no sorting: the catalogue is written in that order.
+# `notable` needs no sorting: the catalogue is written in that order. `imdb`
+# is not in here because a lean row does not carry the score; it is worked
+# out in `query`, from the ids the rating pass wrote down.
 SORTS = {
     "notable": None,
     "title": lambda r: r[R_HAY],
     "year": lambda r: (-(r[R_YEAR] or 0), -r[R_SCORE]),
     "year-asc": lambda r: ((r[R_YEAR] or 9999), -r[R_SCORE]),
 }
+
+
+# Every catalogue film's IMDb rank, worked out once per ratings file and per
+# change to the ids rather than once per query: looking up twenty-eight
+# thousand scores is a quarter of a second, and a sort is asked for on every
+# scroll to the next page.
+_RANKS: tuple[object, dict[str, float]] = (None, {})
+_RANKS_LOCK = threading.Lock()
+
+
+def imdb_ranks() -> dict[str, float]:
+    """``{catalogue key: weighted score}`` for every film IMDb has a score for.
+
+    The version is read before the answers are, so an answer written while
+    this runs makes the next call build again rather than keeping a table
+    older than its stamp says.
+    """
+    global _RANKS
+    stamp = (id(imdb.STORE.table), certs.STORE.version)
+    with _RANKS_LOCK:
+        if _RANKS[0] == stamp:
+            return _RANKS[1]
+    ranks: dict[str, float] = {}
+    for key, entry in certs.STORE.snapshot().items():
+        found = imdb.STORE.get(entry[certs.E_IMDB])
+        if found:
+            ranks[key] = imdb.weighted(*found)
+    with _RANKS_LOCK:
+        _RANKS = (stamp, ranks)
+    return ranks
+
+
+def by_imdb(hits: list[list]) -> None:
+    """Best first, by IMDb's score discounted for how few voted.
+
+    A film with no score — no IMDb id yet, or nobody has rated it — goes
+    after every one that has one. The sort is stable, so those keep the
+    notable order they arrived in, and so do films that tie.
+    """
+    ranks = imdb_ranks()
+    hits.sort(key=lambda row: -ranks.get(row[R_KEY], -1.0))
 
 
 def wanted_genres(value: object) -> list[str]:
@@ -1054,6 +1098,7 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
     want_skipped = skipped == "only"
 
     hits: list[list] = []
+    listed: set[str] = set()
     genre_counts: dict[str, int] = {}
     year_counts: dict[str, int] = {}
     rating_counts: dict[str, int] = {}
@@ -1093,22 +1138,31 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
         if in_years and in_genres:
             for rating in certified:
                 rating_counts[rating] = rating_counts.get(rating, 0) + 1
-        if in_years and in_genres and in_ratings:
+        # A film the merge filed under two years — the year it came out, and
+        # the year it topped the box office — is one film, and shown once:
+        # the first, which is the more notable of the two.
+        if in_years and in_genres and in_ratings and row[R_KEY] not in listed:
+            listed.add(row[R_KEY])
             hits.append(row)
 
     order = SORTS.get(sort)
     if order:
         hits.sort(key=order)
+    elif sort == "imdb":
+        by_imdb(hits)
     limit = max(1, min(limit, 300))
     # The rating travels with the row rather than only with the poster call
     # that follows it: having just filtered by PG-13, seeing it appear on the
     # row a beat after the row is the wrong way round. Copied rather than set
     # on the record, which is the shard cache's and shared with every query.
+    # IMDb's score comes the same way, for the same reason.
     page = []
     for film in full_records(hits[offset:offset + limit]):
-        found = (answers.get(film["key"]) or ["", []])[certs.E_RATINGS]
+        imdb_id, found = answers.get(film["key"]) or ["", []]
+        score = imdb.STORE.get(imdb_id)
         page.append({**film, "ratings": found,
-                     "rating": found[0] if found else ""})
+                     "rating": found[0] if found else "",
+                     "imdb": imdb_id, "imdbScore": list(score) if score else None})
     return {"total": len(hits), "offset": offset,
             "films": page,
             "genres": wanted, "genreMode": "all" if every else "any",
@@ -1183,18 +1237,29 @@ FACT_MAX = 6000                      # rows kept before the slate is wiped
 _FACTS: dict[str, dict] = {}
 _FACTS_LOCK = threading.Lock()
 
-BLANK = {"thumb": "", "imdb": "", "rating": ""}
+BLANK = {"thumb": "", "imdb": "", "rating": "", "imdbScore": None}
 
 
 def _from_store(name: str, thumb: str = "") -> dict:
     """One row's facts, with the two durable ones read off the disk."""
-    imdb, ratings = certs.STORE.get(key_of({"article": name}))
-    return {"thumb": thumb, "imdb": imdb, "rating": ratings[0] if ratings else "",
+    imdb_id, ratings = certs.STORE.get(key_of({"article": name}))
+    return {"thumb": thumb, "imdb": imdb_id, "rating": ratings[0] if ratings else "",
             "ratings": ratings}
 
 
+def _scored(fact: dict) -> dict:
+    """The facts with IMDb's score beside them, looked up as they leave.
+
+    Not kept with the rest: it is a lookup in memory, it changes every day,
+    and a row remembered before the ratings file had loaded would otherwise
+    go on saying it has no score until the slate was wiped.
+    """
+    score = imdb.STORE.get(fact.get("imdb"))
+    return {**fact, "imdbScore": list(score) if score else None}
+
+
 def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
-    """Poster, IMDb id and age rating for each of these articles.
+    """Poster, IMDb id, age rating and IMDb score for each of these articles.
 
     Fifty films cost two calls at most: one to Wikipedia for the page images
     and one to Wikidata for the identifiers.  Only the poster is always the
@@ -1213,7 +1278,7 @@ def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
             if not name:
                 continue
             if name in _FACTS:
-                out[name] = _FACTS[name]
+                out[name] = _scored(_FACTS[name])
             elif name not in wanted:
                 wanted.append(name)
 
@@ -1224,7 +1289,7 @@ def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
     # of writing them down. Only the poster needs the network.
     if not NET_ENABLED:
         for name in wanted:
-            out[name] = _from_store(name)
+            out[name] = _scored(_from_store(name))
         return out
 
     for start in range(0, len(wanted), FACT_BATCH):
@@ -1252,7 +1317,7 @@ def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
                 _FACTS.clear()
             for name in batch:
                 _FACTS[name] = _from_store(name, thumbs.get(name, ""))
-                out[name] = _FACTS[name]
+                out[name] = _scored(_FACTS[name])
     return out
 
 

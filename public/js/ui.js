@@ -114,6 +114,37 @@ export function hostOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 }
 
+/** 1234 → "1.2k", 3243065 → "3.2M" — a vote count at a glance. */
+export function fmtVotes(n) {
+  if (!n) return '';
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '')}k`;
+  return String(n);
+}
+
+const SCORE_SOURCE = { imdb: 'IMDb', tmdb: 'TMDB' };
+
+/* Someone else's score for a title: a star and the number. Which someone is
+ * in the class and the hover, and a TMDB number wears its own colour, because
+ * a 7.1 on TMDB is not the same claim as a 7.1 on IMDb and a card that carries
+ * either must not pass one off as the other. The vote count is how much the
+ * number can be trusted — a 9.4 from forty people is the crew — so it is
+ * shown where the row has room for it, and always in the hover. */
+export function scoreBadge(score, { votes: showVotes = false } = {}) {
+  if (!score || !score.value) return null;
+  const source = SCORE_SOURCE[score.source] || score.source;
+  const value = score.value.toFixed(1);
+  const count = score.votes ? ` from ${score.votes.toLocaleString()} votes` : '';
+  return el(`span.score.${score.source}`, {
+    title: `${source} ${value}/10${count}`,
+    'aria-label': `${source} rating ${value} out of 10${count}`,
+  }, [
+    icon('star'),
+    el('b', { text: value }),
+    showVotes && score.votes ? el('span.score-votes', { text: fmtVotes(score.votes) }) : null,
+  ]);
+}
+
 /* ------------------------------------------------------------------ sheets */
 
 const host = () => document.getElementById('sheet-host');
