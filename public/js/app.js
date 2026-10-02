@@ -394,7 +394,7 @@ function paintExtras(elsewhere, films, { looking = false, looked = null, terms =
         ? `${how}${others ? `, and ${others} more like it` : ''}`
         : 'not certain which — check before adding'),
       action: { label: 'Open in the add box', fn: () => addHere(terms) },
-    }, looked.rows.map((row, at) => foundRow(row, {
+    }, looked.rows.map((row, at) => foundRow(withImdbId(row), {
       badge: at === 0 && looked.confident ? 'best match' : '',
       mine: byKey.get(titleKey(row.title, row.year)) || null,
       on: foundHandlers,
@@ -425,6 +425,41 @@ function paintExtras(elsewhere, films, { looking = false, looked = null, terms =
 const lookup = { q: '', asked: '', pending: '', busy: false, rows: [], via: '', note: '',
                  confident: false, seq: 0, eager: false };
 let lookupTimer = 0;
+
+/* The IMDb id for the rows that came back without one. Only the best match
+ * arrives complete — the others are search results, and the links under them
+ * want the id: IMDb's own page, and the parents guide, which is only ever
+ * that id with /parentalguide on the end. So it is asked for once per title
+ * and kept here against the row that needed it; the chips appear when it
+ * lands, rather than the rows waiting on it. A title with no id to be had is
+ * remembered as such, so it is asked about once and not on every render. */
+const foundIds = new Map();
+const idKey = (row) => `${row.source || ''}/${row.sourceId || ''}`;
+
+/** The row as it should be drawn: with the id, once there is one. */
+function withImdbId(row) {
+  const known = row.imdbId || foundIds.get(idKey(row)) || '';
+  return known && known !== row.imdbId ? { ...row, imdbId: known } : row;
+}
+
+function fillFoundIds(rows) {
+  if (foundIds.size > 400) foundIds.clear();
+  for (const row of rows) {
+    if (row.imdbId || !row.source || !row.sourceId) continue;
+    const key = idKey(row);
+    if (foundIds.has(key)) continue;
+    foundIds.set(key, '');                     // asked; nothing back yet
+    api('GET', `/lookup/detail?source=${encodeURIComponent(row.source)}`
+             + `&id=${encodeURIComponent(row.sourceId)}`)
+      .then((detail) => {
+        const id = (detail && detail.imdbId) || '';
+        if (!id) return;
+        foundIds.set(key, id);
+        render();
+      })
+      .catch(() => { /* no id to be had — the search links stand in */ });
+  }
+}
 
 /** What kind of thing the tab on screen holds, for the providers. Other
  * holds several, so it is "any" there — unless one kind is picked out. */
@@ -460,6 +495,7 @@ async function pullLookup(terms) {
     note: (answer && !rows.length && answer.note) || '',
     confident: Boolean(answer && answer.confident),
   });
+  fillFoundIds(rows);
   render();
 }
 

@@ -490,6 +490,43 @@ export function stripSection(cls, { label, count, note, action }, children) {
   return el(`section.group.strip.${cls}`, null, [head, el('div.group-items', null, children)]);
 }
 
+/* The places worth going before adding something you have only just heard
+ * of. IMDb's pages are open to anyone holding the id, so the id is the whole
+ * job: with one the chip is the title's own page and the parents guide can be
+ * offered beside it; without one IMDb's search stands in, and the guide —
+ * which is only ever the id with /parentalguide on the end — waits until the
+ * id lands. Wikipedia is the article when the lookup came through Wikipedia
+ * and a search when it did not, since a guessed slug is worse than no link.
+ * JustWatch has no public API, so that one is always a search. */
+function foundLinks(row) {
+  const title = row.title || '';
+  if (!title) return null;
+  const terms = [title, row.year || ''].filter(Boolean).join(' ');
+  const article = row.wikiUrl
+    || (/^https?:\/\/[a-z-]+\.wikipedia\.org\/wiki\//i.test(row.link || '') ? row.link : '');
+  const imdb = row.imdbId || '';
+
+  const chip = (name, label, href, hint) => el('a.link-chip', {
+    href, target: '_blank', rel: 'noopener noreferrer', title: hint, 'aria-label': hint,
+    // The row's own buttons are elsewhere, but stop here all the same.
+    onclick: (event) => event.stopPropagation(),
+  }, [icon(name), label]);
+
+  return el('div.card-links.found-links', null, [
+    chip('wiki', 'Wikipedia',
+      article || `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(terms)}`,
+      article ? `${title} on Wikipedia` : `Search Wikipedia for ${title}`),
+    chip('imdb', 'IMDb',
+      imdb ? `https://www.imdb.com/title/${imdb}/`
+        : `https://www.imdb.com/find/?s=tt&q=${encodeURIComponent(terms)}`,
+      imdb ? `${title} on IMDb` : `Search IMDb for ${title}`),
+    imdb ? chip('shield', 'Parents guide',
+      `https://www.imdb.com/title/${imdb}/parentalguide/`,
+      `What is in ${title}, scene by scene`) : null,
+    chip('play', 'Watch', justWatchUrl(row), `Where to watch ${title}`),
+  ]);
+}
+
 /* One answer from the providers, drawn under a search that found nothing
  * anywhere else: the artwork, the name and year as the record has them, and
  * the two ways in — the queue, or straight to the watched pile. `mine` is
@@ -507,6 +544,7 @@ export function foundRow(row, { badge = '', mine = null, on }) {
     ]),
     (row.cast || []).length ? el('div.card-cast', { text: row.cast.slice(0, 3).join(', ') }) : null,
     row.overview ? el('p', { text: row.overview }) : null,
+    foundLinks(row),
   ]);
 
   const art = row.poster
