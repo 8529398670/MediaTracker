@@ -208,6 +208,10 @@ function linksFor(film) {
     el('a.link-chip', {
       href: justWatch(film), target: '_blank', rel: 'noopener noreferrer',
     }, [icon('play'), 'Watch']),
+    el('a.link-chip', {
+      href: `https://tv.apple.com/us/search?term=${encodeURIComponent(film.title || '')}`,
+      target: '_blank', rel: 'noopener noreferrer', title: `Search Apple TV for ${film.title}`,
+    }, [icon('tv'), 'Apple TV']),
   ];
 }
 

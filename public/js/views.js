@@ -233,6 +233,55 @@ export function justWatchUrl(item) {
   return 'https://www.justwatch.com/us/search?q=' + encodeURIComponent(item.title || '');
 }
 
+/* Apple TV. Apple has no catalogue anyone may ask, but Wikidata keeps
+ * Apple's ids by IMDb id, and the server writes them onto the titles
+ * (server/appletv.py) as `appleTv`: `movie/umc.cmc.…`, the end of the link.
+ * A tv.apple.com link already on the card does as well. Failing both, the
+ * search page, which works for anything with a name. */
+const APPLE_TV = 'https://tv.apple.com/us/';
+
+export function appleTvUrl(item) {
+  if (item.appleTv) return APPLE_TV + item.appleTv;
+  const own = (item.links || []).find((l) => /^https:\/\/tv\.apple\.com\//i.test(l.url || ''));
+  if (own) return own.url;
+  return item.title ? `${APPLE_TV}search?term=${encodeURIComponent(item.title)}` : '';
+}
+
+/** Whether the Apple TV link goes to the title itself, or only searches. */
+export const appleTvDirect = (item) => !/\/search\?term=/.test(appleTvUrl(item));
+
+/* On a Mac, an iPhone or an iPad the TV app is already there, so a title it
+ * knows opens in the app: the same tv.apple.com address under the app's own
+ * scheme, `com.apple.tv://` — the one Apple's TV client routes by the host and
+ * path that follow it. A search has no app form, so it stays on the web; so
+ * does everything on a machine with no TV app. ⋯ → Apple TV links switches
+ * it back to the website, remembered in this browser. */
+const APP_KEY = 'mt.appletv.app.v1';
+const appleDevice = () => typeof navigator !== 'undefined'
+  && /Macintosh|Mac OS X|iPhone|iPad|iPod/.test(navigator.userAgent || '');
+
+export function appleTvInApp() {
+  if (!appleDevice()) return false;
+  try { return localStorage.getItem(APP_KEY) !== 'web'; } catch { return true; }
+}
+
+export function setAppleTvInApp(on) {
+  try { localStorage.setItem(APP_KEY, on ? 'app' : 'web'); } catch { /* ignore */ }
+}
+
+export const appleTvAvailable = appleDevice;
+
+/** The address an Apple TV link should open: the app when it can, else the web. */
+export function appleTvHref(item) {
+  const url = appleTvUrl(item);
+  if (!url || !appleTvInApp() || !appleTvDirect(item)) return url;
+  return url.replace(/^https:\/\//, 'com.apple.tv://');
+}
+
+/** A link's target: a new tab for a web page, none for an app's own scheme,
+ * which would otherwise leave an empty tab behind. */
+export const linkTarget = (url) => (/^https?:/i.test(url) ? '_blank' : null);
+
 const REFS = [
   {
     id: 'imdb',
@@ -266,6 +315,14 @@ const REFS = [
     hint: (item) => `Where to watch ${item.title}`,
     url: (item) => (item.title ? justWatchUrl(item) : ''),
   },
+  {
+    id: 'appletv',
+    icon: 'tv',
+    label: 'Apple TV',
+    hint: (item) => (appleTvDirect(item) ? `${item.title} on Apple TV`
+      : `Search Apple TV for ${item.title}`),
+    url: appleTvHref,
+  },
 ];
 
 /** The little row of icons. Empty when a title has nothing to point at. */
@@ -277,7 +334,7 @@ export function refLinks(item) {
     chips.push(el('a', {
       class: `ref ref-${ref.id}`,
       href: url,
-      target: '_blank',
+      target: linkTarget(url),
       rel: 'noopener noreferrer',
       title: ref.hint(item),
       'aria-label': ref.hint(item),
@@ -317,7 +374,7 @@ function cardSig(item) {
     item.addedAt,
     item.certification, item.genres, item.tags, item.runtime, item.cast,
     item.poster, item.rating, item.heart, item.imdbId, item.wikiUrl, item.links,
-    scoreOf(item),
+    scoreOf(item), appleTvHref(item),
   ]);
 }
 
@@ -485,7 +542,7 @@ function foundLinks(row) {
   const imdb = row.imdbId || '';
 
   const chip = (name, label, href, hint) => el('a.link-chip', {
-    href, target: '_blank', rel: 'noopener noreferrer', title: hint, 'aria-label': hint,
+    href, target: linkTarget(href), rel: 'noopener noreferrer', title: hint, 'aria-label': hint,
     // The row's own buttons are elsewhere, but stop here all the same.
     onclick: (event) => event.stopPropagation(),
   }, [icon(name), label]);
@@ -502,6 +559,8 @@ function foundLinks(row) {
       `https://www.imdb.com/title/${imdb}/parentalguide/`,
       `What is in ${title}, scene by scene`) : null,
     chip('play', 'Watch', justWatchUrl(row), `Where to watch ${title}`),
+    chip('tv', 'Apple TV', appleTvHref(row),
+      appleTvDirect(row) ? `${title} on Apple TV` : `Search Apple TV for ${title}`),
   ]);
 }
 
@@ -602,6 +661,21 @@ function queueRow(item, index, on) {
     title: 'Drag to reorder',
   }, icon('grip'));
 
+  // The artwork, small: enough to know the film at a glance without making
+  // the row a card. Opens it, like the card's does.
+  const art = el('button.card-poster.qposter', {
+    type: 'button', tabindex: '-1', 'aria-label': `Open ${item.title}`,
+    onclick: () => on.open(item),
+  });
+  if (item.poster) {
+    art.append(el('img', {
+      src: item.poster, alt: '', loading: 'lazy', decoding: 'async', width: '32', height: '48',
+      onerror: (event) => { event.target.remove(); art.append(placeholder(item)); },
+    }));
+  } else {
+    art.append(placeholder(item));
+  }
+
   const title = el('span.qtitle', null, [
     item.title || 'Untitled',
     ' ',
@@ -645,7 +719,7 @@ function queueRow(item, index, on) {
     onclick: () => on.heart(item),
   }, icon(item.heart ? 'heart-fill' : 'heart'));
 
-  row.append(pickBox(), pos, grip, tap, el('div.qside', null, [heart, checkButton(item, on)]));
+  row.append(pickBox(), pos, grip, art, tap, el('div.qside', null, [heart, checkButton(item, on)]));
   return row;
 }
 

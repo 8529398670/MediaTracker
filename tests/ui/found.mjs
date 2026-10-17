@@ -38,8 +38,9 @@ const best = {
   link: 'https://www.themoviedb.org/movie/19900',
 };
 
-check('a row with an IMDb id carries all four links, the parents guide included',
-  chips(best).map((c) => c.text()), ['Wikipedia', 'IMDb', 'Parents guide', 'Watch']);
+check('a row with an IMDb id carries all five links, the parents guide included',
+  chips(best).map((c) => c.text()), ['Wikipedia', 'IMDb', 'Parents guide', 'Watch', 'Apple TV']);
+check('Apple TV is a search until the server knows the id', named(best, 'Apple TV').href.startsWith('https://tv.apple.com/us/search?term='), true);
 check('IMDb is the title, by id', named(best, 'IMDb').href,
   'https://www.imdb.com/title/tt1085515/');
 check('and the parents guide is that id with /parentalguide on the end',
@@ -59,7 +60,7 @@ const bare = { source: 'tmdb', sourceId: 'movie/1234', type: 'movie',
                link: 'https://www.themoviedb.org/movie/1234' };
 
 check('without an id there is no parents guide link rather than a broken one',
-  chips(bare).map((c) => c.text()), ['Wikipedia', 'IMDb', 'Watch']);
+  chips(bare).map((c) => c.text()), ['Wikipedia', 'IMDb', 'Watch', 'Apple TV']);
 check("so IMDb's own search stands in", named(bare, 'IMDb').href,
   'https://www.imdb.com/find/?s=tt&q=Blue%20Steel%201990');
 check('and the hover says it is a search, not the title',
@@ -99,9 +100,17 @@ check('but a link to anywhere else is not mistaken for one',
 
 const row = views.foundRow(best, { on, mine: { id: 'x', type: 'movie' } });
 check('a title already yours still has its links',
-  row.find((n) => n.classList.has('link-chip')).length, 4);
+  row.find((n) => n.classList.has('link-chip')).length, 5);
 check('and one button, which opens the copy you have',
   row.find((n) => n.classList.has('found-acts'))[0].text(), 'Added');
+
+const { appleTvUrl } = await import('./views.js');
+check('a title with an Apple TV id goes straight to it',
+  appleTvUrl({ title: 'Casablanca', appleTv: 'movie/umc.cmc.6i7o1550iyqet6xexqniqyp4k', links: [] }),
+  'https://tv.apple.com/us/movie/umc.cmc.6i7o1550iyqet6xexqniqyp4k');
+check('a tv.apple.com link already on the card does as well',
+  appleTvUrl({ title: 'X', links: [{ url: 'https://tv.apple.com/us/show/x/umc.cmc.abcdefghij' }] }),
+  'https://tv.apple.com/us/show/x/umc.cmc.abcdefghij');
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

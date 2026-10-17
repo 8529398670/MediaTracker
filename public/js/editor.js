@@ -15,7 +15,7 @@ import {
 import { openPortingSheet } from './porting.js';
 import { universalPanel } from './importer.js';
 import { bestMatch, isCertain, warning } from './dupes.js';
-import { justWatchUrl } from './views.js';
+import { justWatchUrl, appleTvHref, linkTarget } from './views.js';
 
 /* Whose score it is, the score, and how many it came from — "IMDb 7.8 from
  * 3.2M votes". The sheet has the room the card does not. */
@@ -250,7 +250,7 @@ export function openItem(item, { onChange, onDeleted }) {
      with the id — including the parents guide, which no free API carries.
      JustWatch has no public API either, so that one is a search. */
   const chip = (iconName, label, href) => el('a.link-chip', {
-    href, target: '_blank', rel: 'noopener noreferrer',
+    href, target: linkTarget(href), rel: 'noopener noreferrer',
   }, [icon(iconName), label]);
 
   const refs = [];
@@ -263,6 +263,7 @@ export function openItem(item, { onChange, onDeleted }) {
   }
   if (draft.wikiUrl) refs.push(chip('wiki', 'Wikipedia', draft.wikiUrl));
   if (draft.title) refs.push(chip('play', 'Where to watch', justWatchUrl(draft)));
+  if (draft.title) refs.push(chip('tv', 'Apple TV', appleTvHref(draft)));
   if (refs.length) body.append(field('Find it elsewhere', el('div.chip-row', null, refs)));
 
   body.append(field('Artwork & metadata', el('div.chip-row', null, [lookupBtn])));

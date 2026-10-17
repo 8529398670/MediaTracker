@@ -251,12 +251,12 @@ check('and it is there from the first paint, not only once a poster call lands',
 check('and a film with none is left alone',
   heads()[0].text(), 'Jolson Sings Again 1949');
 check('an IMDb id becomes both links, the parents guide included',
-  linksOn(0).map((c) => c.text()), ['Wikipedia', 'IMDb', 'Parents guide', 'Watch']);
+  linksOn(0).map((c) => c.text()), ['Wikipedia', 'IMDb', 'Parents guide', 'Watch', 'Apple TV']);
 check('pointing at the film, not at a search for it',
   linksOn(0).filter((c) => c.text() === 'Parents guide')[0].href,
   'https://www.imdb.com/title/tt0041474/parentalguide/');
 check('and a film Wikidata has no id for keeps the two links it always had',
-  linksOn(2).map((c) => c.text()), ['Wikipedia', 'Watch']);
+  linksOn(2).map((c) => c.text()), ['Wikipedia', 'Watch', 'Apple TV']);
 
 const before = calls.filter((c) => c.includes('/lists/facts')).length;
 disco.renderDiscover(root, on);
@@ -269,7 +269,7 @@ check('and so are the rating and the links, which a repaint used to lose',
   [root.find((n) => n.classList.has('disco-title'))[1].text(),
    root.find((n) => n.classList.has('disco'))[0]
      .find((n) => n.classList.has('link-chip')).length],
-  ["Adam's Rib 1949 PG", 4]);
+  ["Adam's Rib 1949 PG", 5]);
 
 /* --------------------------------------------------- year and genre */
 

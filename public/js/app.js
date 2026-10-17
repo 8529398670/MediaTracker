@@ -24,6 +24,7 @@ import {
 import {
   renderGroups, renderQueue, renderEmpty, renderYearMap, wireYearMap,
   renderStaging, stripSection, card, foundRow,
+  appleTvAvailable, appleTvInApp, setAppleTvInApp,
 } from './views.js';
 import { openItem, openRating, openAdd } from './editor.js';
 import {
@@ -1338,6 +1339,17 @@ function openMenu() {
         render();
         toast(filters.map ? 'Year rail on' : 'Year rail off');
       }),
+    appleTvAvailable() ? entry('tv',
+      appleTvInApp() ? 'Apple TV links open the app' : 'Apple TV links open the website',
+      appleTvInApp() ? 'Tap to send them to tv.apple.com instead'
+        : 'Tap to open them in the TV app instead',
+      () => {
+        setAppleTvInApp(!appleTvInApp());
+        handle.close();
+        // The link is part of what a card draws, so the cards are redrawn.
+        render();
+        toast(appleTvInApp() ? 'Apple TV links open the TV app' : 'Apple TV links open tv.apple.com');
+      }) : null,
     entry(readTheme() === 'dark' ? 'sun' : 'moon',
       readTheme() === 'dark' ? 'Light theme' : 'Dark theme',
       readTheme() === 'dark' ? 'Back to the light one' : 'For reading in bed',

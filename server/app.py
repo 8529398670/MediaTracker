@@ -35,6 +35,7 @@ import signal
 import sys
 import threading
 
+import appletv
 import auth
 import imdb
 from config import (ENV_COUNT, ENV_FILE, EXTRA_TYPES, HOST, LIBRARY_PATH,
@@ -85,6 +86,8 @@ def main() -> int:
         f", {rated['unknown']} not looked up")
     # Read from the cache before the first request, then kept fresh daily.
     imdb.STORE.start()
+    # Apple TV ids from Wikidata, onto the titles that have an IMDb id.
+    appletv.start()
     scores = imdb.STORE.status()
     log(f"  imdb        {scores['titles']} titles scored, file of {scores['date']}"
         if scores["titles"] else

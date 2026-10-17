@@ -250,6 +250,7 @@ def normalize_item(raw: object, now: str | None = None) -> dict | None:
         "sourceId": _s(raw.get("sourceId"), 120),
         "imdbId": _s(raw.get("imdbId"), 32),
         "wikiUrl": _url(raw.get("wikiUrl")),
+        "appleTv": _apple_tv(raw.get("appleTv")),
         "extRating": _int(raw.get("extRating"), 0, 100),
         "order": _int(raw.get("order"), 0, 1_000_000_000),
         "addedAt": _iso(raw.get("addedAt"), now),
@@ -260,6 +261,16 @@ def normalize_item(raw: object, now: str | None = None) -> dict | None:
     if deleted:
         item["deletedAt"] = _iso(raw.get("deletedAt"), now)
     return item
+
+
+APPLE_TV = re.compile(r"^(?:movie|show)/umc\.c[a-z]{2}\.[a-z0-9]{10,40}$")
+
+
+def _apple_tv(value: object) -> str:
+    """Where a title is on Apple TV: ``movie/<id>`` or ``show/<id>``, the end
+    of a tv.apple.com link. Anything else is dropped (appletv.py)."""
+    text = value.strip() if isinstance(value, str) else ""
+    return text if APPLE_TV.match(text) else ""
 
 
 def _type_id(value: object) -> str:

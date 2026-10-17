@@ -158,6 +158,7 @@ export function newItem(partial = {}) {
     sourceId: '',
     imdbId: '',
     wikiUrl: '',
+    appleTv: '',
     extRating: null,
     cast: [],
     certification: '',
