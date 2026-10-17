@@ -3,8 +3,8 @@
 import {
   api, state, boot, onChange, notify, refresh, sync, live, stats, allTags,
   toggleHeart, toggleWatched, removeSource, addSource, checkpoint, undo,
-  reorderQueue, patchItem, getItem, addItem, titleKey, fillIn, stage,
-  TYPE_LABEL, STATUS_LABEL,
+  reorderQueue, patchItem, getItem, addItem, fillIn, stage,
+  TYPE_LABEL, STATUS_LABEL, allCerts, allGenres, patchMany,
   enrich, watchEnrich, staging, staged, unstage, otherTypes,
 } from './store.js';
 import {
@@ -15,11 +15,14 @@ import {
   filters, loadView, saveView, activeCount, resetFilters, lingering, plainTerms,
   titleMatches, whyMatched,
   apply, sortItems, groupItems, openFilterSheet, queueOrder,
-  SECTIONS, SECTION_LABEL, VIEWS, sectionOf, inView,
-  pickedTypes, pickType, sectionKinds, addingType,
+  sections, SECTION_LABEL, VIEWS, sectionOf, inView, addingType, facetPool, parseQuery,
 } from './filters.js';
 import {
-  renderGroups, renderQueue, renderStats, renderEmpty, renderYearMap, wireYearMap,
+  findMatches, bestMatch, isCertain, warning, describe, findDuplicateGroups, dismissGroup,
+  mergedFields, CERTAIN,
+} from './dupes.js';
+import {
+  renderGroups, renderQueue, renderEmpty, renderYearMap, wireYearMap,
   renderStaging, stripSection, card, foundRow,
 } from './views.js';
 import { openItem, openRating, openAdd } from './editor.js';
@@ -51,7 +54,13 @@ list.append(boxes.staging, boxes.main, boxes.more);
 
 const dom = {
   q: $('#q'),
-  sections: $('#seg-sections'),
+  sidebar: $('#sidebar'),
+  sideSections: $('#side-sections'),
+  sideDiscover: $('#side-discover'),
+  sideFacets: $('#side-facets'),
+  sideFoot: $('#side-foot'),
+  scrim: $('#nav-scrim'),
+  btnNav: $('#btn-nav'),
   yearmap: $('#yearmap'),
   bubble: $('#ym-bubble'),
   viewtabs: $('#viewtabs'),
@@ -67,15 +76,10 @@ const dom = {
   btnSelect: $('#btn-select'),
   btnMenu: $('#btn-menu'),
   btnAdd: $('#btn-add'),
-  hideWatched: $('#t-hide-watched'),
-  hearts: $('#t-hearts'),
-  unrated: $('#t-unrated'),
   sort: $('#sel-sort'),
   group: $('#sel-group'),
   toolbar: $('#toolbar'),
   discoTools: $('#disco-tools'),
-  kinds: $('#kinds'),
-  kindSep: $('#kind-sep'),
   selectBar: $('#select-bar'),
   sheetHost: $('#sheet-host'),
 };
@@ -194,7 +198,12 @@ function render() {
 function paint() {
   const everything = live();
 
-  if (inDiscover()) { paintTabs(everything); paintDiscover(); return; }
+  if (inDiscover()) { paintSidebar(everything); paintDiscover(); return; }
+  // A section whose type was deleted, here or on another device: go home.
+  if (!sections(everything).some((s) => s.id === filters.section)) {
+    filters.section = 'movie';
+    saveView();
+  }
   showLibraryChrome();
 
   const searching = Boolean(filters.q.trim());
@@ -219,13 +228,24 @@ function paint() {
   const mineOf = found.length ? libraryIndex() : null;
   const fresh = nameFirst(found.filter((film) => !mineOf(film)), (film) => film.title);
 
+  // What the search did not find but is probably what was meant: the same
+  // film under a spelling the words miss — "godfather part 2" for "The
+  // Godfather Part II", "sunrise" for "Sunrise: A Song of Two Humans". Only
+  // for a plain title; `tag:noir` is not a name to be close to.
+  const plain = searching && terms.length >= 3 && !parseQuery(filters.q).fields.length;
+  const similar = plain
+    ? findMatches({ title: terms }, everything, {
+      limit: 6, except: new Set([...shownIds, ...elsewhere.map((item) => item.id)]),
+    }).map((m) => m.item)
+    : [];
+
   // No title anywhere that matches the words? Then the providers are asked,
   // the way the + box asks them — after the catalogue has had its say, so
   // the lookup is the last resort and not a request on every keystroke. A
   // match through the cast does not count: "juno" finding Juno Temple's
   // films is not the same as finding Juno.
   const noTitle = searching && terms.length > 0
-    && ![...filtered, ...elsewhere].some((item) => byName(item.title))
+    && ![...filtered, ...elsewhere].some((item) => byName(item.title)) && !similar.length
     && !fresh.some((film) => byName(film.title));
   if (noTitle && catalogue.q === terms) considerLookup(terms);
   lookup.eager = false;
@@ -236,19 +256,16 @@ function paint() {
   const looked = noTitle && lookup.q === terms ? lookup : null;
   const looking = noTitle && canLook && !looked;
 
-  // The strip counts the section you are looking at, not the whole library.
-  const here = everything.filter((item) => sectionOf(item) === filters.section);
-  renderStats(dom.stats, stats(here), filtered.length,
-    { elsewhere: elsewhere.length, discover: fresh.length });
-  paintTabs(everything);
-  paintKinds(everything);
+  // The counts live in the sidebar and on the list tabs now; the strip of
+  // pills above the list is Discover's alone.
+  dom.stats.hidden = true;
+  paintSidebar(everything);
   paintActiveFilters();
 
   // The queue keeps the order you gave it, so sorting and grouping are not
   // offered there; hiding watched titles means nothing outside the main list.
   dom.wrapSort.hidden = isQueue;
   dom.wrapGroup.hidden = isQueue;
-  dom.hideWatched.hidden = filters.view !== 'list';
 
   paintStaging(searching);
 
@@ -262,7 +279,7 @@ function paint() {
       boxes.main.append(el('p.miss-note', {
         text: `No title in the library or the lists is called that — ${looking ? 'looking it up…' : 'looked it up:'}`,
       }));
-    } else if (elsewhere.length || fresh.length) {
+    } else if (elsewhere.length || fresh.length || similar.length) {
       // Not here, but somewhere: a line, and then the somewhere.
       dom.empty.hidden = true;
       boxes.main.append(el('p.miss-note', { text: `Nothing in ${here} for that — but:` }));
@@ -293,47 +310,13 @@ function paint() {
     }
   }
 
-  paintExtras(elsewhere, fresh, { looking, looked, terms });
+  paintExtras(elsewhere, fresh, { looking, looked, terms, similar });
   paintPicking({ ids: filtered.map((item) => item.id), discover: false });
 
   const count = activeCount();
   dom.filterBadge.hidden = count === 0;
   dom.filterBadge.textContent = String(count);
   dom.qClear.hidden = !dom.q.value;
-}
-
-/* ------------------------------------------------------------------ kinds */
-
-/* On Other — documentaries, books and audio books, the old radio serials,
- * whatever types it has been given — a chip for each, after the grouping, and
- * Edit at the end to add, rename or delete them. Any mix of the chips can be
- * on at once; none on is all of them. Only redrawn when what it shows has
- * changed, so a chip keeps its focus through the poll. */
-let kindsDrawn = '';
-function paintKinds(everything) {
-  const kinds = sectionKinds(everything);
-  const show = filters.section === 'other';
-  dom.kinds.hidden = !show;
-  dom.kindSep.hidden = !show;
-  const picked = pickedTypes();
-  const drawn = show ? JSON.stringify([filters.section, picked, kinds]) : '';
-  if (drawn === kindsDrawn) return;
-  kindsDrawn = drawn;
-  if (!show) { dom.kinds.replaceChildren(); return; }
-
-  const chip = (label, n, on, fn) => el('button.chip.chip-toggle', {
-    type: 'button', 'aria-pressed': String(on), class: n ? null : 'is-empty', onclick: fn,
-  }, [el('span', { text: label }), el('span.chip-count', { text: String(n) })]);
-  dom.kinds.replaceChildren(
-    chip('All', kinds.reduce((sum, kind) => sum + kind.count, 0), !picked.length,
-      () => { pickType(null); render(); }),
-    ...kinds.map((kind) => chip(kind.label, kind.count, picked.includes(kind.id),
-      () => { pickType(kind.id); render(); })),
-    el('button.chip.ghost-chip.kinds-edit', {
-      type: 'button', title: 'Add, rename or delete the types in Other',
-      onclick: () => openTypes(render),
-    }, [icon('edit'), el('span', { text: 'Edit' })]),
-  );
 }
 
 /* ----------------------------------------------------------------- staging */
@@ -371,7 +354,7 @@ async function pullCatalogueHits({ force = false } = {}) {
   render();
 }
 
-function paintExtras(elsewhere, films, { looking = false, looked = null, terms = '' } = {}) {
+function paintExtras(elsewhere, films, { looking = false, looked = null, terms = '', similar = [] } = {}) {
   const parts = [];
   // What the providers found leads when it runs at all: it only runs when
   // nothing below was found by name.
@@ -383,9 +366,9 @@ function paintExtras(elsewhere, films, { looking = false, looked = null, terms =
     }, [el('div.center-note', null, [el('div.spinner'), 'Looking…'])]));
   } else if (looked && looked.rows.length) {
     // A title found this way may already be yours under another spelling
-    // — the search missed it, the record's own name does not.
-    const byKey = new Map();
-    for (const item of live()) byKey.set(titleKey(item.title, item.year), item);
+    // — the search missed it, the record's own name and id do not. Certain
+    // is "Added"; close is a warning above the Add button.
+    const matched = looked.rows.map((row) => bestMatch(row));
     const others = looked.rows.length - 1;
     const how = looked.via === 'search' ? 'a sure match' : viaLabel(looked.via);
     parts.push(stripSection('lookup', {
@@ -396,9 +379,16 @@ function paintExtras(elsewhere, films, { looking = false, looked = null, terms =
       action: { label: 'Open in the add box', fn: () => addHere(terms) },
     }, looked.rows.map((row, at) => foundRow(withImdbId(row), {
       badge: at === 0 && looked.confident ? 'best match' : '',
-      mine: byKey.get(titleKey(row.title, row.year)) || null,
+      mine: isCertain(matched[at]) ? matched[at].item : null,
+      warn: matched[at] && !isCertain(matched[at]) ? warning(matched[at]) : '',
       on: foundHandlers,
     }))));
+  }
+  if (similar.length) {
+    parts.push(stripSection('similar', {
+      label: 'Similar titles in your library', count: similar.length,
+      note: 'not what you typed, but close — check before adding it again',
+    }, similar.map((item) => card(item, handlers))));
   }
   if (elsewhere.length) {
     parts.push(stripSection('elsewhere', {
@@ -461,12 +451,9 @@ function fillFoundIds(rows) {
   }
 }
 
-/** What kind of thing the tab on screen holds, for the providers. Other
- * holds several, so it is "any" there — unless one kind is picked out. */
+/** What kind of thing the section on screen holds, for the providers. */
 function sectionKind() {
-  const section = SECTIONS.find((s) => s.id === filters.section);
-  if (!section) return 'any';
-  return section.types.length > 1 && pickedTypes().length !== 1 ? 'any' : addingType();
+  return inDiscover() ? 'movie' : addingType();
 }
 
 function considerLookup(terms) {
@@ -502,15 +489,24 @@ async function pullLookup(terms) {
 /* Adding what was found: the same item the + box would make, to the strip
  * of what was just added and to the fill-in pass, and the search then finds
  * it — which is the whole point. */
-function takeFound(row, status) {
+async function takeFound(row, status) {
   const made = rowToItem(row, { type: sectionKind(), status });
-  const already = live().find((item) =>
-    titleKey(item.title, item.year) === titleKey(made.title, made.year));
-  if (already) {
-    toast(`"${already.title}" is already in your library`, {
-      action: { label: 'Open', fn: () => handlers.open(already) },
+  const match = bestMatch({ ...made, imdbId: row.imdbId || made.imdbId });
+  if (isCertain(match)) {
+    toast(`"${match.item.title}" is already in your library`, {
+      action: { label: 'Open', fn: () => handlers.open(match.item) },
     });
     return;
+  }
+  // Close but not certain: say what it looks like, and let it be added anyway.
+  if (match) {
+    const go = await confirmSheet({
+      title: `Add “${made.title}” anyway?`,
+      message: warning(match),
+      detail: [`It matched as ${match.why}.`],
+      confirmLabel: 'Add it anyway',
+    });
+    if (!go) return;
   }
   const item = addItem(made);
   stage([item.id]);
@@ -548,7 +544,7 @@ function showLibraryChrome() {
 const discoHandlers = {
   reload: () => { pullDiscover(); },
   more: () => { pullDiscover({ more: true }); },
-  fetch: () => openHarvest(() => { paintTabs(live()); pullDiscover(); }),
+  fetch: () => openHarvest(() => { sideDrawn = ''; paintSidebar(live()); pullDiscover(); }),
   // The refine sheet waits on this one: its counts are the answer's counts,
   // so it repaints when the list underneath has been repainted.
   change: () => pullDiscover(),
@@ -679,7 +675,7 @@ function paintDiscover() {
 /* When a search comes up empty here but not everywhere, say where it is. */
 function matchesElsewhere(everything) {
   const here = { section: filters.section, view: filters.view };
-  for (const section of SECTIONS) {
+  for (const section of sections(everything)) {
     for (const view of VIEWS) {
       if (section.id === here.section && view.id === here.view) continue;
       filters.section = section.id;
@@ -712,6 +708,12 @@ function paintActiveFilters() {
     chips.push(pill);
   };
 
+  for (const cert of filters.certs) {
+    drop(cert || 'Not rated', () => { filters.certs = filters.certs.filter((c) => c !== cert); });
+  }
+  for (const genre of filters.genres) {
+    drop(genre, () => { filters.genres = filters.genres.filter((g) => g !== genre); });
+  }
   for (const tag of filters.tags) {
     drop(`#${tag}`, () => { filters.tags = filters.tags.filter((t) => t !== tag); });
   }
@@ -927,14 +929,17 @@ function jumpToGroup(key, { smooth = true } = {}) {
 
 wireYearMap(dom.yearmap, dom.bubble, { onJump: jumpToGroup });
 
-/* ------------------------------------------------------------------ tabs */
+/* ---------------------------------------------------------------- sidebar */
 
-/* Two rows of navigation: which part of the library (Movies, TV, Other) and
- * which of its three lists. Both remember where you were. */
+/* Where you are goes down the left: a section for every type there is —
+ * Movies, TV, and each of the types the library's own list holds — then
+ * Discover, then the filters worth one click (an age rating, a genre, a tag),
+ * then the tools. On a phone it is a drawer behind the button at the top
+ * left. The three lists of a section stay in the toolbar, above the list
+ * they change. */
 
-/** New titles start as whatever the section you are looking at holds — on
- * Other, the kind picked out in the toolbar, when one is. A line handed in —
- * the search that found nothing — is already in the box. */
+/** New titles start as whatever the section you are looking at holds. A
+ * line handed in — the search that found nothing — is already in the box. */
 function addHere(text = '') {
   return openAdd(render, { defaultType: addingType(), text });
 }
@@ -946,24 +951,29 @@ function setPlace(section, view) {
   saveView();
   window.scrollTo({ top: 0 });
   syncControls();
+  closeNav();
   if (arriving && inDiscover()) { pullDiscover(); return; }
   render();
 }
 
-/* A fourth tab beside Movies, TV and Other. Not a part of the library — it
- * is the pile of films the library was picked out of — so it has no lists,
- * no filters and no year rail, and paints itself. */
+/* Not a part of the library — it is the pile of films the library was
+ * picked out of — so it has no lists, no filters and no year rail, and
+ * paints itself. */
 const DISCOVER = { id: 'discover', label: 'Discover' };
 
 const inDiscover = () => filters.section === DISCOVER.id;
 
-function buildTabs() {
-  for (const section of [...SECTIONS, DISCOVER]) {
-    dom.sections.append(el('button', {
-      type: 'button', role: 'tab', dataset: { section: section.id },
-      onclick: () => setPlace(section.id, null),
-    }, [el('span.tab-label', { text: section.label }), el('span.tab-count')]));
-  }
+/** Every place in the sidebar, in order: what the number keys go to. */
+const places = (everything = live()) => [...sections(everything), DISCOVER];
+
+function openNav() { document.body.classList.add('nav-open'); dom.scrim.hidden = false; }
+function closeNav() { document.body.classList.remove('nav-open'); dom.scrim.hidden = true; }
+dom.btnNav.addEventListener('click', () => {
+  if (document.body.classList.contains('nav-open')) closeNav(); else openNav();
+});
+dom.scrim.addEventListener('click', closeNav);
+
+function buildViewTabs() {
   for (const view of VIEWS) {
     dom.viewtabs.append(el('button', {
       type: 'button', role: 'tab', dataset: { view: view.id },
@@ -972,8 +982,52 @@ function buildTabs() {
   }
 }
 
-/** Counts are of the library itself, not of what the filters leave behind. */
-function paintTabs(everything) {
+/* Which facet groups are folded shut. Yours, in this browser. */
+const SIDE_KEY = 'mt.side.v1';
+const folded = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem(SIDE_KEY) || '[]')); }
+  catch { return new Set(); }
+})();
+function setFolded(id, shut) {
+  if (shut) folded.add(id); else folded.delete(id);
+  try { localStorage.setItem(SIDE_KEY, JSON.stringify([...folded])); } catch { /* ignore */ }
+}
+
+const FACET_ROWS = 12;
+
+/** The groups of one-click filters, counted against the list on screen. */
+function facetGroups(everything) {
+  const pool = facetPool(everything);
+  const withPicked = (rows, picked) => {
+    const have = new Set(rows.map(([id]) => id.toLowerCase()));
+    return [...rows, ...picked.filter((id) => !have.has(id.toLowerCase())).map((id) => [id, 0])];
+  };
+  const certs = allCerts(pool);
+  return [
+    { id: 'certs', label: 'Age rating', list: 'certs',
+      rows: withPicked(certs.length > 1 || filters.certs.length ? certs : [], filters.certs),
+      name: (id) => id || 'Not rated' },
+    { id: 'genres', label: 'Genre', list: 'genres',
+      rows: withPicked(allGenres(pool), filters.genres), name: (id) => id },
+    { id: 'tags', label: 'Tags', list: 'tags',
+      rows: withPicked(allTags(pool), filters.tags), name: (id) => `#${id}` },
+  ].filter((group) => group.rows.length);
+}
+
+function pickFacet(list, id) {
+  const now = filters[list];
+  const at = now.findIndex((x) => x.toLowerCase() === id.toLowerCase());
+  filters[list] = at === -1 ? [...now, id] : now.filter((_, i) => i !== at);
+  saveView();
+  window.scrollTo({ top: 0 });
+  render();
+}
+
+/** Counts are of the library itself, not of what the filters leave behind.
+ * Only redrawn when what it shows has changed, so a row keeps its focus
+ * through the poll. */
+let sideDrawn = '';
+function paintSidebar(everything) {
   const tally = new Map();
   for (const item of everything) {
     const section = sectionOf(item);
@@ -984,16 +1038,77 @@ function paintTabs(everything) {
       }
     }
   }
+  const list = sections(everything).map((s) => [s.id, s.label, tally.get(s.id) || 0]);
+  const films = (discoverState().coverage || {}).films || 0;
+  const groups = inDiscover() ? [] : facetGroups(everything);
+  const picked = { certs: filters.certs, genres: filters.genres, tags: filters.tags };
+  // The switches: hiding watched or skipped titles only means something on
+  // the List, so they are offered there; Loved only, everywhere.
+  const flags = inDiscover() ? [] : [
+    ...(filters.view === 'list' ? [
+      ['hideWatched', 'Hide watched', 'w'],
+      ['hideSkipped', 'Hide skipped', 'k'],
+    ] : []),
+    ['heartsOnly', 'Loved only', ''],
+  ].map(([key, label, hotkey]) => ({ key, label, hotkey, on: Boolean(filters[key]) }));
+  const drawn = JSON.stringify([filters.section, list, films, groups.map((g) => g.rows),
+    picked, [...folded], flags]);
 
-  for (const button of dom.sections.children) {
-    const id = button.dataset.section;
-    const on = id === filters.section;
-    button.setAttribute('aria-pressed', String(on));
-    button.setAttribute('aria-selected', String(on));
-    button.querySelector('.tab-count').textContent = id === DISCOVER.id
-      ? String((discoverState().coverage || {}).films || 0)
-      : String(tally.get(id) || 0);
+  if (drawn !== sideDrawn) {
+    sideDrawn = drawn;
+    const entry = (id, label, count) => el('button.side-item', {
+      type: 'button', dataset: { section: id },
+      'aria-current': id === filters.section ? 'page' : null,
+      onclick: () => setPlace(id, null),
+    }, [el('span.side-label', { text: label }), el('span.side-count', { text: String(count) })]);
+
+    dom.sideSections.replaceChildren(...list.map(([id, label, n]) => entry(id, label, n)));
+    dom.sideDiscover.replaceChildren(entry(DISCOVER.id, DISCOVER.label, films));
+
+    dom.sideFacets.hidden = !flags.length && !groups.length;
+    dom.sideFacets.replaceChildren(
+      flags.length || groups.length ? el('div.side-head', null, [
+        el('span', { text: 'Filter' }),
+        activeCount() ? el('button.side-clear', {
+          type: 'button', text: 'Clear',
+          onclick: () => { resetFilters(); syncControls(); render(); },
+        }) : null,
+      ]) : null,
+      flags.length ? el('div.facet-rows.flag-rows', null, flags.map((flag) => el('button.facet-row', {
+        type: 'button', 'aria-pressed': String(flag.on),
+        title: flag.hotkey ? `${flag.label} (${flag.hotkey})` : flag.label,
+        onclick: () => flip(flag.key),
+      }, [el('span.facet-box'), el('span.side-label', { text: flag.label })]))) : null,
+      ...groups.map((group) => {
+        const shut = folded.has(group.id);
+        const on = (id) => filters[group.list].some((x) => x.toLowerCase() === id.toLowerCase());
+        // Picked ones always show, then the most common, up to the limit.
+        const rows = [...group.rows.filter(([id]) => on(id)),
+          ...group.rows.filter(([id]) => !on(id))];
+        const shown = rows.slice(0, Math.max(FACET_ROWS, rows.filter(([id]) => on(id)).length));
+        const n = filters[group.list].length;
+        return el('div.facet', { class: shut ? 'shut' : null }, [
+          el('button.facet-head', {
+            type: 'button', 'aria-expanded': String(!shut),
+            onclick: () => { setFolded(group.id, !shut); sideDrawn = ''; paintSidebar(live()); },
+          }, [icon('chevron', 'ico facet-chev'), el('span', { text: group.label }),
+            n ? el('span.facet-on', { text: String(n) }) : null]),
+          shut ? null : el('div.facet-rows', null, [
+            ...shown.map(([id, count]) => el('button.facet-row', {
+              type: 'button', 'aria-pressed': String(on(id)),
+              onclick: () => pickFacet(group.list, id),
+            }, [el('span.facet-box'), el('span.side-label', { text: group.name(id) }),
+              el('span.side-count', { text: String(count) })])),
+            rows.length > shown.length ? el('button.facet-more', {
+              type: 'button', text: `${rows.length - shown.length} more…`,
+              onclick: () => { closeNav(); openFilterSheet(() => { syncControls(); render(); }); },
+            }) : null,
+          ]),
+        ]);
+      }),
+    );
   }
+
   if (inDiscover()) return;
   for (const button of dom.viewtabs.children) {
     const id = button.dataset.view;
@@ -1003,6 +1118,105 @@ function paintTabs(everything) {
       : (tally.get(`${filters.section}:${id}`) || 0);
     button.querySelector('.tab-count').textContent = String(count);
   }
+}
+
+function buildSideFoot() {
+  const tool = (iconName, label, fn) => el('button.side-item.side-tool', {
+    type: 'button', onclick: () => { closeNav(); fn(); },
+  }, [icon(iconName), el('span.side-label', { text: label })]);
+  dom.sideFoot.replaceChildren(
+    tool('copy', 'Find duplicates', openDuplicates),
+    tool('tag', 'Types…', () => openTypes(render)),
+  );
+}
+
+/* ------------------------------------------------------------- duplicates */
+
+/* The same film twice, under two names or two types. Each group is the
+ * titles that look like one another and why; keeping one folds the others
+ * into it — the watch, the rating, the tags and notes — and deletes them,
+ * after asking, with an Undo. "Not duplicates" stops the group coming back. */
+function openDuplicates() {
+  const body = el('div.dupes');
+  const handle = openSheet({ title: 'Duplicates', body, wide: true });
+
+  const paintGroups = () => {
+    const groups = findDuplicateGroups(live());
+    if (!groups.length) {
+      body.replaceChildren(el('p.hint', {
+        text: 'No duplicates found. Titles you said were not duplicates stay apart.',
+      }));
+      return;
+    }
+    body.replaceChildren(
+      el('p.hint', {
+        text: `${groups.length} ${groups.length === 1 ? 'group' : 'groups'} that look like `
+          + 'the same title. Keep one and the others are folded into it: watched if any was, '
+          + 'your rating, every tag, link and note.',
+      }),
+      ...groups.map((group) => el('section.dupe-group', null, [
+        el('div.dupe-why', null, [
+          el('span.tag-badge', { class: group.score >= CERTAIN ? 'sure' : null,
+            text: group.score >= CERTAIN ? 'same title' : 'probably' }),
+          el('span', { text: group.why }),
+          el('button.btn.sm.ghost', {
+            type: 'button', text: 'Not duplicates',
+            onclick: () => { dismissGroup(group.items); paintGroups(); toast('Kept apart'); },
+          }),
+        ]),
+        ...group.items.map((item) => el('div.result.dupe-row', null, [
+          item.poster ? el('img', { src: item.poster, alt: '', loading: 'lazy' }) : el('span.dupe-art'),
+          el('div.result-body', null, [
+            el('h4', { text: item.title || 'Untitled' }),
+            el('p.hint', { text: describe(item, { title: false })
+              + (item.rating ? ` · ${item.rating}/10` : '') }),
+          ]),
+          el('div.found-acts', null, [
+            el('button.btn.sm.ghost', {
+              type: 'button', text: 'Open',
+              onclick: () => openItem(item, { onChange: () => { render(); paintGroups(); },
+                onDeleted: () => { render(); paintGroups(); } }),
+            }),
+            el('button.btn.sm.primary', {
+              type: 'button', text: 'Keep this one',
+              onclick: () => keepOne(item, group.items.filter((other) => other !== item), paintGroups),
+            }),
+          ]),
+        ])),
+      ])),
+    );
+  };
+  paintGroups();
+  return handle;
+}
+
+async function keepOne(keep, others, done) {
+  const fields = mergedFields(keep, others);
+  const go = await confirmSheet({
+    title: `Keep “${keep.title}”?`,
+    message: `${others.length === 1 ? 'The other one is' : `The other ${others.length} are`} `
+      + 'folded into it and deleted.',
+    detail: others.map((item) => describe(item)),
+    confirmLabel: `Keep it, delete ${others.length}`,
+    danger: true,
+  });
+  if (!go) return;
+  // Undo is a patch back, not a snapshot: the enricher may write in between.
+  const back = [
+    [keep.id, Object.fromEntries(Object.keys(fields).map((key) => [key, keep[key] ?? null]))],
+    ...others.map((item) => [item.id, { deleted: false, deletedAt: null }]),
+  ];
+  const stamp = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  patchMany([
+    [keep.id, fields],
+    ...others.map((item) => [item.id, { deleted: true, deletedAt: stamp }]),
+  ]);
+  render();
+  done();
+  toast(`Kept “${keep.title}”, ${others.length} folded in`, {
+    ms: 9000,
+    action: { label: 'Undo', fn: () => { patchMany(back); render(); done(); } },
+  });
 }
 
 /* ----------------------------------------------------------------- theme */
@@ -1024,27 +1238,18 @@ function applyTheme(mode) {
 
 /** Push filter state back into the toolbar controls. */
 function syncControls() {
-  dom.hideWatched.setAttribute('aria-pressed', String(filters.hideWatched));
-  dom.hearts.setAttribute('aria-pressed', String(filters.heartsOnly));
-  dom.unrated.setAttribute('aria-pressed', String(filters.unratedOnly));
   dom.sort.value = filters.sort;
   dom.group.value = filters.group;
 }
 
 /* ---------------------------------------------------------------- toolbar */
 
-function toggle(button, key) {
-  button.addEventListener('click', () => {
-    filters[key] = !filters[key];
-    button.setAttribute('aria-pressed', String(filters[key]));
-    saveView();
-    render();
-  });
+/** Flip one of the sidebar's show/hide switches — or its key. */
+function flip(key) {
+  filters[key] = !filters[key];
+  saveView();
+  render();
 }
-
-toggle(dom.hideWatched, 'hideWatched');
-toggle(dom.hearts, 'heartsOnly');
-toggle(dom.unrated, 'unratedOnly');
 
 dom.sort.addEventListener('change', () => { filters.sort = dom.sort.value; saveView(); render(); });
 dom.group.addEventListener('change', () => { filters.group = dom.group.value; saveView(); render(); });
@@ -1104,7 +1309,9 @@ function openMenu() {
     entry('shuffle', 'Surprise me', 'Pick something from the queue at random', pickRandom),
     entry('star', 'Statistics', `${s.total} tracked · ${s.watched} watched`,
       () => { handle.close(); openStats(); }),
-    entry('tag', 'Types in Other', `${otherTypes().length} types · add, rename or delete them`,
+    entry('copy', 'Find duplicates', 'The same title added twice, under two names',
+      () => { handle.close(); openDuplicates(); }),
+    entry('tag', 'Types', `${otherTypes().length + 2} sections · add, rename or delete them`,
       () => { handle.close(); openTypes(render); }),
     entry('link', 'Source links', `${state.sources.length} saved`,
       () => { handle.close(); openSources(); }),
@@ -1120,7 +1327,7 @@ function openMenu() {
       `${(discoverState().coverage || {}).films || 0} films from Wikipedia's year lists`,
       () => {
         handle.close();
-        openHarvest(() => { paintTabs(live()); if (inDiscover()) pullDiscover(); });
+        openHarvest(() => { sideDrawn = ''; paintSidebar(live()); if (inDiscover()) pullDiscover(); });
       }),
     entry('map', filters.map ? 'Hide the year rail' : 'Show the year rail',
       filters.map ? 'The list of years down the right' : 'Jump straight to a year',
@@ -1141,9 +1348,8 @@ function openMenu() {
 }
 
 function pickRandom() {
-  const kinds = pickedTypes();
   const pool = live().filter((item) => sectionOf(item) === filters.section
-    && inView(item, 'queue') && (!kinds.length || kinds.includes(item.type)));
+    && inView(item, 'queue'));
   if (!pool.length) { toast(`Nothing in the ${SECTION_LABEL[filters.section]} queue`, { error: true }); return; }
   const pick = pool[Math.floor(Math.random() * pool.length)];
   closeAll();
@@ -1388,6 +1594,7 @@ addEventListener('keydown', (event) => {
   if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
   // A sheet takes Escape first (ui.js); only with none open does it stop a pick.
   if (event.key === 'Escape') {
+    if (document.body.classList.contains('nav-open')) { closeNav(); return; }
     if (picking.on && !event.defaultPrevented && dom.sheetHost.hidden && !inDiscover()) {
       stopPicking();
     }
@@ -1395,15 +1602,16 @@ addEventListener('keydown', (event) => {
   }
   if (event.key === '/') { event.preventDefault(); dom.q.focus(); dom.q.select(); }
   else if (event.key === 'n') { event.preventDefault(); addHere(); }
-  else if (event.key >= '1' && event.key <= '4') {
-    event.preventDefault();
-    setPlace([...SECTIONS, DISCOVER][Number(event.key) - 1].id, null);
+  else if (event.key >= '1' && event.key <= '9') {
+    const place = places()[Number(event.key) - 1];
+    if (place) { event.preventDefault(); setPlace(place.id, null); }
   }
   // The rest are the library's: its filters, its three lists, its watched
   // toggle. None of them mean anything against a catalogue.
   else if (inDiscover()) { /* nothing further */ }
   else if (event.key === 'f') { event.preventDefault(); openFilterSheet(() => { syncControls(); render(); }); }
-  else if (event.key === 'w') { event.preventDefault(); dom.hideWatched.click(); }
+  else if (event.key === 'w') { event.preventDefault(); flip('hideWatched'); }
+  else if (event.key === 'k') { event.preventDefault(); flip('hideSkipped'); }
   else if (event.key === 's') { event.preventDefault(); dom.btnSelect.click(); }
   else if (event.key === 'q' || event.key === 'l' || event.key === 'v') {
     event.preventDefault();
@@ -1417,7 +1625,8 @@ onChange(render);
 applyTheme(readTheme());
 loadView();
 loadDiscover();
-buildTabs();
+buildViewTabs();
+buildSideFoot();
 syncControls();
 dom.q.value = '';
 
@@ -1434,8 +1643,8 @@ boot().then(async () => {
   // What has been collected, for the tab's count and the harvest sheet. One
   // small call; the catalogue itself is only read when you go and look at it.
   await ensureCatalogue();
-  // The counts on the section tabs, including Discover's — which is only
-  // known once the catalogue has answered, so it is painted after it has.
-  paintTabs(live());
+  // The counts in the sidebar, including Discover's — which is only known
+  // once the catalogue has answered, so it is painted after it has.
+  paintSidebar(live());
   if (inDiscover()) pullDiscover();
 });

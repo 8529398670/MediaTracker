@@ -13,11 +13,11 @@
  * under that. */
 
 import {
-  TYPES, TYPE_LABEL, live, otherTypes, setOtherTypes, patchMany, checkpoint, lookupKind,
+  TYPES, TYPE_LABEL, live, otherTypes, setOtherTypes, patchMany, checkpoint, lookupKind, defaultOther,
   fold,
 } from './store.js';
 import { el, icon, field, openSheet, toast, segmented, setChildren } from './ui.js';
-import { sectionOf, SECTION_LABEL, pickedTypes, pickType } from './filters.js';
+import { sectionOf, SECTION_LABEL, filters, saveView } from './filters.js';
 
 /* Where the fill-in pass goes for a type's artwork and details. */
 const LOOKUPS = [
@@ -241,9 +241,8 @@ export function deleteType(row, done = () => {}) {
     go.textContent = titles.length
       ? `Delete, and move ${titles.length} to ${TYPE_LABEL[target]}` : `Delete “${row.label}”`;
     where.textContent = !titles.length ? ''
-      : tab === 'other' ? `${titles.length === 1 ? 'It stays' : 'They stay'} on the Other tab.`
-        : `${titles.length === 1 ? 'It moves' : 'They move'} to the ${SECTION_LABEL[tab]} tab, `
-          + 'at the back of its queue.';
+      : `${titles.length === 1 ? 'It moves' : 'They move'} to ${SECTION_LABEL[tab]}, `
+        + 'at the back of its queue.';
   };
   if (titles.length) {
     for (const type of targets) {
@@ -266,7 +265,7 @@ export function deleteType(row, done = () => {}) {
         text: titles.length
           ? `${count(titles.length)} ${titles.length === 1 ? 'is' : 'are'} filed under `
             + `${row.label}. Where should ${titles.length === 1 ? 'it' : 'they'} go?`
-          : `No title is filed under ${row.label}. It comes off the chips and the Type menus.`,
+          : `No title is filed under ${row.label}. It comes off the sidebar and the Type menus.`,
       }),
       titles.length ? chips : null,
       titles.length ? where : null,
@@ -290,8 +289,8 @@ export function deleteType(row, done = () => {}) {
       patchMany(moves);
     }
     if (row.listed) setOtherTypes(before.filter((t) => t.id !== row.id));
-    // A chip that no longer exists must not go on filtering the tab.
-    if (pickedTypes('other').includes(row.id)) pickType(row.id, 'other');
+    // A section that no longer exists cannot stay open: follow the titles.
+    if (filters.section === row.id) { filters.section = to || defaultOther(); saveView(); }
     done();
     toast(`“${row.label}” deleted${moves.length ? ` — ${count(moves.length)} moved to ${toLabel}` : ''}`, {
       ms: 9000,

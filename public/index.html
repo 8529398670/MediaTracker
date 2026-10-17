@@ -21,8 +21,27 @@
 
 <a class="skip-link" href="#library">Skip to library</a>
 
+<nav class="sidebar" id="sidebar" aria-label="Sections">
+  <div class="side-brand">
+    <svg class="brand-mark" aria-hidden="true"><use href="#i-brand"></use></svg>
+    <span class="brand-name">Media Tracker</span>
+  </div>
+  <div class="side-group">
+    <div class="side-head"><span>Library</span></div>
+    <div id="side-sections"></div>
+  </div>
+  <div class="side-group" id="side-discover"></div>
+  <div class="side-group" id="side-facets" hidden></div>
+  <div class="side-group side-foot" id="side-foot"></div>
+</nav>
+<div class="nav-scrim" id="nav-scrim" hidden></div>
+
 <header class="topbar" id="topbar">
   <div class="bar bar-main">
+    <button class="icon-btn nav-btn" id="btn-nav" type="button" aria-label="Sections and filters"
+            aria-controls="sidebar">
+      <svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg>
+    </button>
     <div class="brand">
       <svg class="brand-mark" aria-hidden="true"><use href="#i-brand"></use></svg>
       <span class="brand-name">Media Tracker</span>
@@ -37,6 +56,36 @@
       </button>
     </div>
 
+    <div class="bar-lib" id="toolbar">
+      <div class="viewtabs" id="viewtabs" role="tablist" aria-label="List"></div>
+      <label class="chip chip-select" id="wrap-sort">
+        <svg class="ico" aria-hidden="true"><use href="#i-sort"></use></svg>
+        <select id="sel-sort" aria-label="Sort by">
+          <option value="added-desc">Newest added</option>
+          <option value="added-asc">Oldest added</option>
+          <option value="watched-desc">Recently watched</option>
+          <option value="title-asc">Title A→Z</option>
+          <option value="title-desc">Title Z→A</option>
+          <option value="year-desc">Year, new→old</option>
+          <option value="year-asc">Year, old→new</option>
+          <option value="rating-desc">My rating, high→low</option>
+          <option value="rating-asc">My rating, low→high</option>
+          <option value="imdb-desc">IMDb rating, high→low</option>
+          <option value="updated-desc">Recently changed</option>
+        </select>
+      </label>
+      <label class="chip chip-select" id="wrap-group">
+        <select id="sel-group" aria-label="Group by">
+          <option value="year">By year</option>
+          <option value="decade">By decade</option>
+          <option value="status">By status</option>
+          <option value="rating">By rating</option>
+          <option value="added">By month added</option>
+          <option value="none">No grouping</option>
+        </select>
+      </label>
+    </div>
+
     <button class="icon-btn" id="btn-filters" type="button" aria-label="Filters">
       <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
       <span class="dot-badge" id="filter-badge" hidden></span>
@@ -46,60 +95,12 @@
       <svg class="ico" aria-hidden="true"><use href="#i-select"></use></svg>
     </button>
     <button class="icon-btn" id="btn-menu" type="button" aria-label="Menu">
-      <svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg>
+      <svg class="ico" aria-hidden="true"><use href="#i-more"></use></svg>
     </button>
-  </div>
-
-  <div class="bar bar-sections">
-    <div class="seg seg-sections" id="seg-sections" role="tablist" aria-label="Section"></div>
   </div>
 
   <div class="bar bar-tools" id="disco-tools" hidden></div>
 
-  <div class="bar bar-tools" id="toolbar">
-    <div class="viewtabs" id="viewtabs" role="tablist" aria-label="List"></div>
-    <span class="bar-sep" aria-hidden="true"></span>
-    <button class="chip chip-toggle" id="t-hide-watched" type="button" aria-pressed="false">
-      <svg class="ico" aria-hidden="true"><use href="#i-eye-off"></use></svg>
-      <span>Hide watched</span>
-    </button>
-    <button class="chip chip-toggle" id="t-hearts" type="button" aria-pressed="false">
-      <svg class="ico" aria-hidden="true"><use href="#i-heart"></use></svg>
-      <span>Loved</span>
-    </button>
-    <button class="chip chip-toggle" id="t-unrated" type="button" aria-pressed="false">
-      <span>Unrated</span>
-    </button>
-    <label class="chip chip-select" id="wrap-sort">
-      <svg class="ico" aria-hidden="true"><use href="#i-sort"></use></svg>
-      <select id="sel-sort" aria-label="Sort by">
-        <option value="added-desc">Newest added</option>
-        <option value="added-asc">Oldest added</option>
-        <option value="watched-desc">Recently watched</option>
-        <option value="title-asc">Title A→Z</option>
-        <option value="title-desc">Title Z→A</option>
-        <option value="year-desc">Year, new→old</option>
-        <option value="year-asc">Year, old→new</option>
-        <option value="rating-desc">My rating, high→low</option>
-        <option value="rating-asc">My rating, low→high</option>
-        <option value="imdb-desc">IMDb rating, high→low</option>
-        <option value="updated-desc">Recently changed</option>
-      </select>
-    </label>
-    <label class="chip chip-select" id="wrap-group">
-      <select id="sel-group" aria-label="Group by">
-        <option value="year">By year</option>
-        <option value="decade">By decade</option>
-        <option value="status">By status</option>
-        <option value="type">By type</option>
-        <option value="rating">By rating</option>
-        <option value="added">By month added</option>
-        <option value="none">No grouping</option>
-      </select>
-    </label>
-    <span class="bar-sep" id="kind-sep" aria-hidden="true" hidden></span>
-    <div class="kinds" id="kinds" role="group" aria-label="Show only these types" hidden></div>
-  </div>
 </header>
 
 <main id="library" class="library" tabindex="-1">
@@ -129,6 +130,7 @@
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
   <symbol id="i-sort" viewBox="0 0 24 24"><path d="M4 7h10M4 12h7M4 17h4M17 5v14M17 19l3-3M17 19l-3-3"/></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.5-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7-2.5c0 5-7 14.5-7 14.5z"/></symbol>

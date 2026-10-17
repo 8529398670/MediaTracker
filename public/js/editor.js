@@ -14,6 +14,7 @@ import {
 } from './ui.js';
 import { openPortingSheet } from './porting.js';
 import { universalPanel } from './importer.js';
+import { bestMatch, isCertain, warning } from './dupes.js';
 import { justWatchUrl } from './views.js';
 
 /* Whose score it is, the score, and how many it came from — "IMDb 7.8 from
@@ -497,10 +498,15 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
     for (const [id, button] of Object.entries(buttons)) {
       button.setAttribute('aria-selected', String(id === current));
     }
-    if (current === 'add') panel.replaceChildren(universalPanel(onDone, { defaultType, text }));
+    if (current === 'add') {
+      panel.replaceChildren(universalPanel(onDone, { defaultType, text, onOpen: openMine }));
+    }
     else if (current === 'manual') panel.replaceChildren(manualPanel());
     else panel.replaceChildren(pastePanel());
   }
+
+  // A title the warning names, opened on top of this sheet.
+  const openMine = (item) => openItem(item, { onChange: onDone, onDeleted: onDone });
 
   function manualPanel() {
     const wrap = el('div');
@@ -520,6 +526,23 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
       field('Link', link),
       field('Tags', tags),
     );
+
+    // Typed by hand is the likeliest to be one you already have under a
+    // name spelled another way, so it is checked as you type.
+    const warn = el('p.dupe-warn', { hidden: true });
+    const check = () => {
+      const match = title.value.trim()
+        ? bestMatch({ title: title.value, year: Number(year.value) || null }) : null;
+      warn.hidden = !match;
+      if (!match) return;
+      warn.classList.toggle('sure', isCertain(match));
+      warn.replaceChildren(warning(match), el('button.btn.sm.ghost', {
+        type: 'button', text: 'Open', onclick: () => openMine(match.item),
+      }));
+    };
+    title.addEventListener('input', check);
+    year.addEventListener('input', check);
+    wrap.insertBefore(warn, wrap.children[1] || null);
 
     const save = el('button.btn.primary.grow', { type: 'button', text: 'Add to library' });
     const saveAndNext = el('button.btn.ghost', { type: 'button', text: 'Add & keep going' });

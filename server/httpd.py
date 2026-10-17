@@ -26,7 +26,7 @@ from enrich import ENRICHER, Enricher
 from library import LIBRARY
 import lists
 import imgcache
-from netio import IMG_HOSTS, OUTBOUND_LIMIT, smaller_img
+from netio import IMG_HOSTS, IMG_LIMIT, OUTBOUND_LIMIT, smaller_img
 from normalize import _int, _s
 from providers import lookup, lookup_detail
 from resolve import identify, resolve
@@ -82,6 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         out["Vary"] = "Accept-Encoding"
         out["Content-Type"] = ctype
         out["Content-Length"] = str(len(body))
+        self._drain()
         try:
             self.send_response(status)
             for key, value in out.items():
@@ -99,7 +100,31 @@ class Handler(BaseHTTPRequestHandler):
     def _fail(self, status: int, message: str) -> None:
         self._json(status, {"error": message, "status": status})
 
+    def _drain(self) -> None:
+        """Read a request body nobody asked for. An answer given before the
+        body was read — a 429, a 403, a 405 — would otherwise leave it on a
+        kept-alive connection, where it is taken for the next request's first
+        line: the next request fails with a 501 that has nothing to do with
+        it. Too big to be worth reading, and the connection is closed instead."""
+        if getattr(self, "_body_read", True):
+            return
+        self._body_read = True
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length == 0:
+            return
+        if length < 0 or length > MAX_BODY:
+            self.close_connection = True
+            return
+        try:
+            self.rfile.read(length)
+        except OSError:
+            self.close_connection = True
+
     def _body(self) -> object | None:
+        self._body_read = True
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -209,7 +234,9 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
 
         # One handler can serve several requests on a kept-alive connection,
-        # so who is asking is worked out afresh every time.
+        # so who is asking is worked out afresh every time — and whether this
+        # one's body has been read.
+        self._body_read = False
         self.token = self._cookie(auth.COOKIE)
         self.user = None
         self.key = None
@@ -431,7 +458,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if head in ("lookup", "img"):
-            if not OUTBOUND_LIMIT.allow(self.client_address[0] if self.client_address else "?"):
+            limiter = IMG_LIMIT if head == "img" else OUTBOUND_LIMIT
+            if not limiter.allow(self.client_address[0] if self.client_address else "?"):
                 self._fail(429, "slow down")
                 return
             if head == "img":

@@ -15,28 +15,6 @@ function saveCollapsed() {
   try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsed])); } catch { /* ignore */ }
 }
 
-/* ------------------------------------------------------------------- stats */
-
-export function renderStats(node, s, shown, { elsewhere = 0, discover = 0 } = {}) {
-  clear(node);
-  if (!s.total && !elsewhere && !discover) { node.hidden = true; return; }
-  node.hidden = false;
-
-  const cell = (label, value) => el('span', null, [el('b', { text: String(value) }), ` ${label}`]);
-
-  node.append(cell('tracked', s.total));
-  if (shown !== s.total) node.append(cell('shown', shown));
-  // A search reaches past this tab; say how far, so a miss here is not read
-  // as a miss everywhere.
-  if (elsewhere) node.append(cell('elsewhere', elsewhere));
-  if (discover) node.append(cell('in Discover', discover));
-  node.append(cell('in queue', s.queue));
-  node.append(cell('watched', s.watched));
-  if (s.watching) node.append(cell('watching', s.watching));
-  if (s.hearts) node.append(cell('loved', s.hearts));
-  if (s.rated) node.append(el('span', null, [el('b', { text: s.avg.toFixed(1) }), ' avg rating']));
-}
-
 /* -------------------------------------------------------------------- card */
 
 /* The watched tick. An empty square said nothing about what it was for, so
@@ -532,7 +510,7 @@ function foundLinks(row) {
  * the two ways in — the queue, or straight to the watched pile. `mine` is
  * the library item it already is, when the search simply spelled it another
  * way; then the row says so and opens it instead. */
-export function foundRow(row, { badge = '', mine = null, on }) {
+export function foundRow(row, { badge = '', mine = null, warn = '', on }) {
   const body = el('div.result-body', null, [
     el('h4', { text: row.title || '?' }),
     el('div.card-meta', null, [
@@ -543,6 +521,8 @@ export function foundRow(row, { badge = '', mine = null, on }) {
       scoreBadge(scoreOf(row), { votes: true }),
     ]),
     (row.cast || []).length ? el('div.card-cast', { text: row.cast.slice(0, 3).join(', ') }) : null,
+    // Not certainly yours, but close enough to say so before Add is pressed.
+    warn ? el('p.dupe-warn', { text: warn }) : null,
     row.overview ? el('p', { text: row.overview }) : null,
     foundLinks(row),
   ]);

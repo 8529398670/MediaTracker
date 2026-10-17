@@ -16,6 +16,7 @@ import {
 } from './store.js';
 import { el, field, openSheet, segmented, toast } from './ui.js';
 import { parseAny, isPlaceholder } from './porting.js';
+import { bestMatch, isCertain, warning } from './dupes.js';
 
 /* How many lines are resolved one by one, with artwork shown as it arrives.
  * Past this a paste is a bulk import: the titles go in immediately and the
@@ -43,6 +44,8 @@ function entry(raw) {
     via: '',
     note: '',
     take: true,            // whether this one is going in
+    match: null,           // what in the library it looks like, if anything
+    judged: '',            // which answer the match and the tick were set for
   };
 }
 
@@ -155,7 +158,7 @@ function toItem(item, opts) {
 
 /* ================================ the panel ============================= */
 
-export function universalPanel(onDone, { defaultType = 'movie', text = '' } = {}) {
+export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpen = null } = {}) {
   const wrap = el('div');
   const opts = { type: defaultType === 'any' ? 'movie' : defaultType, status: 'queue' };
 
@@ -193,7 +196,22 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '' } = {}
     return null;
   };
 
+  /* Already yours? Checked against what the line turned out to be — its
+   * record id when it has one, else its name and year — and again whenever
+   * that changes. Certain means the tick comes off, once: it can be put back
+   * on, and stays on. Close means a warning, and the tick is left alone. */
+  function judge(item) {
+    const shown = item.row || (item.state === 'unsure' ? item.candidates[0] : null);
+    const what = shown ? { ...shown } : { title: item.title || item.raw, year: item.year };
+    const stamp = JSON.stringify([what.title, what.year, what.imdbId || '', item.state]);
+    if (stamp === item.judged) return;
+    item.judged = stamp;
+    item.match = bestMatch(what);
+    if (isCertain(item.match) && item.state !== 'waiting' && item.state !== 'looking') item.take = false;
+  }
+
   function drawRow(item) {
+    judge(item);
     // A match the server is not sure of is still shown — with its artwork,
     // labelled as a guess. You are looking at this: a wrong poster in front
     // of you is one tap from being fixed, where the same guess written
@@ -220,6 +238,12 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '' } = {}
         ? el('p.hint', { text: 'Not certain — check it, or pick another.' })
         : (item.state === 'missing' && item.note
           ? el('p.hint', { text: item.note }) : null),
+      item.match ? el('p.dupe-warn', { class: isCertain(item.match) ? 'sure' : null }, [
+        warning(item.match),
+        onOpen ? el('button.btn.sm.ghost', {
+          type: 'button', text: 'Open', onclick: () => onOpen(item.match.item),
+        }) : null,
+      ]) : null,
     ]);
 
     const art = shown && shown.poster
@@ -314,7 +338,10 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '' } = {}
     }
 
     const taking = entries.filter((e) => e.take).length;
-    go.textContent = taking ? `Add ${taking} ${taking === 1 ? 'title' : 'titles'}` : 'Nothing selected';
+    const have = entries.filter((e) => isCertain(e.match)).length;
+    go.textContent = taking ? `Add ${taking} ${taking === 1 ? 'title' : 'titles'}`
+      : have ? `${have === entries.length && have === 1 ? 'Already' : `${have} already`} in your library`
+        : 'Nothing selected';
     go.disabled = !taking || busy;
     go.addEventListener('click', addChosen);
     footer.append(go);

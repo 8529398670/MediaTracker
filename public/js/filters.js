@@ -2,35 +2,36 @@
  * phone remembers how you last left the list. */
 
 import {
-  TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, live, genreLabels,
+  TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, allGenres, live, genreLabels,
   fold, otherTypes, defaultOther, typesVersion, scoreOf,
 } from './store.js';
 import { el, field, openSheet, toast } from './ui.js';
 
 const VIEW_KEY = 'mt.view.v2';
 
-/* The library is split into sections, and each section has the same three
- * lists: everything, the queue you keep in order by hand, and the pile you
- * have already watched. TV keeps its own of each.
+/* The library is split into sections, one per type — Movies, TV, and each
+ * of the types the library's own list holds (store.js), in that list's order.
+ * Each section has the same three lists: everything, the queue you keep in
+ * order by hand, and the pile you have already watched.
  *
- * Movies and TV hold one kind of thing apiece. Everything else is Other —
- * documentaries and anime too, which is where the documents the library came
- * from file them — and a row of chips in the toolbar picks one kind of it out,
- * or any mix. What Other is split into is the library's own list (store.js),
- * so its types are read afresh each time. A type the list does not name lands
- * in Other as well, and gets a chip of its own while a title carries it.
- * `adds` is what a title added from the tab starts out as. */
-export const SECTIONS = [
-  { id: 'movie', label: 'Movies', types: ['movie'], adds: 'movie' },
-  { id: 'tv',    label: 'TV',     types: ['tv'], adds: 'tv' },
-  { id: 'other', label: 'Other',
-    get types() { return otherTypes().map((t) => t.id); },
-    get adds() { return defaultOther(); } },
-];
+ * Other used to hold every type that was not a film or a series, picked
+ * apart with a row of chips; each of those is a section in the sidebar now.
+ * A type the list does not name still gets a section while a title carries
+ * it, so nothing is ever unreachable. Read afresh each time: a renamed or
+ * added type is there on the next paint. */
+export function sections(items = live()) {
+  const ids = ['movie', 'tv', ...otherTypes().map((t) => t.id)];
+  for (const item of items) if (!ids.includes(item.type)) ids.push(item.type);
+  return ids.map((id) => ({ id, label: SECTION_LABEL[id], types: [id], adds: id }));
+}
 
-export const SECTION_LABEL = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label]));
+/** What a section is called in the sidebar: the type's own name, except the
+ * two that have always read as plurals. */
+export const SECTION_LABEL = new Proxy({}, {
+  get: (_, id) => (id === 'movie' ? 'Movies' : TYPE_LABEL[id] || String(id)),
+});
 
-export const sectionOf = (item) => (item.type === 'movie' || item.type === 'tv' ? item.type : 'other');
+export const sectionOf = (item) => item.type;
 
 export const VIEWS = [
   { id: 'list',    label: 'List' },
@@ -49,48 +50,16 @@ export function inView(item, view = filters.view) {
   return !allowed || allowed.includes(item.status);
 }
 
-/* ------------------------------------------------------------------- kinds */
-
-/** The kinds picked out of a section in the toolbar; none means all of them. */
-export function pickedTypes(section = filters.section) {
-  const list = (filters.sectionTypes || {})[section];
-  return Array.isArray(list) ? list : [];
+/** The titles the facets count: the section and list on screen, before
+ * anything picked in the sidebar or the filter sheet narrows them — so a
+ * count says how many a click would leave. */
+export function facetPool(items = live()) {
+  return items.filter((item) => sectionOf(item) === filters.section && inView(item));
 }
 
-/** Pick a kind out, or put it back. `null` puts every kind back. */
-export function pickType(type, section = filters.section) {
-  const now = pickedTypes(section);
-  const next = type === null ? []
-    : now.includes(type) ? now.filter((t) => t !== type) : [...now, type];
-  const all = { ...filters.sectionTypes };
-  if (next.length) all[section] = next; else delete all[section];
-  filters.sectionTypes = all;
-  saveView();
-}
-
-/** A chip for each kind a section is made of — and for any other kind that
- * has turned up in it — with how many the list on screen holds before
- * anything else narrows it. In the order the type menu lists them. */
-export function sectionKinds(items, section = filters.section, view = filters.view) {
-  const home = (SECTIONS.find((s) => s.id === section) || { types: [] }).types;
-  const count = new Map();
-  for (const item of items) {
-    if (sectionOf(item) !== section || !inView(item, view)) continue;
-    count.set(item.type, (count.get(item.type) || 0) + 1);
-  }
-  // The list's own types in its order, then any other a title still carries.
-  const strays = [...count.keys(), ...pickedTypes(section)]
-    .filter((id, at, all) => !home.includes(id) && all.indexOf(id) === at);
-  return [...home, ...strays]
-    .map((id) => ({ id, label: TYPE_LABEL[id] || id, count: count.get(id) || 0 }));
-}
-
-/** What a title added from the tab starts out as: the one kind picked out
- * in the toolbar when exactly one is, or else what the section adds. */
+/** What a title added from the section on screen starts out as. */
 export function addingType(section = filters.section) {
-  const picked = pickedTypes(section);
-  if (picked.length === 1) return picked[0];
-  return (SECTIONS.find((s) => s.id === section) || SECTIONS[0]).adds;
+  return section && section !== 'discover' ? section : 'movie';
 }
 
 /* Titles that have just been ticked out of the list on screen and are being
@@ -106,13 +75,12 @@ export const filters = {
   section: 'movie',
   view: 'list',
   q: '',
-  // Section id -> the kinds picked out of it. Kept apart per section, so
-  // picking Audio Books on Other does not empty Movies.
-  sectionTypes: {},
   statuses: [],
   tags: [],
   certs: [],
+  genres: [],
   hideWatched: false,
+  hideSkipped: false,
   heartsOnly: false,
   unratedOnly: false,
   minRating: 0,
@@ -130,9 +98,16 @@ export function loadView() {
     const saved = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}');
     Object.assign(filters, saved, { q: '' });
   } catch { /* first run */ }
-  // The one type filter used to span every section; it is per section now.
+  // The one type filter used to span every section, and then Other picked
+  // its kinds with chips. Every type is a section of its own now.
   delete filters.types;
-  if (!filters.sectionTypes || typeof filters.sectionTypes !== 'object') filters.sectionTypes = {};
+  delete filters.sectionTypes;
+  if (filters.section === 'other' && !otherTypes().some((t) => t.id === 'other')) {
+    filters.section = defaultOther();
+  }
+  if (!Array.isArray(filters.genres)) filters.genres = [];
+  // Each section is a single type, so grouping one by type says nothing.
+  if (filters.group === 'type') filters.group = 'year';
   return filters;
 }
 
@@ -142,10 +117,11 @@ export function saveView() {
 
 export function activeCount() {
   let n = 0;
-  if (pickedTypes().length) n += 1;
   if (filters.statuses.length) n += 1;
   if (filters.tags.length) n += 1;
   if (filters.certs.length) n += 1;
+  if (filters.genres.length) n += 1;
+  if (filters.hideSkipped) n += 1;
   if (filters.heartsOnly) n += 1;
   if (filters.unratedOnly) n += 1;
   if (filters.hideWatched) n += 1;
@@ -157,8 +133,8 @@ export function activeCount() {
 
 export function resetFilters() {
   Object.assign(filters, {
-    sectionTypes: {}, statuses: [], tags: [], certs: [],
-    hideWatched: false, heartsOnly: false, unratedOnly: false,
+    statuses: [], tags: [], certs: [], genres: [],
+    hideWatched: false, hideSkipped: false, heartsOnly: false, unratedOnly: false,
     minRating: 0, yearFrom: null, yearTo: null, hasLinks: false, noLinks: false,
   });
   saveView();
@@ -333,9 +309,7 @@ export function whyMatched(item, raw) {
 export function apply(items = live(), { everywhere = false } = {}) {
   const parsed = parseQuery(filters.q);
   const searching = Boolean(filters.q.trim());
-  // Which kinds of this section are on show is a matter of where you are,
-  // like the section itself, so a search that reaches past it lifts it too.
-  const kinds = everywhere ? [] : pickedTypes();
+  const genres = filters.genres.map((g) => g.toLowerCase());
 
   return items.filter((item) => {
     const stays = lingering.has(item.id);
@@ -344,12 +318,19 @@ export function apply(items = live(), { everywhere = false } = {}) {
     // While searching, watched items stay visible - you are looking for them.
     if (!everywhere && !stays && filters.hideWatched && filters.view === 'list' && !searching
         && item.status === 'watched') return false;
+    // Skipped titles go the same way, and come back the same way: a search.
+    if (!everywhere && !stays && filters.hideSkipped && filters.view === 'list' && !searching
+        && item.status === 'dropped') return false;
     if (filters.heartsOnly && !item.heart) return false;
     if (filters.unratedOnly && item.rating) return false;
-    if (kinds.length && !kinds.includes(item.type)) return false;
     if (!stays && filters.statuses.length && !filters.statuses.includes(item.status)) return false;
     if (filters.tags.length && !filters.tags.every((t) => item.tags.includes(t))) return false;
     if (filters.certs.length && !filters.certs.includes(item.certification || '')) return false;
+    // Every genre picked, so Romance and Comedy together narrow to both.
+    if (genres.length) {
+      const has = (item.genres || []).map((g) => g.toLowerCase());
+      if (!genres.every((g) => has.includes(g))) return false;
+    }
     if (filters.minRating > 0 && (item.rating || 0) < filters.minRating) return false;
     if (filters.yearFrom && (item.year || 0) < filters.yearFrom) return false;
     if (filters.yearTo && (item.year || 9999) > filters.yearTo) return false;
@@ -500,15 +481,6 @@ export function openFilterSheet(onApply) {
     return row;
   };
 
-  // Only where there is more than one kind to pick from, and the same pick as
-  // the chips in the toolbar — so it is this section's, not every section's.
-  const kinds = sectionKinds(live());
-  if (kinds.length > 1) {
-    const picked = [...pickedTypes()];
-    draft.sectionTypes = { ...draft.sectionTypes, [filters.section]: picked };
-    body.append(field('Type', multiChips(
-      kinds.map((k) => ({ id: k.id, label: `${k.label} ${k.count}` })), picked)));
-  }
   body.append(field('Status', multiChips(STATUSES, draft.statuses)));
 
   const tags = allTags();
@@ -530,10 +502,21 @@ export function openFilterSheet(onApply) {
     ));
   }
 
+  const genres = allGenres(facetPool());
+  if (genres.length) {
+    body.append(field(
+      'Genre',
+      multiChips(genres.map(([genre, count]) => ({ id: genre, label: `${genre} ${count}` })),
+        draft.genres),
+      'Pick two and a title has to be both.',
+    ));
+  }
+
   const flags = el('div.chip-row', null, [
     toggleChip('Loved only', () => draft.heartsOnly, (v) => { draft.heartsOnly = v; }),
     toggleChip('Unrated only', () => draft.unratedOnly, (v) => { draft.unratedOnly = v; }),
     toggleChip('Hide watched', () => draft.hideWatched, (v) => { draft.hideWatched = v; }),
+    toggleChip('Hide skipped', () => draft.hideSkipped, (v) => { draft.hideSkipped = v; }),
     toggleChip('Has a link', () => draft.hasLinks, (v) => { draft.hasLinks = v; if (v) draft.noLinks = false; }),
     toggleChip('Missing a link', () => draft.noLinks, (v) => { draft.noLinks = v; if (v) draft.hasLinks = false; }),
   ]);

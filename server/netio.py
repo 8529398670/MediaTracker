@@ -266,6 +266,10 @@ class Breaker:
 
 BREAKER = Breaker()
 OUTBOUND_LIMIT = RateLimiter(180, 60.0)
+# Artwork has its own allowance. A page of the library is a few hundred
+# posters at once, mostly served from the cache; counted with the lookups,
+# loading the page used up the minute and every lookup after it failed.
+IMG_LIMIT = RateLimiter(1500, 60.0)
 
 
 # --------------------------------------------------------------------------

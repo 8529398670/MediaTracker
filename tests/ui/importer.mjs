@@ -148,9 +148,20 @@ const count = store.live().length;
 area.value = 'Sunrise';
 area.fire('paste');
 await new Promise((r) => setTimeout(r, 250));
-panel.find((n) => n.tagName === 'BUTTON' && /^Add \d/.test(n.textContent))[0].fire('click');
+// Already there, certainly: said on the row, and the tick is off before
+// anyone presses anything.
+row = panel.find((n) => n.classList.has('result'));
+const warned = row[0].find((n) => n.classList.has('dupe-warn'));
+if (!warned.length || !/Already in your library/.test(warned[0].text())) {
+  throw new Error(`no warning on a title already there: ${row[0].text()}`);
+}
+const go = panel.find((n) => n.tagName === 'BUTTON' && n.classList.has('primary'))[0];
+if (!go.disabled || !/already in your library/i.test(go.textContent)) {
+  throw new Error(`the add button offered a duplicate: ${go.textContent}`);
+}
+go.fire('click');
 await new Promise((r) => setTimeout(r, 120));
 if (store.live().length !== count) throw new Error(`a duplicate was added (${store.live().length} vs ${count})`);
 
-console.log('ok — a guess is shown with artwork and taken, picking overrides it, duplicates are skipped');
+console.log('ok — a guess is shown with artwork and taken, picking overrides it, duplicates are warned and unticked');
 console.log(`   ${store.live().length} items in the library at the end`);

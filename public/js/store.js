@@ -855,9 +855,9 @@ export function removeSource(id) {
 
 /* ----------------------------------------------------------- derived data */
 
-export function allTags() {
+export function allTags(items = live()) {
   const counts = new Map();
-  for (const item of live()) {
+  for (const item of items) {
     for (const tag of item.tags) counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -871,9 +871,9 @@ const CERT_ORDER = ['G', 'PG', 'PG-13', 'R', 'NC-17',
   'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'NR'];
 
 /** [certification, count], familiar ratings first, "not rated" last. */
-export function allCerts() {
+export function allCerts(items = live()) {
   const counts = new Map();
-  for (const item of live()) {
+  for (const item of items) {
     const cert = item.certification || '';
     counts.set(cert, (counts.get(cert) || 0) + 1);
   }
@@ -884,6 +884,23 @@ export function allCerts() {
   };
   return [...counts.entries()]
     .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+}
+
+/** [genre, count] as the providers stored them, most common first. Spelled
+ * the way the first title carrying it spelled it; matched without case. */
+export function allGenres(items = live()) {
+  const counts = new Map();
+  const spelt = new Map();
+  for (const item of items) {
+    for (const genre of new Set((item.genres || []).map((g) => g.trim()).filter(Boolean))) {
+      const key = genre.toLowerCase();
+      if (!spelt.has(key)) spelt.set(key, genre);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([key, n]) => [spelt.get(key), n])
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
 export function stats(rows = live()) {

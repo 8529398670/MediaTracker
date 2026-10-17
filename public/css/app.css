@@ -219,6 +219,30 @@ a { color: var(--accent-2); }
   place-items: center;
 }
 
+/* The section's three lists, its sort and its grouping, in the one bar —
+ * between the search and the buttons. Where there is not room for all of it
+ * (a phone, a narrow window) they drop to a line of their own and scroll. */
+.bar-main { flex-wrap: wrap; row-gap: 6px; }
+.search-field { flex: 1 1 200px; }
+.bar-lib {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.bar-lib[hidden] { display: none; }
+@media (max-width: 899px) {
+  .search-field { flex-basis: 120px; }
+  .bar-lib {
+    order: 10;
+    flex: 1 1 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .bar-lib::-webkit-scrollbar { display: none; }
+}
+
 .bar-tools {
   padding-top: 0;
   padding-bottom: 8px;
@@ -1064,22 +1088,139 @@ select.input { appearance: none; -webkit-appearance: none; }
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
 }
 
-/* ------------------------------------------------------- section / view nav
+/* ---------------------------------------------------------------- sidebar
 
-   Two rows under the search bar: which part of the library you are in
-   (Movies, TV, Other) and which of its three lists. */
+   Where you are, down the left: a section per type, Discover, the one-click
+   filters, the tools. Fixed beside the page on a wide screen; a drawer
+   behind the button at the top left on anything narrower. */
 
-.bar-sections { padding-top: 2px; padding-bottom: 6px; }
+:root { --side-w: 232px; }
 
-.seg-sections { width: 100%; }
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  width: min(var(--side-w), 84vw);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border-right: 1px solid var(--line-soft);
+  padding: calc(10px + var(--safe-t)) 10px calc(24px + var(--safe-b)) calc(10px + var(--safe-l));
+  transform: translateX(-102%);
+  transition: transform .2s ease;
+}
+body.nav-open .sidebar { transform: none; box-shadow: var(--shadow); }
+@media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 
-.seg-sections button {
+.nav-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(15, 23, 35, .32);
+}
+
+.side-brand { display: flex; align-items: center; gap: 7px; padding: 6px 8px 12px; }
+.side-brand .brand-name { display: inline; }
+
+.side-group { padding-bottom: 8px; }
+.side-group + .side-group { border-top: 1px solid var(--line-soft); padding-top: 8px; }
+
+.side-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 34px;
-  letter-spacing: .2px;
+  justify-content: space-between;
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.side-clear {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--accent-2);
+}
+
+.side-item,
+.facet-row,
+.facet-head,
+.facet-more {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-2);
+  text-align: left;
+  font-size: 14px;
+}
+.side-item:hover, .facet-row:hover, .facet-head:hover, .facet-more:hover { background: var(--surface-2); }
+.side-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+  font-weight: 650;
+}
+.side-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-count { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.side-item[aria-current="page"] .side-count { color: var(--accent); }
+.side-tool .ico { width: 17px; height: 17px; color: var(--text-3); }
+
+.facet-head { font-weight: 600; color: var(--text); min-height: 32px; }
+.facet-head span:nth-child(2) { flex: 1; }
+.facet-chev { width: 14px; height: 14px; color: var(--text-3); transform: rotate(90deg); transition: transform .15s; }
+.facet.shut .facet-chev { transform: none; }
+.facet-on {
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.facet-rows { padding: 0 0 6px 14px; }
+.flag-rows { padding: 0 0 6px; }
+.facet-row { min-height: 32px; font-size: 13.5px; }
+.facet-box {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+}
+.facet-row[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+.facet-row[aria-pressed="true"] .facet-box {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2.5px var(--surface);
+}
+.facet-more { min-height: 30px; font-size: 13px; color: var(--accent-2); }
+
+/* The button that opens the drawer; the brand moves into the sidebar once
+ * it is always there. */
+@media (min-width: 900px) {
+  body { padding-left: var(--side-w); }
+  .sidebar { width: var(--side-w); transform: none; transition: none; }
+  body.nav-open .sidebar { box-shadow: none; }
+  .nav-scrim { display: none; }
+  .nav-btn, .bar-main .brand { display: none; }
+  .select-bar { left: var(--side-w) !important; }
 }
 
 .tab-count {
@@ -1092,7 +1233,7 @@ select.input { appearance: none; -webkit-appearance: none; }
   color: var(--text-3);
   border: 1px solid var(--line-soft);
 }
-.seg-sections button[aria-pressed="true"] .tab-count {
+.viewtabs button[aria-selected="true"] .tab-count {
   background: color-mix(in srgb, var(--accent) 22%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--accent);
@@ -1894,9 +2035,7 @@ body.discovering .yearmap { display: none; }
    Other holds several kinds of thing, so its toolbar ends in a chip for each
    — after the grouping, any mix of them on at once. */
 
-.kinds { display: flex; align-items: center; gap: 6px; flex: none; }
-.kinds .chip { padding: 0 10px 0 12px; }
-.kinds .chip-count, .type-pick .chip-count { margin-left: -2px; }
+.type-pick .chip-count { margin-left: -2px; }
 /* A kind with nothing in it yet: there, so it can be picked, but quiet. */
 .chip.is-empty { color: var(--text-3); border-style: dashed; }
 .chip.is-empty[aria-pressed="true"] { border-style: solid; color: var(--accent); }
@@ -2061,7 +2200,6 @@ body.selecting .yearmap { bottom: calc(126px + var(--safe-b)); }
    Other's types, each with its two things to do: a name and a line saying how
    many titles it holds and where it is looked up, then Rename and Delete. */
 
-.kinds-edit .ico { width: 14px; height: 14px; }
 .type-intro { margin: 0 0 12px; }
 .type-row {
   display: flex;
@@ -2084,3 +2222,54 @@ body.selecting .yearmap { bottom: calc(126px + var(--safe-b)); }
   .type-row .btn span { display: none; }
   .type-row .btn { padding: 0 10px; }
 }
+
+/* ------------------------------------------------------------- duplicates */
+
+.dupe-warn,
+.result-body p.dupe-warn {
+  display: block;
+  -webkit-line-clamp: none;
+  margin: 4px 0 2px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+}
+.dupe-warn.sure,
+.result-body p.dupe-warn.sure {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 26%, transparent);
+}
+.dupe-warn .btn { margin-left: 6px; vertical-align: middle; }
+
+.dupe-group {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 8px;
+  margin: 10px 0;
+  background: var(--surface);
+}
+.dupe-why {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  padding: 2px 2px 6px;
+}
+.dupe-why > span:nth-child(2) { flex: 1; min-width: 8em; }
+.dupe-why .tag-badge.sure { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.dupe-row { margin: 4px 0; }
+.dupe-art {
+  flex: none;
+  width: 46px;
+  height: 69px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.dupe-row .found-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

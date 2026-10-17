@@ -31,8 +31,7 @@ globalThis.fetch = async (url, init) => {
 
 const store = await import('./store.js');
 const {
-  filters, apply, sectionOf, sectionKinds, pickedTypes, pickType, addingType, activeCount,
-  loadView, SECTIONS,
+  filters, apply, sectionOf, sections, addingType, activeCount, loadView, facetPool,
 } = await import('./filters.js');
 const select = await import('./select.js');
 const views = await import('./views.js');
@@ -77,53 +76,57 @@ const titles = (rows) => rows.map((item) => item.title);
 
 /* ----------------------------------------------------------- the sections */
 
-check('Movies and TV hold one kind each', SECTIONS.map((s) => s.types.length).slice(0, 2), [1, 1]);
-check('documentaries, anime, audio books and podcasts are Other',
-  ['doc', 'anime', 'audiobook', 'podcast', 'book'].map((type) => sectionOf({ type })),
-  ['other', 'other', 'other', 'other', 'other']);
+check('a section for every type: Movies, TV, the list\'s own, then a stray one a title carries',
+  sections().map((s) => s.label),
+  ['Movies', 'TV', 'Anime', 'Documentary', 'Book', 'Game', 'Audio Book', 'Other', 'Podcast']);
+check('each holds the one type', ['doc', 'anime', 'podcast'].map((type) => sectionOf({ type })),
+  ['doc', 'anime', 'podcast']);
 check('so a documentary has left the Movies tab', (() => {
   filters.section = 'movie'; filters.view = 'list'; filters.q = '';
   return titles(apply());
 })(), ['Heat', 'Ninotchka']);
 
-filters.section = 'other';
-check('a chip for each type in Other\'s list, in its order, then the podcast a title carries',
-  sectionKinds(store.live()).map((k) => `${k.label} ${k.count}`),
-  ['Anime 0', 'Documentary 1', 'Book 2', 'Game 0', 'Audio Book 0', 'Other 1', 'Podcast 1']);
-check('Movies has nothing to pick between', sectionKinds(store.live(), 'movie').length, 1);
-
-/* -------------------------------------------------------- picking a kind */
-
-pickType('book');
-check('one chip: only that kind', titles(apply()), ['A Court of Thorns and Roses', 'Into Thin Air']);
-pickType('doc');
-check('two chips: either kind', titles(apply()).sort(),
-  ['A Court of Thorns and Roses', 'Into Thin Air', 'March of the Penguins']);
-check('and it counts as a filter here', activeCount(), 1);
-
-filters.section = 'movie';
-check('the pick is Other\'s alone — Movies is untouched', titles(apply()), ['Heat', 'Ninotchka']);
-check('and is not a filter on Movies', activeCount(), 0);
-filters.section = 'other';
+filters.section = 'book';
+check('Book holds the books', titles(apply()), ['A Court of Thorns and Roses', 'Into Thin Air']);
+check('and + adds a book there', addingType(), 'book');
+check('Movies adds movies', addingType('movie'), 'movie');
 
 filters.q = 'heat';
-check('a search reaching past the tab is not held back by the pick',
+check('a search reaching past the section finds the film',
   titles(apply(store.live(), { everywhere: true })), ['Heat']);
 filters.q = '';
 
-pickType('doc');
-check('a second tap puts a kind back', pickedTypes(), ['book']);
-check('one kind picked: that is what + adds here', addingType(), 'book');
-pickType('other');
-check('two picked: + adds plain Other', addingType(), 'other');
-check('Movies adds movies whatever Other has picked', addingType('movie'), 'movie');
-pickType(null);
-check('All puts every kind back', [pickedTypes(), apply().length], [[], 5]);
+/* ----------------------------------------------------------- the facets */
 
-localStorage.setItem('mt.view.v2', JSON.stringify({ section: 'other', types: ['movie'] }));
+store.patchItem('m1', { genres: ['Crime', 'Drama'], certification: 'R' });
+store.patchItem('m2', { genres: ['Comedy', 'Romance'], certification: 'PG-13' });
+filters.section = 'movie';
+check('the facets count the list on screen', facetPool().length, 2);
+filters.genres = ['romance'];
+check('a genre, picked in any case', titles(apply()), ['Ninotchka']);
+filters.genres = ['Romance', 'Drama'];
+check('two genres: a title has to be both', titles(apply()), []);
+filters.genres = [];
+filters.certs = ['PG-13', 'R'];
+check('two age ratings: either', titles(apply()).sort(), ['Heat', 'Ninotchka']);
+filters.certs = ['PG-13'];
+check('one: only that', titles(apply()), ['Ninotchka']);
+check('and it counts as a filter', activeCount(), 1);
+filters.certs = [];
+
+store.patchItem('m1', { status: 'dropped' });
+filters.hideSkipped = true;
+check('hide skipped takes the skipped ones off the list', titles(apply()), ['Ninotchka']);
+filters.q = 'heat';
+check('but a search still finds them', titles(apply()), ['Heat']);
+filters.q = '';
+filters.hideSkipped = false;
+store.patchItem('m1', { status: 'queue' });
+
+localStorage.setItem('mt.view.v2', JSON.stringify({ section: 'other', types: ['movie'], sectionTypes: { other: ['book'] }, group: 'type' }));
 loadView();
-check('the old every-section type filter is dropped on load', [filters.types, filters.sectionTypes],
-  [undefined, {}]);
+check('the old type filters are dropped on load', [filters.types, filters.sectionTypes, filters.group],
+  [undefined, undefined, 'year']);
 
 /* ------------------------------------------------------------- the cards */
 
@@ -195,7 +198,7 @@ check('and nothing happens until a type is chosen', button('Pick a type') !== un
 inSheet((n) => n.dataset && n.dataset.type === 'audiobook')[0].fire('click');
 check('choosing one says what the button will do', button('Mark 2 as Audio Book') !== undefined, true);
 check('and where they end up', inSheet((n) => n.classList.has('hint'))[0].textContent,
-  'They stay in Other.');
+  'They move to Audio Book.');
 button('Cancel').fire('click');
 check('Cancel changes nothing', store.getItem('b1').type, 'book');
 
@@ -205,10 +208,11 @@ button('Mark 2 as Audio Book').fire('click');
 check('confirmed, both are audio books', [store.getItem('b1').type, store.getItem('b2').type],
   ['audiobook', 'audiobook']);
 check('and the pick is over', [select.picking.on, select.picking.ids.size], [false, 0]);
-check('the Audio Book chip now finds them', (() => {
-  pickType('audiobook');
+check('the Audio Book section now holds them', (() => {
+  const was = filters.section;
+  filters.section = 'audiobook';
   const shown = titles(apply());
-  pickType(null);
+  filters.section = was;
   return shown;
 })(), ['A Court of Thorns and Roses', 'Into Thin Air']);
 undoLast();

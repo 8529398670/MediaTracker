@@ -25,7 +25,7 @@ globalThis.fetch = async (url, init) => {
 };
 
 const store = await import('./store.js');
-const { filters, apply, sectionKinds, pickType, pickedTypes, addingType } = await import('./filters.js');
+const { filters, apply, sections, addingType } = await import('./filters.js');
 const types = await import('./types.js');
 const { rowToItem } = await import('./importer.js');
 
@@ -70,7 +70,7 @@ store.state.items = [
   make('p1', 'The Daily', 'podcast'),
   make('m1', 'Heat', 'movie'),
 ];
-filters.section = 'other';
+filters.section = 'book';
 filters.view = 'list';
 filters.q = '';
 
@@ -105,7 +105,7 @@ primary().fire('click');
 check('added, at the end of the list', store.otherTypes().at(-1),
   { id: 'stand-up-comedy', label: 'Stand-up Comedy', lookup: 'other' });
 check('in every Type menu at once', store.TYPES.at(-1), { id: 'stand-up-comedy', label: 'Stand-up Comedy' });
-check('with a chip on the Other tab', sectionKinds(store.live()).map((k) => k.label).includes('Stand-up Comedy'), true);
+check('with a section of its own', sections().map((k) => k.label).includes('Stand-up Comedy'), true);
 check('and waiting to go to the server', store.state.typesDirty, true);
 check('a second one of the same name would get its own id', types.newTypeId('Stand-up Comedy'),
   'stand-up-comedy-2');
@@ -113,6 +113,7 @@ check('a name with no letters it can use still gets one', types.newTypeId('日�
 
 /* --------------------------------------------------------------- renaming */
 
+filters.section = 'audiobook';
 filters.q = 'audio book';
 check('before: "audio book" finds the audio book by its type', apply().map((i) => i.title),
   ['Into Thin Air']);
@@ -148,7 +149,7 @@ check('an empty type says so, and deletes on the word', [sheetTitle(), primary()
 primary().fire('click');
 check('gone from the list', ids().includes('game'), false);
 
-pickType('book');
+filters.section = 'book';
 types.deleteType(types.typeRows().find((r) => r.id === 'book'));
 check('a type with titles asks where they go, Other first',
   [sheetTitle(), primary().text()], ['Delete “Book”?', 'Delete, and move 2 to Other']);
@@ -156,13 +157,13 @@ check('and names them', inSheet((n) => n.tagName === 'LI').map((n) => n.textCont
 inSheet((n) => n.dataset && n.dataset.type === 'movie')[0].fire('click');
 check('another place can be picked — Movie too', [primary().text(),
   inSheet((n) => n.tagName === 'P' && n.classList.has('hint'))[0].textContent],
-  ['Delete, and move 2 to Movie', 'They move to the Movies tab, at the back of its queue.']);
+  ['Delete, and move 2 to Movie', 'They move to Movies, at the back of its queue.']);
 primary().fire('click');
 check('the titles moved first, to the back of the Movies queue',
   ['b1', 'b2'].map((id) => [store.getItem(id).type, store.getItem(id).order]),
   [['movie', null], ['movie', null]]);
 check('the type is gone', ids().includes('book'), false);
-check('and so is the chip that was picking it', pickedTypes(), []);
+check('and the section that was open follows the titles', filters.section, 'movie');
 undoLast();
 check('Undo puts the type back where it was', ids().indexOf('book'), 2);
 check('and the titles back in it, in their places',
@@ -176,7 +177,7 @@ store.setOtherTypes([{ id: 'other', label: 'Other', lookup: 'other' },
 types.deleteType(types.typeRows().find((r) => r.id === 'other'));
 primary().fire('click');
 check('with "Other" deleted, a title with no type in mind goes to the first left',
-  [addingType('other'), rowToItem({ title: 'x' }, { type: 'any' }).type], ['book', 'book']);
+  [store.defaultOther(), rowToItem({ title: 'x' }, { type: 'any' }).type], ['book', 'book']);
 check('the last type cannot go: there is nowhere left to put it',
   types.deleteType(types.typeRows().find((r) => r.id === 'book')), null);
 types.openTypes();
