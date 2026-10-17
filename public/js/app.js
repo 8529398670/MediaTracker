@@ -4,7 +4,7 @@ import {
   api, state, boot, onChange, notify, refresh, sync, live, stats, allTags,
   toggleHeart, toggleWatched, removeSource, addSource, checkpoint, undo,
   reorderQueue, patchItem, getItem, addItem, fillIn, stage,
-  TYPE_LABEL, STATUS_LABEL, allCerts, allGenres, patchMany,
+  TYPE_LABEL, STATUS_LABEL, allCerts, allGenres, patchMany, fold,
   enrich, watchEnrich, staging, staged, unstage, otherTypes,
 } from './store.js';
 import {
@@ -903,15 +903,72 @@ function openEnrich() {
 
 /* --------------------------------------------------------------- year map */
 
+/* What an ungrouped list is ordered by, as a rail can read it: the release
+ * year, the month a date sort runs on (most of a library is added or watched
+ * within a year or two, so a year rail there would be one or two marks), or
+ * a title's first letter — as the sort reads it, "The" and all. A sort by a
+ * score runs up and down the years, so it has no rail. */
+const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function monthOf(iso) {
+  const date = new Date(iso || '');
+  return Number.isNaN(+date) ? '' : `${MONTH[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+const RAIL_BY = {
+  'year-desc': (item) => item.year,
+  'year-asc': (item) => item.year,
+  'watched-desc': (item) => monthOf(item.watchedAt),
+  'added-desc': (item) => monthOf(item.addedAt),
+  'added-asc': (item) => monthOf(item.addedAt),
+  'updated-desc': (item) => monthOf(item.updatedAt),
+  'title-asc': (item) => firstLetter(item.title),
+  'title-desc': (item) => firstLetter(item.title),
+};
+
+/* The sort puts a title that starts with a quote, a bracket or a digit
+ * before the A's, so the rail calls all of those #. */
+function firstLetter(title) {
+  const ch = String(title || '').trim().normalize('NFKD').charAt(0).toUpperCase();
+  return /[A-Z]/.test(ch) ? ch : '#';
+}
+
+/** The rail of an ungrouped list: where each year (or letter) starts. */
+function flatRail(items) {
+  const by = RAIL_BY[filters.sort];
+  if (!by) return null;
+  const rail = [];
+  const seen = new Set();
+  for (const item of items) {
+    const label = String(by(item) || '') || (filters.sort.startsWith('title') ? '#' : 'No date');
+    if (seen.has(label)) { rail[rail.length - 1].items.push(item); continue; }
+    seen.add(label);
+    rail.push({ key: item.id, label, items: [item] });
+  }
+  return rail;
+}
+
+const cardOf = (id) => boxes.main.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
+
+function jumpToCard(id, { smooth = true, tries = 12 } = {}) {
+  // The cards stream in; one far down the list may not be drawn yet.
+  if (!scrollToNode(() => cardOf(id), 10, smooth) && tries) {
+    setTimeout(() => jumpToCard(id, { smooth, tries: tries - 1 }), 60);
+  }
+}
+
 function paintYearMap(groups) {
-  const wanted = groups && filters.map && filters.group !== 'none';
-  if (!wanted) {
+  const flat = groups && filters.group === 'none';
+  const rail = flat ? flatRail(groups.flatMap((g) => g.items)) : groups;
+  if (!rail || !filters.map) {
     dom.yearmap.hidden = true;
     dom.yearmap.replaceChildren();
     document.body.classList.remove('has-map');
     return;
   }
-  const observe = renderYearMap(dom.yearmap, groups, { onJump: jumpToGroup });
+  const observe = renderYearMap(dom.yearmap, rail, flat
+    ? { onJump: jumpToCard, anchors: cardOf }
+    : { onJump: jumpToGroup });
   document.body.classList.toggle('has-map', !dom.yearmap.hidden);
   if (observe) observe(dom.list);
 }
@@ -921,14 +978,40 @@ function headerHeight() {
     .getPropertyValue('--top-h'), 10) || 104;
 }
 
-function jumpToGroup(key, { smooth = true } = {}) {
-  const section = dom.list.querySelector(`.group[data-key="${CSS.escape(String(key))}"]`);
-  if (!section) return;
-  const top = section.getBoundingClientRect().top + window.scrollY - headerHeight() - 6;
-  window.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+/* Cards off screen are only estimated (content-visibility in app.css), so
+ * landing near one makes the cards around it take their real heights and
+ * push it away. The jump is put right again until it stops moving. */
+let settling = 0;
+function scrollToNode(find, gap, smooth) {
+  const mine = ++settling;
+  const go = (how) => {
+    const node = find();
+    if (!node) return null;
+    const off = node.getBoundingClientRect().top - headerHeight() - gap;
+    if (Math.abs(off) > 2) window.scrollTo({ top: Math.max(0, window.scrollY + off), behavior: how });
+    return off;
+  };
+  if (go(smooth ? 'smooth' : 'auto') === null) return false;
+  let tries = 0;
+  const settle = () => {
+    if (mine !== settling || tries++ > 12) return;
+    // A smooth scroll still on its way is left to arrive.
+    const off = go('auto');
+    if (off !== null && Math.abs(off) > 2) setTimeout(settle, 80);
+    else if (tries < 3) setTimeout(settle, 120);
+  };
+  setTimeout(settle, smooth ? 450 : 60);
+  return true;
 }
 
-wireYearMap(dom.yearmap, dom.bubble, { onJump: jumpToGroup });
+function jumpToGroup(key, { smooth = true } = {}) {
+  scrollToNode(() => dom.list.querySelector(`.group[data-key="${CSS.escape(String(key))}"]`),
+    6, smooth);
+}
+
+wireYearMap(dom.yearmap, dom.bubble, {
+  onJump: (key, opts) => (filters.group === 'none' ? jumpToCard(key, opts) : jumpToGroup(key, opts)),
+});
 
 /* ---------------------------------------------------------------- sidebar */
 

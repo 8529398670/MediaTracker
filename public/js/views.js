@@ -931,8 +931,24 @@ const EMPTY_COPY = {
 
 let mapObserver = null;
 
-export function renderYearMap(node, groups, { onJump }) {
+/* A narrow rail has room for two characters, so on a phone 1987 reads as
+ * 87 — and a decade as 80s, a month as Mar — rather than "1…". The full
+ * label stays in the bubble and the tooltip. */
+function shortLabel(label) {
+  const text = String(label);
+  let m = /^(?:18|19|20)(\d\d)$/.exec(text);
+  if (m) return m[1];
+  m = /^(?:18|19|20)(\d0)s$/.exec(text);
+  if (m) return `${m[1]}s`;
+  if (/^No |^Unrated$|^Unknown$/.test(text)) return '–';
+  return text.slice(0, 3);
+}
+
+let anchorScroll = null;
+
+export function renderYearMap(node, groups, { onJump, anchors = null }) {
   if (mapObserver) { mapObserver.disconnect(); mapObserver = null; }
+  if (anchorScroll) { removeEventListener('scroll', anchorScroll); anchorScroll = null; }
   clear(node);
 
   const labelled = groups.filter((g) => g.label);
@@ -949,6 +965,7 @@ export function renderYearMap(node, groups, { onJump }) {
       onclick: () => onJump(group.key),
     }, [
       el('span.ym-label', { text: group.label }),
+      el('span.ym-short', { text: shortLabel(group.label), 'aria-hidden': 'true' }),
       el('span.ym-dot', { style: { '--n': String(Math.min(group.items.length, 24)) } }),
     ]);
     // Decades get a heavier tick, so a rail of bare marks still reads.
@@ -982,6 +999,36 @@ export function renderYearMap(node, groups, { onJump }) {
       node.scrollTo({ top: now.offsetTop - node.clientHeight / 2, behavior: 'smooth' });
     }
   };
+
+  /* With no sections to watch — the list ungrouped, the rail made from where
+     each year starts — the marker follows the last of those starts that has
+     gone under the header. Looked up afresh on each scroll, since the cards
+     stream in after the rail is drawn. */
+  if (anchors) {
+    let queued = false;
+    anchorScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        const line = (parseInt(getComputedStyle(document.documentElement)
+          .getPropertyValue('--top-h'), 10) || 104) + 40;
+        let here = order[0];
+        for (const key of order) {
+          const card = anchors(key);
+          if (!card) break;
+          if (card.getBoundingClientRect().top > line) break;
+          here = key;
+        }
+        onScreen.clear();
+        onScreen.add(here);
+        mark();
+      });
+    };
+    addEventListener('scroll', anchorScroll, { passive: true });
+    anchorScroll();
+    return () => {};
+  }
 
   // Following the list is a nicety. Somewhere without an observer still gets
   // a rail it can drag, so this must never be the thing that breaks the page.

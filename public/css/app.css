@@ -1532,6 +1532,13 @@ body.has-map .fab-dock { right: calc(var(--pad) + var(--safe-r) + 50px); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Two characters on a narrow rail: 87, not "1…". */
+.ym-short { display: none; white-space: nowrap; }
+@media (max-width: 899px) {
+  .ym-label { display: none; }
+  .ym-short { display: inline; }
+  .ym-item { font-size: 11px; letter-spacing: 0; }
+}
 
 /* The year under the pointer, read out beside the rail. */
 .ym-bubble {
