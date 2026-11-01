@@ -247,6 +247,7 @@ def normalize_item(raw: object, now: str | None = None) -> dict | None:
         "cast": cast,
         "certification": _s(raw.get("certification"), 32),
         "source": _s(raw.get("source"), 32),
+        "addedBy": _s(raw.get("addedBy"), 80),
         "sourceId": _s(raw.get("sourceId"), 120),
         "imdbId": _s(raw.get("imdbId"), 32),
         "wikiUrl": _url(raw.get("wikiUrl")),

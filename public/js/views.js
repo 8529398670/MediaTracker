@@ -93,7 +93,7 @@ export function card(item, on) {
       : null,
     item.status === 'watched' && item.watchedAt
       ? el('span', { text: `watched ${fmtAgo(item.watchedAt)}` })
-      : el('span', { text: `added ${fmtAgo(item.addedAt)}` }),
+      : el('span', { text: `added ${fmtAgo(item.addedAt)}${item.addedBy ? ` by ${item.addedBy}` : ''}` }),
     item.certification ? el('span.tag-badge.cert', {
       text: item.certification,
       title: `Show everything rated ${item.certification}`,
@@ -371,7 +371,7 @@ let renderToken = 0;
 function cardSig(item) {
   return JSON.stringify([
     item.title, item.year, item.type, TYPE_LABEL[item.type], item.status, item.watchedAt,
-    item.addedAt,
+    item.addedAt, item.addedBy,
     item.certification, item.genres, item.tags, item.runtime, item.cast,
     item.poster, item.rating, item.heart, item.imdbId, item.wikiUrl, item.links,
     scoreOf(item), appleTvHref(item),
@@ -608,31 +608,6 @@ export function foundRow(row, { badge = '', mine = null, warn = '', on }) {
       ];
 
   return el('div.result.found', null, [art, body, el('div.found-acts', null, acts)]);
-}
-
-/* Just added. The strip stays until it is cleared, so a title's artwork can
- * be seen to land — or seen not to, while it is still fresh enough to fix. */
-export function renderStaging(node, items, on, { running, current, onClear }) {
-  clear(node);
-  if (!items.length) { node.hidden = true; return; }
-  node.hidden = false;
-
-  const blank = items.filter((item) => !item.poster).length;
-  const note = running
-    ? `Filling in details${current ? ` — ${current}` : '…'}`
-    : blank ? `${blank} without artwork — open one to look it up`
-      : 'All filled in';
-
-  node.append(stripSection('staging', {
-    label: 'Just added', count: items.length, note,
-    action: { label: 'Clear', fn: onClear },
-  }, items.map((item) => {
-    const box = card(item, on);
-    // Waiting on the pass: a spinner where the poster will go, so a blank
-    // reads as "not yet" rather than "nothing".
-    if (running && !item.poster) box.classList.add('is-pending');
-    return box;
-  })));
 }
 
 /* ------------------------------------------------------------------- queue */

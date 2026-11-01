@@ -172,8 +172,9 @@ class Library:
 
     # -- writes --------------------------------------------------------
 
-    def replace(self, payload: dict) -> tuple[bool, dict]:
-        """Whole-document write with optimistic concurrency."""
+    def replace(self, payload: dict, by: str = "") -> tuple[bool, dict]:
+        """Whole-document write with optimistic concurrency. A title new to
+        the library is put down as added by `by`, unless it says already."""
         with self.lock:
             base = payload.get("rev")
             if not payload.get("force") and isinstance(base, int) and base != self.data["rev"]:
@@ -183,6 +184,11 @@ class Library:
             items = [i for i in (normalize_item(i, now) for i in payload.get("items") or []) if i]
             if len(items) > MAX_ITEMS:
                 return False, {"error": "too_many_items", "limit": MAX_ITEMS}
+            if by:
+                known = {i["id"] for i in self.data["items"]}
+                for item in items:
+                    if item["id"] not in known and not item["addedBy"]:
+                        item["addedBy"] = by
             sources = payload.get("sources")
             if sources is not None:
                 clean = [s for s in (normalize_source(s, now) for s in sources) if s]
@@ -195,11 +201,11 @@ class Library:
             self.data["items"] = items
             return True, self._commit()
 
-    def upsert(self, raw: dict) -> dict | None:
-        added = self.upsert_many([raw])
+    def upsert(self, raw: dict, by: str = "") -> dict | None:
+        added = self.upsert_many([raw], by)
         return added[0] if added else None
 
-    def upsert_many(self, raws: list) -> list[dict] | None:
+    def upsert_many(self, raws: list, by: str = "") -> list[dict] | None:
         """Add or replace several titles in one write. The ones that were
         taken, in the order given — one without a title is left out — or None
         if that would be more than the library holds."""
@@ -213,6 +219,8 @@ class Library:
             for item in taken:
                 at = index.get(item["id"])
                 if at is None:
+                    if by and not item["addedBy"]:
+                        item["addedBy"] = by
                     index[item["id"]] = len(self.data["items"])
                     self.data["items"].append(item)
                 else:

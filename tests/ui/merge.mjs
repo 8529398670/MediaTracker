@@ -139,29 +139,30 @@ const plain = views.card({ ...mine, status: 'queue' }, on);
 check('an unticked one carries a ghost of the mark',
   plain.find((n) => n.classList.has('check'))[0].find((n) => n.tagName === 'SVG').length, 1);
 
-/* ----------------------------------------------------------- the strip */
+/* ---------------------------------------------------------- just added */
 
+// Just Added is read off addedAt, so what was in the library before is put
+// back in time and the two titles here are the newest.
+for (const one of store.live()) one.addedAt = '2020-01-01T00:00:00Z';
+store.getItem(item.id).addedAt = '2030-01-01T00:00:00Z';
 const second = store.addItem({ title: 'The Weather Girl', type: 'movie' });
-store.stage([item.id, second.id]);
-check('the strip lists what was added, newest first',
-  store.staged().map((i) => i.title), ['The Weather Girl', 'Johnny Allegro']);
-
-const strip = new N('div');
-views.renderStaging(strip, store.staged(), on, { running: true, current: 'The Weather Girl',
-                                                 onClear() {} });
-check('the strip is drawn with a card per title',
-  strip.find((n) => n.classList.has('media-card')).length, 2);
-check('a title still waiting on its artwork is marked as waiting',
-  strip.find((n) => n.classList.has('is-pending')).length, 1);
-check('and the heading says what the pass is on',
-  strip.find((n) => n.classList.has('strip-note'))[0].text().includes('The Weather Girl'), true);
-
-store.unstage([second.id]);
-check('one can be taken off the strip', store.staged().map((i) => i.title), ['Johnny Allegro']);
-store.unstage();
-check('or all of them', store.staged().length, 0);
-views.renderStaging(strip, store.staged(), on, { running: false, current: '', onClear() {} });
-check('and an empty strip is hidden', strip.hidden, true);
+second.addedAt = '2030-01-01T00:00:01Z';
+check('Just Added lists what was added, newest first',
+  store.recentlyAdded(2).map((i) => i.title), ['The Weather Girl', 'Johnny Allegro']);
+const older = store.addItem({ title: 'Laura', type: 'movie' });
+older.addedAt = '2025-01-01T00:00:00Z';
+// Johnny Allegro was ticked above; un-tick it so only one is hidden.
+const allegroWas = store.getItem(item.id).status;
+store.patchItem(item.id, { status: 'queue' });
+store.patchItem(second.id, { status: 'watched' });
+const unwatched = (i) => i.status !== 'watched';
+check('what is hidden is left out before the count, so the list stays full',
+  store.recentlyAdded(2, unwatched).map((i) => i.title), ['Johnny Allegro', 'Laura']);
+check('  and the watched one is not among them',
+  store.recentlyAdded(2, unwatched).some((i) => i.id === second.id), false);
+store.patchItem(second.id, { status: 'queue' });
+store.patchItem(item.id, { status: allegroWas });
+store.removeItem(older.id);
 
 /* --------------------------------------------- looked up from the search */
 

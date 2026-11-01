@@ -180,8 +180,8 @@ check('and it arrives with what the harvest already knew',
   ["Adam's Rib", 1949, 'George Cukor', ['Romance', 'Comedy'],
    ['Spencer Tracy', 'Katharine Hepburn'], 'queue',
    'https://en.wikipedia.org/wiki/Adam%27s_Rib']);
-check('and the title is on the strip of what was just added',
-  store.staging.includes(added.id), true);
+check('and the title is first in Just Added',
+  store.recentlyAdded(1)[0].id, added.id);
 
 /* A topic film carries the topic in as a tag, so it can be found again. */
 rows[2].find((n) => n.classList.has('disco-act'))[0].fire('click');

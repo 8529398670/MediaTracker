@@ -166,6 +166,7 @@ export function newItem(partial = {}) {
     certification: '',
     order: null,
     addedAt: now,
+    addedBy: (state.config && state.config.me && state.config.me.name) || '',
     watchedAt: null,
     updatedAt: now,
     deleted: false,
@@ -506,7 +507,6 @@ export async function boot() {
   }
 
   state.loading = false;
-  readStaging();
   emit();
 
   addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
@@ -592,7 +592,7 @@ listeners.add(() => { wantScores(); });
  * many titles asked for it. */
 export const enrich = {
   running: false, current: '', done: 0, total: 0, filled: 0,
-  // What this page has asked for, cleared with the strip that shows it.
+  // What this page has asked for.
   asked: 0,
 };
 
@@ -635,66 +635,31 @@ export async function fillIn(ids) {
   return true;
 }
 
-/* ---------------------------------------------------------------- staging */
+/* ------------------------------------------------------------- just added */
 
-/* Everything added since the strip at the top of the library was last
- * cleared, newest first. A title goes in as a bare name and the fill-in pass
- * dresses it a few seconds later; the strip is where that can be watched
- * happening — and where a title it could not place is seen to be blank,
- * rather than found blank under its year a month on. */
-const STAGE_KEY = 'mt.staging.v1';
-const STAGE_MAX = 40;
+/* The last titles added to the library, newest first — by anyone, since the
+ * library is shared, so every browser shows the same list. Nothing is kept
+ * for it: it is read off each title's addedAt. */
+const JUST_ADDED = 27;
 
-export const staging = [];        // item ids
+const justAddedMax = () => (state.config && state.config.justAdded) || JUST_ADDED;
 
-function readStaging() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STAGE_KEY) || '[]');
-    if (Array.isArray(raw)) staging.push(...raw.filter((id) => typeof id === 'string'));
-  } catch { /* first run */ }
+/** The latest `limit` titles that `keep` lets through, newest first: the
+ * filter goes first, so hiding some still leaves a full list. */
+export function recentlyAdded(limit = justAddedMax(), keep = () => true) {
+  // Later in the list is later added when two share a moment, so the order
+  // is the list's, reversed, and then by date.
+  return live().reverse()
+    .filter(keep)
+    .map((item, at) => [item, at])
+    .sort(([a, i], [b, j]) => (b.addedAt || '').localeCompare(a.addedAt || '') || i - j)
+    .slice(0, limit)
+    .map(([item]) => item);
 }
 
-function writeStaging() {
-  try { localStorage.setItem(STAGE_KEY, JSON.stringify(staging)); } catch { /* ignore */ }
-}
-
-/** Put these at the top of the strip, the last one added first. */
+/** A title was added: redraw, so it shows in Just Added. */
 export function stage(ids) {
-  const fresh = ids.filter((id) => id && !staging.includes(id));
-  if (!fresh.length) return;
-  staging.unshift(...fresh.reverse());
-  staging.length = Math.min(staging.length, STAGE_MAX);
-  writeStaging();
-  emit();
-}
-
-/** Take these out of the strip — or everything, when nothing is named. */
-export function unstage(ids = null) {
-  const gone = ids ? new Set(ids) : null;
-  const keep = gone ? staging.filter((id) => !gone.has(id)) : [];
-  if (keep.length === staging.length) return;
-  staging.splice(0, staging.length, ...keep);
-  if (!staging.length) enrich.asked = 0;
-  writeStaging();
-  emit();
-}
-
-/** The staged titles that still exist, in strip order. One that has been
- * deleted since is dropped from the strip on the way past. */
-export function staged() {
-  const out = [];
-  const keep = [];
-  for (const id of staging) {
-    const item = getItem(id);
-    if (!item || item.deleted) continue;
-    out.push(item);
-    keep.push(id);
-  }
-  if (keep.length !== staging.length && !state.loading) {
-    staging.splice(0, staging.length, ...keep);
-    writeStaging();
-  }
-  return out;
+  if (ids && ids.length) emit();
 }
 
 /* ---------------------------------------------------------------- history */

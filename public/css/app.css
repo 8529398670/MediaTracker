@@ -285,8 +285,8 @@ a { color: var(--accent-2); }
 .navbar-brand:hover { color: var(--text); }
 
 .brand-mark { width: 21px; height: 21px; flex: none; }
-.brand-mark .bm-box { fill: var(--accent); stroke: none; }
-.brand-mark .bm-play { fill: var(--surface); stroke: none; }
+/* The mark's colours are inline styles on #i-brand itself: page CSS cannot
+ * reach into a <use> copy through an ancestor, and it drew black. */
 .brand-name { white-space: nowrap; }
 /* On a narrow phone the search box is worth more than the word. */
 @media (max-width: 575.98px) { .brand-name { display: none; } }
@@ -1187,6 +1187,9 @@ textarea.form-control { min-height: 84px; resize: vertical; line-height: 1.5; }
 
 .side-group { padding-bottom: 8px; }
 .side-group + .side-group { border-top: 1px solid var(--line-soft); padding-top: 8px; }
+/* Discover and Just Added are not sections of the library, so a firm rule
+   sets them off below it. */
+.side-apart { margin-top: 10px; padding-top: 10px; border-top: 2px solid var(--line); }
 
 .side-head {
   display: flex;
@@ -1870,36 +1873,8 @@ body.discovering .yearmap { display: none; }
 }
 .strip-act { margin-left: auto; min-height: 28px; padding: 0 10px; font-size: 12px; }
 
-/* Just added sits on a tinted ground so it reads as a tray rather than as
-   the first year in the list. */
-.strip.staging {
-  padding: 8px 8px 2px;
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line-soft));
-}
-.strip.staging .group-head {
-  position: static;
-  background: none;
-  border-bottom: 0;
-  padding-top: 2px;
-}
-.strip.staging .group-head h2 { color: var(--accent); }
-
-/* Waiting on the fill-in pass: a spinner where the poster will go. */
-.media-card.is-pending .media-poster { position: relative; color: transparent; }
-.media-card.is-pending .media-poster::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  border-top-color: var(--accent);
-  animation: spin .7s linear infinite;
-}
+/* Just Added's one line about the fill-in pass, over its cards. */
+.added-note { margin: 2px 2px 12px; font-size: 13px; color: var(--text-3); }
 
 /* Nothing here, but something below: one line, not a whole empty state. */
 .miss-note {

@@ -85,7 +85,7 @@ export function facetPool(items = live()) {
 
 /** What a title added from the section on screen starts out as. */
 export function addingType(section = filters.section) {
-  return section && section !== 'discover' ? section : 'movie';
+  return section && section !== 'discover' && section !== 'recent' ? section : 'movie';
 }
 
 /* Titles that have just been ticked out of the list on screen and are being

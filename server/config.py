@@ -117,6 +117,8 @@ OMDB_KEY = env("OMDB_API_KEY")
 ENRICH_DELAY = float(env("MT_ENRICH_DELAY", "0.25"))
 TOMBSTONE_DAYS = int(env("MT_TOMBSTONE_DAYS", "120"))
 BACKUP_KEEP = int(env("MT_BACKUP_KEEP", "40"))
+# How many titles Just Added shows: the sidebar list and the strip both.
+JUST_ADDED = max(5, min(200, int(env("MT_JUST_ADDED", "27"))))
 BACKUP_EVERY = int(env("MT_BACKUP_EVERY_SECONDS", "900"))
 # Wikimedia and friends ask that a client identify itself and what it is for.
 UA = (f"MediaTracker/{VERSION} "

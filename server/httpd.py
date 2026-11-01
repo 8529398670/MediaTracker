@@ -19,7 +19,7 @@ from pathlib import Path
 import auth
 import imdb
 from config import (BASE_HEADERS, COMPRESSIBLE, EXTRA_TYPES, IMG_ALLOW_ANY,
-                    ITEM_TYPES, LIBRARY_PATH, LOOKUP_AS, MAX_BODY, NET_ENABLED, OMDB_KEY,
+                    ITEM_TYPES, JUST_ADDED, LIBRARY_PATH, LOOKUP_AS, MAX_BODY, NET_ENABLED, OMDB_KEY,
                     PUBLIC_DIR, PUBLIC_URL, SCHEMA, TMDB_KEY, UA, VERSION,
                     env_flag, log)
 from enrich import ENRICHER, Enricher
@@ -350,6 +350,7 @@ class Handler(BaseHTTPRequestHandler):
         if head == "config":
             self._json(200, {
                 "me": self.user,
+                "justAdded": JUST_ADDED,
                 "publicUrl": PUBLIC_URL,
                 "version": VERSION,
                 "schema": SCHEMA,
@@ -671,6 +672,10 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"source": "imdb", **imdb.STORE.status(),
                          "ratings": imdb.STORE.many(ids)})
 
+    def _who(self) -> str:
+        """The name a title added by this request is put down under."""
+        return (self.user or {}).get("name") or ""
+
     def _api_verdicts(self, method: str, body: object) -> None:
         """What you have said about a film you do not own.
 
@@ -833,7 +838,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
                     self._fail(400, "expected {items: [...]}")
                     return
-                ok, result = LIBRARY.replace(payload)
+                ok, result = LIBRARY.replace(payload, self._who())
                 if not ok:
                     self._json(409 if result.get("error") == "conflict" else 400, result)
                     return
@@ -855,7 +860,7 @@ class Handler(BaseHTTPRequestHandler):
                     if len(body["items"]) > MAX_BATCH_ADD:
                         self._fail(413, f"at most {MAX_BATCH_ADD} titles at a time")
                         return
-                    added = LIBRARY.upsert_many(body["items"])
+                    added = LIBRARY.upsert_many(body["items"], self._who())
                     if added is None:
                         self._fail(413, "that is more titles than the library holds")
                         return
@@ -863,7 +868,7 @@ class Handler(BaseHTTPRequestHandler):
                                {"added": added, **LIBRARY.meta()} if added
                                else {"error": "an item needs at least a title"})
                     return
-                item = LIBRARY.upsert(body)
+                item = LIBRARY.upsert(body, self._who())
                 self._json(201 if item else 400,
                            item or {"error": "an item needs at least a title"})
                 return

@@ -6,7 +6,7 @@ import {
   canUndo, canRedo, undoLabel, redoLabel, current, undoIfCurrent,
   reorderQueue, patchItem, getItem, addItem, fillIn, stage,
   TYPE_LABEL, STATUS_LABEL, patchMany, fold,
-  enrich, watchEnrich, staging, staged, unstage, otherTypes,
+  enrich, watchEnrich, recentlyAdded, otherTypes,
 } from './store.js';
 import {
   el, icon, $, openSheet, closeAll, toast, field, fmtAgo, fmtDate, hostOf,
@@ -24,7 +24,7 @@ import {
 } from './dupes.js';
 import {
   renderGroups, renderQueue, renderEmpty, renderYearMap, wireYearMap,
-  renderStaging, stripSection, card, foundRow,
+  stripSection, card, foundRow,
   appleTvAvailable, appleTvInApp, setAppleTvInApp,
 } from './views.js';
 import { openItem, openRating, openAdd } from './editor.js';
@@ -48,17 +48,18 @@ import {
  * while the other two come and go. */
 const list = $('#list');
 const boxes = {
-  staging: el('div.list-staging', { hidden: true }),
+  note: el('p.added-note', { hidden: true }),
   main: el('div.list-main'),
   more: el('div.list-more', { hidden: true }),
 };
-list.append(boxes.staging, boxes.main, boxes.more);
+list.append(boxes.note, boxes.main, boxes.more);
 
 const dom = {
   q: $('#q'),
   sidebar: $('#sidebar'),
   sideSections: $('#side-sections'),
   sideDiscover: $('#side-discover'),
+  sideRecent: $('#side-recent'),
   btnNav: $('#btn-nav'),
   brandHome: $('#brand-home'),
   yearmap: $('#yearmap'),
@@ -223,6 +224,7 @@ function paint() {
   paintHistory();
 
   if (inDiscover()) { paintSidebar(everything); paintDiscover(); return; }
+  if (inRecent()) { paintRecent(everything); return; }
   // A section whose type was deleted, here or on another device: go home.
   if (!sections(everything).some((s) => s.id === filters.section)) {
     filters.section = 'movie';
@@ -283,8 +285,6 @@ function paint() {
   paintSidebar(everything);
   paintActiveFilters();
 
-  paintStaging(searching);
-
   if (!filtered.length) {
     boxes.main.replaceChildren();
     paintYearMap(null);
@@ -332,17 +332,51 @@ function paint() {
   dom.qClear.hidden = !dom.q.value;
 }
 
-/* ----------------------------------------------------------------- staging */
+/* ------------------------------------------------------------- just added */
 
-/* Everything added since the strip was last cleared, pinned above the list
- * so the fill-in pass can be watched dressing it. Put away while searching:
- * the results are the point then. */
-function paintStaging(searching) {
-  renderStaging(boxes.staging, searching ? [] : staged(), handlers, {
-    running: enrich.running,
-    current: enrich.current,
-    onClear: () => { unstage(); render(); },
-  });
+/* What Just Added lets through before it counts to its limit: the filters,
+ * across every section, and Hide watched / Hide skipped whichever list you
+ * came from — so hiding them still leaves a full 25, the latest of the rest.
+ * A title just ticked lingers its five seconds here as it does anywhere. */
+function recentKeep() {
+  const passes = new Set(apply(live(), { everywhere: true }).map((item) => item.id));
+  return (item) => passes.has(item.id) && (lingering.has(item.id) || !(
+    (filters.hideWatched && item.status === 'watched')
+    || (filters.hideSkipped && item.status === 'dropped')));
+}
+
+const recentShown = () => recentlyAdded(undefined, recentKeep());
+
+/* The last titles anyone added, newest first, whoever added them and however
+ * — the + box, an import, a bot. It is where the fill-in pass can be watched
+ * dressing them, and a title it could not place is seen blank while it is
+ * still fresh. The year rail and the grouping mean nothing in a list in the
+ * order things arrived. */
+function paintRecent(everything) {
+  showLibraryChrome();
+  paintSidebar(everything);
+  paintActiveFilters();
+  paintExtras([], []);
+  paintYearMap(null);
+
+  const terms = filters.q.trim() ? plainTerms(filters.q) : '';
+  const shown = recentShown();
+  const blank = shown.filter((item) => !item.poster).length;
+  boxes.note.hidden = !shown.length;
+  boxes.note.textContent = enrich.running
+    ? `Filling in details${enrich.current ? ` — ${enrich.current}` : '…'}`
+    : blank ? `${blank} without artwork — open one to look it up` : 'All filled in';
+  if (shown.length) {
+    dom.empty.hidden = true;
+    renderGroups(boxes.main, [{ key: 'recent', label: '', items: shown }], handlers, terms);
+  } else {
+    boxes.main.replaceChildren(el('p.miss-note', {
+      text: everything.length ? 'Nothing just added matches that.' : 'Nothing has been added yet.',
+    }));
+    dom.empty.hidden = true;
+  }
+  paintPicking({ ids: shown.map((item) => item.id), discover: false });
+  dom.qClear.hidden = !dom.q.value;
 }
 
 /* ---------------------------------------------------------- beyond the tab */
@@ -543,13 +577,14 @@ const foundHandlers = {
    so it is put away rather than left there doing nothing. */
 
 function showLibraryChrome() {
+  boxes.note.hidden = true;
   dom.discoTools.hidden = true;
   dom.btnFilters.hidden = false;
   document.body.classList.remove('discovering');
   // Discover paints straight into the list; the three boxes go back when
   // the library does, with the cards they were holding still in them.
-  if (list.firstElementChild !== boxes.staging) {
-    list.replaceChildren(boxes.staging, boxes.main, boxes.more);
+  if (list.firstElementChild !== boxes.note) {
+    list.replaceChildren(boxes.note, boxes.main, boxes.more);
   }
 }
 
@@ -1059,8 +1094,14 @@ const DISCOVER = { id: 'discover', label: 'Discover' };
 
 const inDiscover = () => filters.section === DISCOVER.id;
 
+/* What anyone added lately, across every section. The last place in the
+ * sidebar, under Discover, and last in the number keys too. */
+const RECENT = { id: 'recent', label: 'Just Added' };
+
+const inRecent = () => filters.section === RECENT.id;
+
 /** Every place in the sidebar, in order: what the number keys go to. */
-const places = (everything = live()) => [...sections(everything), DISCOVER];
+const places = (everything = live()) => [...sections(everything), DISCOVER, RECENT];
 
 /* The sidebar is one Bootstrap component with two behaviours: a slide-in
  * panel on a phone, a fixed column from lg up. The menu button does the right
@@ -1126,7 +1167,7 @@ function readHash() {
 }
 
 function writeHash() {
-  const want = inDiscover() ? `#${DISCOVER.id}` : `#${filters.section}/${filters.view}`;
+  const want = inDiscover() || inRecent() ? `#${filters.section}` : `#${filters.section}/${filters.view}`;
   if (window.location.hash !== want) window.location.hash = want;
 }
 
@@ -1155,7 +1196,8 @@ function paintSidebar(everything) {
   }
   const list = sections(everything).map((s) => [s.id, s.label, tally.get(s.id) || 0]);
   const films = (discoverState().coverage || {}).films || 0;
-  const drawn = JSON.stringify([filters.section, filters.view, list, films]);
+  const recent = recentShown().length;
+  const drawn = JSON.stringify([filters.section, filters.view, list, films, recent]);
 
   if (drawn !== sideDrawn) {
     sideDrawn = drawn;
@@ -1186,6 +1228,7 @@ function paintSidebar(everything) {
       id === filters.section ? [entry(id, label, n), viewsFor(id)] : [entry(id, label, n)]
     )));
     dom.sideDiscover.replaceChildren(entry(DISCOVER.id, DISCOVER.label, films));
+    dom.sideRecent.replaceChildren(entry(RECENT.id, RECENT.label, recent));
   }
 }
 
@@ -1770,7 +1813,7 @@ boot().then(async () => {
   }
   // A strip left from last time may still be being filled in on the server;
   // one look at the pass says whether to keep watching it.
-  if (staging.length && state.online) watchEnrich();
+  if (recentlyAdded().some((item) => !item.poster) && state.online) watchEnrich();
   // What has been collected, for the tab's count and the harvest sheet. One
   // small call; the catalogue itself is only read when you go and look at it.
   await ensureCatalogue();
