@@ -19,7 +19,7 @@ try {
   }
 } catch { /* private mode, or storage is disabled — nothing to carry over */ }
 
-/** el('div.card', {onclick}, [children]) — tag may carry .classes and #id. */
+/** el('div.media-card', {onclick}, [children]) — tag may carry .classes and #id. */
 export function el(spec, props = null, children = null) {
   const [tagPart, ...classes] = String(spec).split('.');
   const [tag, id] = tagPart.split('#');
@@ -150,26 +150,36 @@ export function scoreBadge(score, { votes: showVotes = false } = {}) {
 const host = () => document.getElementById('sheet-host');
 const stack = [];
 
+/* A sheet is Bootstrap's offcanvas: up from the bottom on a phone, a panel on
+ * a wide screen. The stacking, the backdrop click and Escape are this file's
+ * own rather than bootstrap.Offcanvas's, because a sheet can open a sheet —
+ * only the top one is in the document, and closing it puts the one underneath
+ * back. Bootstrap's own instance has no notion of that, and the panels are
+ * driven here from the one `show` class either way, which is also why the
+ * tests can open a sheet with no Bootstrap present. */
 export function openSheet({ title, body, footer, onClose, wide = false }) {
   const root = host();
-  const sheet = el('div.sheet');
-  if (wide) sheet.style.setProperty('max-width', '820px');
+  const sheet = el('div.sheet', {
+    tabindex: '-1', role: 'dialog', 'aria-modal': 'true',
+    'aria-label': title || 'Panel',
+  });
+  if (wide) sheet.classList.add('sheet-wide');
 
   sheet.append(el('div.sheet-grip'));
 
-  const head = el('div.sheet-head', null, [
-    el('h2', { text: title || '' }),
+  const head = el('div.offcanvas-header.sheet-head', null, [
+    el('h2.offcanvas-title.h5.mb-0', { text: title || '' }),
   ]);
-  const closeBtn = el('button.icon-btn', { type: 'button', 'aria-label': 'Close' }, icon('x'));
+  const closeBtn = el('button.btn-close', { type: 'button', 'aria-label': 'Close' });
   closeBtn.addEventListener('click', () => close(handle));
   head.append(closeBtn);
 
-  const bodyNode = el('div.sheet-body');
+  const bodyNode = el('div.offcanvas-body.sheet-body');
   append(bodyNode, body);
 
   sheet.append(head, bodyNode);
   if (footer) {
-    const foot = el('div.sheet-foot');
+    const foot = el('div.sheet-foot.border-top');
     append(foot, footer);
     sheet.append(foot);
   }
@@ -218,12 +228,21 @@ document.addEventListener('click', (event) => {
 
 export function toast(message, { action, error = false, ms = 4200 } = {}) {
   const root = document.getElementById('toast-host');
-  const node = el('div.toast', { class: error ? 'err' : '' }, el('span', { text: message }));
+  // Bootstrap's toast is hidden until it carries `show`; these are put up and
+  // taken down here rather than by bootstrap.Toast, so they say so from the
+  // start. `toast-err` is only the border tint — a red-filled toast reads as
+  // an alarm for what is usually just "that did not save".
+  const node = el('div.toast.show.d-flex.align-items-center', {
+    class: error ? 'toast-err' : '',
+    role: error ? 'alert' : 'status',
+    'aria-live': error ? 'assertive' : 'polite',
+    'aria-atomic': 'true',
+  }, el('div.toast-body.flex-grow-1', { text: message }));
   let timer = 0;
   const dismiss = () => { clearTimeout(timer); node.remove(); };
 
   if (action) {
-    node.append(el('button', {
+    node.append(el('button.btn.btn-sm.btn-link.toast-action', {
       type: 'button',
       text: action.label,
       onclick: () => { dismiss(); action.fn(); },
@@ -246,11 +265,11 @@ export function confirmSheet({
     let answered = false;
     const finish = (value) => { if (!answered) { answered = true; resolve(value); } };
 
-    const cancel = el('button.btn.ghost.grow', { type: 'button', text: cancelLabel });
-    const ok = el('button.btn.grow', {
+    const cancel = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button', text: cancelLabel });
+    const ok = el('button.btn.flex-grow-1', {
       type: 'button',
       text: confirmLabel,
-      class: danger ? 'danger' : 'primary',
+      class: danger ? 'btn-danger' : 'btn-primary',
       'data-autofocus': '',
     });
 
@@ -275,22 +294,27 @@ export function confirmSheet({
 
 export function field(label, control, hint) {
   return el('div.field', null, [
-    el('label.field-label', { text: label }),
+    el('label.form-label.field-label', { text: label }),
     control,
-    hint ? el('p.hint', { text: hint }) : null,
+    hint ? el('p.form-text.hint', { text: hint }) : null,
   ]);
 }
 
 export function segmented(options, value, onPick) {
-  const box = el('div.seg');
+  const box = el('div.btn-group.seg', { role: 'group' });
   for (const option of options) {
-    const button = el('button', {
+    const button = el('button.btn.btn-outline-secondary', {
       type: 'button',
       text: option.label,
+      class: option.id === value ? 'active' : '',
       'aria-pressed': String(option.id === value),
       onclick: () => {
-        [...box.children].forEach((c) => c.setAttribute('aria-pressed', 'false'));
+        [...box.children].forEach((c) => {
+          c.setAttribute('aria-pressed', 'false');
+          c.classList.remove('active');
+        });
         button.setAttribute('aria-pressed', 'true');
+        button.classList.add('active');
         onPick(option.id);
       },
     });
@@ -300,7 +324,7 @@ export function segmented(options, value, onPick) {
 }
 
 export function select(options, value, onPick, { label } = {}) {
-  const node = el('select.input', { 'aria-label': label || '' });
+  const node = el('select.form-select', { 'aria-label': label || '' });
   for (const option of options) {
     node.append(el('option', { value: option.id, text: option.label, selected: option.id === value }));
   }

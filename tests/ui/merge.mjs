@@ -150,7 +150,7 @@ const strip = new N('div');
 views.renderStaging(strip, store.staged(), on, { running: true, current: 'The Weather Girl',
                                                  onClear() {} });
 check('the strip is drawn with a card per title',
-  strip.find((n) => n.classList.has('card')).length, 2);
+  strip.find((n) => n.classList.has('media-card')).length, 2);
 check('a title still waiting on its artwork is marked as waiting',
   strip.find((n) => n.classList.has('is-pending')).length, 1);
 check('and the heading says what the pass is on',

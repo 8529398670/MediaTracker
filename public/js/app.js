@@ -4,18 +4,18 @@ import {
   api, state, boot, onChange, notify, refresh, sync, live, stats, allTags,
   toggleHeart, toggleWatched, removeSource, addSource, checkpoint, undo,
   reorderQueue, patchItem, getItem, addItem, fillIn, stage,
-  TYPE_LABEL, STATUS_LABEL, allCerts, allGenres, patchMany, fold,
+  TYPE_LABEL, STATUS_LABEL, patchMany, fold,
   enrich, watchEnrich, staging, staged, unstage, otherTypes,
 } from './store.js';
 import {
   el, icon, $, openSheet, closeAll, toast, field, fmtAgo, fmtDate, hostOf,
-  confirmSheet, segmented,
+  confirmSheet, segmented, setChildren,
 } from './ui.js';
 import {
   filters, loadView, saveView, activeCount, resetFilters, lingering, plainTerms,
   titleMatches, whyMatched,
   apply, sortItems, groupItems, openFilterSheet, queueOrder,
-  sections, SECTION_LABEL, VIEWS, sectionOf, inView, addingType, facetPool, parseQuery,
+  sections, SECTION_LABEL, VIEWS, sectionOf, inView, addingType, parseQuery,
 } from './filters.js';
 import {
   findMatches, bestMatch, isCertain, warning, describe, findDuplicateGroups, dismissGroup,
@@ -37,7 +37,7 @@ import { rowToItem, viaLabel } from './importer.js';
 import {
   loadDiscover, setView, buildTools, renderDiscover, refreshDiscover, toggleGenre,
   toggleRating,
-  discoverStats, discoverState, openHarvest, addFilm, ensureCatalogue,
+  openRefine, discoverState, openHarvest, addFilm, ensureCatalogue,
   setVerdict, setActor, searchCatalogue, catalogueRows, libraryIndex,
 } from './discover.js';
 
@@ -58,28 +58,18 @@ const dom = {
   sidebar: $('#sidebar'),
   sideSections: $('#side-sections'),
   sideDiscover: $('#side-discover'),
-  sideFacets: $('#side-facets'),
-  sideFoot: $('#side-foot'),
-  scrim: $('#nav-scrim'),
   btnNav: $('#btn-nav'),
+  brandHome: $('#brand-home'),
   yearmap: $('#yearmap'),
   bubble: $('#ym-bubble'),
-  viewtabs: $('#viewtabs'),
-  wrapSort: $('#wrap-sort'),
-  wrapGroup: $('#wrap-group'),
   qClear: $('#q-clear'),
   list: $('#list'),
   empty: $('#empty'),
-  stats: $('#stats'),
   activeFilters: $('#active-filters'),
-  filterBadge: $('#filter-badge'),
   btnFilters: $('#btn-filters'),
   btnSelect: $('#btn-select'),
   btnMenu: $('#btn-menu'),
   btnAdd: $('#btn-add'),
-  sort: $('#sel-sort'),
-  group: $('#sel-group'),
-  toolbar: $('#toolbar'),
   discoTools: $('#disco-tools'),
   selectBar: $('#select-bar'),
   sheetHost: $('#sheet-host'),
@@ -257,16 +247,8 @@ function paint() {
   const looked = noTitle && lookup.q === terms ? lookup : null;
   const looking = noTitle && canLook && !looked;
 
-  // The counts live in the sidebar and on the list tabs now; the strip of
-  // pills above the list is Discover's alone.
-  dom.stats.hidden = true;
   paintSidebar(everything);
   paintActiveFilters();
-
-  // The queue keeps the order you gave it, so sorting and grouping are not
-  // offered there; hiding watched titles means nothing outside the main list.
-  dom.wrapSort.hidden = isQueue;
-  dom.wrapGroup.hidden = isQueue;
 
   paintStaging(searching);
 
@@ -295,7 +277,7 @@ function paint() {
         filtered: activeCount() > 0,
         elsewhere: searching ? null : matchesElsewhere(everything),
         onGo: (where) => { setPlace(where.section, where.view); },
-        onClear: () => { resetFilters(); syncControls(); render(); },
+        onClear: () => { resetFilters(); render(); },
         onAdd: () => addHere(searching ? filters.q : ''),
       });
     }
@@ -314,9 +296,6 @@ function paint() {
   paintExtras(elsewhere, fresh, { looking, looked, terms, similar });
   paintPicking({ ids: filtered.map((item) => item.id), discover: false });
 
-  const count = activeCount();
-  dom.filterBadge.hidden = count === 0;
-  dom.filterBadge.textContent = String(count);
   dom.qClear.hidden = !dom.q.value;
 }
 
@@ -531,7 +510,6 @@ const foundHandlers = {
    so it is put away rather than left there doing nothing. */
 
 function showLibraryChrome() {
-  dom.toolbar.hidden = false;
   dom.discoTools.hidden = true;
   dom.btnFilters.hidden = false;
   document.body.classList.remove('discovering');
@@ -643,7 +621,6 @@ async function undoVerdict(film, value, restore) {
 
 /* The two things a verdict changes that are not the row itself. */
 function paintVerdict() {
-  discoverStats(dom.stats);
   buildTools(dom.discoTools, discoHandlers);
 }
 
@@ -658,18 +635,18 @@ async function pullDiscover({ more = false } = {}) {
 function paintDiscover() {
   // A pick is of library titles; it waits, out of the way, until one is back.
   paintPicking({ ids: [], discover: true });
-  dom.toolbar.hidden = true;
+  // Arriving here from the sidebar skips the library's paint altogether, so
+  // this is what moves the highlight onto Discover. Without it the row only
+  // lights up whenever something else happens to repaint.
+  paintSidebar(live());
   dom.discoTools.hidden = false;
-  dom.btnFilters.hidden = true;
   dom.empty.hidden = true;
   dom.activeFilters.hidden = true;
-  dom.filterBadge.hidden = true;
   dom.qClear.hidden = !dom.q.value;
   document.body.classList.add('discovering');
   paintYearMap(null);
 
   buildTools(dom.discoTools, discoHandlers);
-  discoverStats(dom.stats);
   renderDiscover(dom.list, discoHandlers);
 }
 
@@ -704,7 +681,7 @@ function paintActiveFilters() {
     pill.append(el('button', {
       type: 'button', 'aria-label': `Remove ${label}`,
       style: { border: '0', background: 'none', color: 'inherit', padding: '0' },
-      onclick: () => { undoFn(); saveView(); syncControls(); render(); },
+      onclick: () => { undoFn(); saveView(); render(); },
     }, icon('x')));
     chips.push(pill);
   };
@@ -742,7 +719,7 @@ function paintActiveFilters() {
 function openEnrich() {
   const body = el('div');
   const line = el('div.sync-line');
-  const bar = el('div.progress', null, el('i'));
+  const bar = el('div.progress', { role: 'progressbar' }, el('div.progress-bar'));
   const detail = el('p.hint');
   const providers = el('div.kv');
 
@@ -750,13 +727,13 @@ function openEnrich() {
   let timer = 0;
   let last = null;
 
-  const start = el('button.btn.primary.grow', { type: 'button', text: 'Start' });
-  const stop = el('button.btn.ghost', { type: 'button', text: 'Stop' });
+  const start = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Start' });
+  const stop = el('button.btn.btn-outline-secondary', { type: 'button', text: 'Stop' });
 
   const paintStatus = (status) => {
     last = status;
     const pct = status.total ? Math.round((status.done / status.total) * 100) : 0;
-    bar.firstChild.style.setProperty('--w', `${pct}%`);
+    bar.firstChild.style.setProperty('width', `${pct}%`);
     bar.hidden = !status.total;
 
     line.replaceChildren(
@@ -1033,10 +1010,12 @@ function setPlace(section, view) {
   if (section) filters.section = section;
   if (view) filters.view = view;
   saveView();
+  writeHash();
   window.scrollTo({ top: 0 });
-  syncControls();
   closeNav();
-  if (arriving && inDiscover()) { pullDiscover(); return; }
+  // Discover paints itself and never goes through paint(), so the highlight
+  // is moved here — before the request, not after it comes back.
+  if (arriving && inDiscover()) { paintSidebar(live()); pullDiscover(); return; }
   render();
 }
 
@@ -1050,62 +1029,81 @@ const inDiscover = () => filters.section === DISCOVER.id;
 /** Every place in the sidebar, in order: what the number keys go to. */
 const places = (everything = live()) => [...sections(everything), DISCOVER];
 
-function openNav() { document.body.classList.add('nav-open'); dom.scrim.hidden = false; }
-function closeNav() { document.body.classList.remove('nav-open'); dom.scrim.hidden = true; }
+/* The sidebar is one Bootstrap component with two behaviours: a slide-in
+ * panel on a phone, a fixed column from lg up. The menu button does the right
+ * thing at either width — below lg it slides the panel in and out, above it
+ * folds the column away and back, remembered in this browser. */
+const WIDE = window.matchMedia('(min-width: 992px)');
+/* Where the navbar stops showing Filters and Select several as icons. */
+const ROOMY = window.matchMedia('(min-width: 768px)');
+const SIDEBAR_KEY = 'mt.sidebar.v1';
+
+const panelFor = (make) => (window.bootstrap
+  ? window.bootstrap.Offcanvas[make ? 'getOrCreateInstance' : 'getInstance'](dom.sidebar)
+  : null);
+
+/* Picking a place closes the panel — including the place already showing,
+ * which changes nothing else. Above lg there is no panel to close. */
+function closeNav() {
+  const panel = panelFor(false);
+  if (panel) panel.hide();
+}
+
+function setCollapsed(shut) {
+  document.documentElement.classList.toggle('sidebar-collapsed', shut);
+  dom.btnNav.setAttribute('aria-expanded', String(!shut));
+}
+
 dom.btnNav.addEventListener('click', () => {
-  if (document.body.classList.contains('nav-open')) closeNav(); else openNav();
-});
-dom.scrim.addEventListener('click', closeNav);
-
-function buildViewTabs() {
-  for (const view of VIEWS) {
-    dom.viewtabs.append(el('button', {
-      type: 'button', role: 'tab', dataset: { view: view.id },
-      onclick: () => setPlace(null, view.id),
-    }, [el('span.tab-label', { text: view.label }), el('span.tab-count')]));
+  if (WIDE.matches) {
+    const shut = !document.documentElement.classList.contains('sidebar-collapsed');
+    setCollapsed(shut);
+    try {
+      if (shut) localStorage.setItem(SIDEBAR_KEY, '1');
+      else localStorage.removeItem(SIDEBAR_KEY);
+    } catch { /* not remembered for next time, but applied now */ }
+    return;
   }
+  const panel = panelFor(true);
+  if (panel) panel.toggle();
+});
+
+try { setCollapsed(localStorage.getItem(SIDEBAR_KEY) === '1'); }
+catch { setCollapsed(false); }
+
+/* The brand is the way back to the top of the library. */
+dom.brandHome.addEventListener('click', (event) => {
+  event.preventDefault();
+  const first = sections(live())[0];
+  if (first) setPlace(first.id, 'list');
+});
+
+/* ------------------------------------------------------------ the address */
+
+/* #<section>/<view> is where you are: back, forward, reload and a pasted
+ * link all land in the same list, with no router. What is saved locally is
+ * only the fallback for a bare "/", so reopening the app still lands where
+ * you left off. */
+function readHash() {
+  const raw = (window.location.hash || '').replace(/^#/, '').trim();
+  if (!raw) return null;
+  const [section, view] = raw.split('/');
+  if (!section) return null;
+  return { section, view: VIEWS.some((v) => v.id === view) ? view : filters.view };
 }
 
-/* Which facet groups are folded shut. Yours, in this browser. */
-const SIDE_KEY = 'mt.side.v1';
-const folded = (() => {
-  try { return new Set(JSON.parse(localStorage.getItem(SIDE_KEY) || '[]')); }
-  catch { return new Set(); }
-})();
-function setFolded(id, shut) {
-  if (shut) folded.add(id); else folded.delete(id);
-  try { localStorage.setItem(SIDE_KEY, JSON.stringify([...folded])); } catch { /* ignore */ }
+function writeHash() {
+  const want = inDiscover() ? `#${DISCOVER.id}` : `#${filters.section}/${filters.view}`;
+  if (window.location.hash !== want) window.location.hash = want;
 }
 
-const FACET_ROWS = 12;
-
-/** The groups of one-click filters, counted against the list on screen. */
-function facetGroups(everything) {
-  const pool = facetPool(everything);
-  const withPicked = (rows, picked) => {
-    const have = new Set(rows.map(([id]) => id.toLowerCase()));
-    return [...rows, ...picked.filter((id) => !have.has(id.toLowerCase())).map((id) => [id, 0])];
-  };
-  const certs = allCerts(pool);
-  return [
-    { id: 'certs', label: 'Age rating', list: 'certs',
-      rows: withPicked(certs.length > 1 || filters.certs.length ? certs : [], filters.certs),
-      name: (id) => id || 'Not rated' },
-    { id: 'genres', label: 'Genre', list: 'genres',
-      rows: withPicked(allGenres(pool), filters.genres), name: (id) => id },
-    { id: 'tags', label: 'Tags', list: 'tags',
-      rows: withPicked(allTags(pool), filters.tags), name: (id) => `#${id}` },
-  ].filter((group) => group.rows.length);
-}
-
-function pickFacet(list, id) {
-  const now = filters[list];
-  const at = now.findIndex((x) => x.toLowerCase() === id.toLowerCase());
-  filters[list] = at === -1 ? [...now, id] : now.filter((_, i) => i !== at);
-  saveView();
-  window.scrollTo({ top: 0 });
-  render();
-}
+window.addEventListener('hashchange', () => {
+  const place = readHash();
+  if (!place) return;
+  // Our own write, come back round as an event: nothing to do.
+  if (place.section === filters.section && place.view === filters.view) return;
+  setPlace(place.section, place.view);
+});
 
 /** Counts are of the library itself, not of what the filters leave behind.
  * Only redrawn when what it shows has changed, so a row keeps its focus
@@ -1124,19 +1122,7 @@ function paintSidebar(everything) {
   }
   const list = sections(everything).map((s) => [s.id, s.label, tally.get(s.id) || 0]);
   const films = (discoverState().coverage || {}).films || 0;
-  const groups = inDiscover() ? [] : facetGroups(everything);
-  const picked = { certs: filters.certs, genres: filters.genres, tags: filters.tags };
-  // The switches: hiding watched or skipped titles only means something on
-  // the List, so they are offered there; Loved only, everywhere.
-  const flags = inDiscover() ? [] : [
-    ...(filters.view === 'list' ? [
-      ['hideWatched', 'Hide watched', 'w'],
-      ['hideSkipped', 'Hide skipped', 'k'],
-    ] : []),
-    ['heartsOnly', 'Loved only', ''],
-  ].map(([key, label, hotkey]) => ({ key, label, hotkey, on: Boolean(filters[key]) }));
-  const drawn = JSON.stringify([filters.section, list, films, groups.map((g) => g.rows),
-    picked, [...folded], flags]);
+  const drawn = JSON.stringify([filters.section, filters.view, list, films]);
 
   if (drawn !== sideDrawn) {
     sideDrawn = drawn;
@@ -1146,72 +1132,28 @@ function paintSidebar(everything) {
       onclick: () => setPlace(id, null),
     }, [el('span.side-label', { text: label }), el('span.side-count', { text: String(count) })]);
 
-    dom.sideSections.replaceChildren(...list.map(([id, label, n]) => entry(id, label, n)));
-    dom.sideDiscover.replaceChildren(entry(DISCOVER.id, DISCOVER.label, films));
-
-    dom.sideFacets.hidden = !flags.length && !groups.length;
-    dom.sideFacets.replaceChildren(
-      flags.length || groups.length ? el('div.side-head', null, [
-        el('span', { text: 'Filter' }),
-        activeCount() ? el('button.side-clear', {
-          type: 'button', text: 'Clear',
-          onclick: () => { resetFilters(); syncControls(); render(); },
-        }) : null,
-      ]) : null,
-      flags.length ? el('div.facet-rows.flag-rows', null, flags.map((flag) => el('button.facet-row', {
-        type: 'button', 'aria-pressed': String(flag.on),
-        title: flag.hotkey ? `${flag.label} (${flag.hotkey})` : flag.label,
-        onclick: () => flip(flag.key),
-      }, [el('span.facet-box'), el('span.side-label', { text: flag.label })]))) : null,
-      ...groups.map((group) => {
-        const shut = folded.has(group.id);
-        const on = (id) => filters[group.list].some((x) => x.toLowerCase() === id.toLowerCase());
-        // Picked ones always show, then the most common, up to the limit.
-        const rows = [...group.rows.filter(([id]) => on(id)),
-          ...group.rows.filter(([id]) => !on(id))];
-        const shown = rows.slice(0, Math.max(FACET_ROWS, rows.filter(([id]) => on(id)).length));
-        const n = filters[group.list].length;
-        return el('div.facet', { class: shut ? 'shut' : null }, [
-          el('button.facet-head', {
-            type: 'button', 'aria-expanded': String(!shut),
-            onclick: () => { setFolded(group.id, !shut); sideDrawn = ''; paintSidebar(live()); },
-          }, [icon('chevron', 'ico facet-chev'), el('span', { text: group.label }),
-            n ? el('span.facet-on', { text: String(n) }) : null]),
-          shut ? null : el('div.facet-rows', null, [
-            ...shown.map(([id, count]) => el('button.facet-row', {
-              type: 'button', 'aria-pressed': String(on(id)),
-              onclick: () => pickFacet(group.list, id),
-            }, [el('span.facet-box'), el('span.side-label', { text: group.name(id) }),
-              el('span.side-count', { text: String(count) })])),
-            rows.length > shown.length ? el('button.facet-more', {
-              type: 'button', text: `${rows.length - shown.length} more…`,
-              onclick: () => { closeNav(); openFilterSheet(() => { syncControls(); render(); }); },
-            }) : null,
-          ]),
-        ]);
+    /* The section you are in opens to its three lists, right here. There is
+     * no tab row anywhere in the app now, and a section you are not in stays
+     * one line, so the whole library still fits on a phone screen. */
+    const viewsFor = (section) => el('div.side-views', null, VIEWS.map((view) => el('button.side-view', {
+      type: 'button',
+      dataset: { view: view.id },
+      'aria-current': view.id === filters.view ? 'page' : null,
+      onclick: () => setPlace(section, view.id),
+    }, [
+      el('span.side-label', { text: view.label }),
+      el('span.side-count', {
+        text: String(view.id === 'list'
+          ? (tally.get(section) || 0)
+          : (tally.get(`${section}:${view.id}`) || 0)),
       }),
-    );
-  }
+    ])));
 
-  if (inDiscover()) return;
-  for (const button of dom.viewtabs.children) {
-    const id = button.dataset.view;
-    const on = id === filters.view;
-    button.setAttribute('aria-selected', String(on));
-    const count = id === 'list' ? (tally.get(filters.section) || 0)
-      : (tally.get(`${filters.section}:${id}`) || 0);
-    button.querySelector('.tab-count').textContent = String(count);
+    dom.sideSections.replaceChildren(...list.flatMap(([id, label, n]) => (
+      id === filters.section ? [entry(id, label, n), viewsFor(id)] : [entry(id, label, n)]
+    )));
+    dom.sideDiscover.replaceChildren(entry(DISCOVER.id, DISCOVER.label, films));
   }
-}
-
-function buildSideFoot() {
-  const tool = (iconName, label, fn) => el('button.side-item.side-tool', {
-    type: 'button', onclick: () => { closeNav(); fn(); },
-  }, [icon(iconName), el('span.side-label', { text: label })]);
-  dom.sideFoot.replaceChildren(
-    tool('copy', 'Find duplicates', openDuplicates),
-    tool('tag', 'Types…', () => openTypes(render)),
-  );
 }
 
 /* ------------------------------------------------------------- duplicates */
@@ -1243,7 +1185,7 @@ function openDuplicates() {
           el('span.tag-badge', { class: group.score >= CERTAIN ? 'sure' : null,
             text: group.score >= CERTAIN ? 'same title' : 'probably' }),
           el('span', { text: group.why }),
-          el('button.btn.sm.ghost', {
+          el('button.btn.btn-sm.btn-outline-secondary', {
             type: 'button', text: 'Not duplicates',
             onclick: () => { dismissGroup(group.items); paintGroups(); toast('Kept apart'); },
           }),
@@ -1256,12 +1198,12 @@ function openDuplicates() {
               + (item.rating ? ` · ${item.rating}/10` : '') }),
           ]),
           el('div.found-acts', null, [
-            el('button.btn.sm.ghost', {
+            el('button.btn.btn-sm.btn-outline-secondary', {
               type: 'button', text: 'Open',
               onclick: () => openItem(item, { onChange: () => { render(); paintGroups(); },
                 onDeleted: () => { render(); paintGroups(); } }),
             }),
-            el('button.btn.sm.primary', {
+            el('button.btn.btn-sm.btn-primary', {
               type: 'button', text: 'Keep this one',
               onclick: () => keepOne(item, group.items.filter((other) => other !== item), paintGroups),
             }),
@@ -1303,40 +1245,47 @@ async function keepOne(keep, others, done) {
   });
 }
 
-/* ----------------------------------------------------------------- theme */
+/* ------------------------------------------------------------- appearance */
 
-const THEME_KEY = 'mt.theme.v1';
+/* theme.js owns the theme and has already applied the saved one by the time
+ * any of this runs — it is a plain script in <head> for that reason. All that
+ * is left here is the picker. It is reached through the window rather than
+ * imported, because a module could not have run before the first paint. */
+const theme = () => window.Theme;
 
-function readTheme() {
-  try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; }
-  catch { return 'light'; }
+function themeLabel() {
+  const engine = theme();
+  return engine ? engine.find(engine.current).label : 'Light';
 }
 
-/** Light unless you have asked for dark — never whatever the phone feels like. */
-function applyTheme(mode) {
-  document.documentElement.setAttribute('data-theme', mode);
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', mode === 'dark' ? '#0a0e14' : '#f6f7fb');
-  try { localStorage.setItem(THEME_KEY, mode); } catch { /* private mode */ }
+function themeIsDark() {
+  const engine = theme();
+  return Boolean(engine && engine.find(engine.current).mode === 'dark');
 }
 
-/** Push filter state back into the toolbar controls. */
-function syncControls() {
-  dom.sort.value = filters.sort;
-  dom.group.value = filters.group;
+function openAppearance() {
+  const engine = theme();
+  const picker = el('div.theme-picker');
+  if (engine) engine.render(picker, () => toast(`${themeLabel()} theme`));
+  openSheet({
+    title: 'Appearance',
+    body: el('div', null, [
+      el('p.hint', {
+        text: 'Light unless you pick otherwise — what the phone itself is set to never decides.',
+      }),
+      picker,
+    ]),
+  });
 }
 
 /* ---------------------------------------------------------------- toolbar */
 
-/** Flip one of the sidebar's show/hide switches — or its key. */
+/** Flip one of the Filters card's show/hide switches — or its key. */
 function flip(key) {
   filters[key] = !filters[key];
   saveView();
   render();
 }
-
-dom.sort.addEventListener('change', () => { filters.sort = dom.sort.value; saveView(); render(); });
-dom.group.addEventListener('change', () => { filters.group = dom.group.value; saveView(); render(); });
 
 /* One box, whichever pane is up: the library filters itself in the browser,
  * the catalogue is asked of the server. Discover waits a beat longer, since
@@ -1369,7 +1318,16 @@ dom.qClear.addEventListener('click', () => {
   searched();
 });
 
-dom.btnFilters.addEventListener('click', () => openFilterSheet(() => { syncControls(); render(); }));
+/* One card, wherever you are. The library narrows a list already in the
+ * browser and applies on Show results; Discover asks the server and the counts
+ * come back with the answer — different fields, the same button. */
+function openFilters(opts) {
+  closeNav();
+  return inDiscover() ? openRefine(discoHandlers, opts)
+    : openFilterSheet(() => { render(); });
+}
+
+dom.btnFilters.addEventListener('click', () => openFilters());
 wirePicking({
   list: dom.list, barNode: dom.selectBar, button: dom.btnSelect, changed: render,
 });
@@ -1387,7 +1345,15 @@ function openMenu() {
     type: 'button', onclick: fn,
   }, [icon(iconName), el('span', null, [label, hint ? el('small', { text: hint }) : null])]);
 
-  body.append(
+  /* setChildren, not append: half of these are there only at a width or only
+   * on a platform, and a plain append writes the word "null" into the menu for
+   * each one that is not. */
+  setChildren(body, [
+    // Filters has the funnel in the navbar at every width now; Select does not,
+    // so on a phone this is where it is.
+    ROOMY.matches ? null : entry('select', 'Select several',
+      'Tick titles and change them together',
+      () => { handle.close(); dom.btnSelect.click(); }),
     entry('upload', 'Import & export', 'Paste a list, or take a backup out',
       () => { handle.close(); openPortingSheet(render); }),
     entry('shuffle', 'Surprise me', 'Pick something from the queue at random', pickRandom),
@@ -1433,11 +1399,10 @@ function openMenu() {
         render();
         toast(appleTvInApp() ? 'Apple TV links open the TV app' : 'Apple TV links open tv.apple.com');
       }) : null,
-    entry(readTheme() === 'dark' ? 'sun' : 'moon',
-      readTheme() === 'dark' ? 'Light theme' : 'Dark theme',
-      readTheme() === 'dark' ? 'Back to the light one' : 'For reading in bed',
-      () => { applyTheme(readTheme() === 'dark' ? 'light' : 'dark'); handle.close(); }),
-  );
+    entry(themeIsDark() ? 'moon' : 'sun', 'Appearance',
+      `${themeLabel()} · twelve themes, light and dark`,
+      () => { handle.close(); openAppearance(); }),
+  ]);
 
   const handle = openSheet({ title: 'Media Tracker', body });
 }
@@ -1521,8 +1486,8 @@ function openSources() {
   const body = el('div');
   const listBox = el('div');
 
-  const input = el('input.input', { type: 'url', placeholder: 'https://... a list you browse for ideas' });
-  const add = el('button.btn.sm.primary', { type: 'button', text: 'Save' });
+  const input = el('input.form-control', { type: 'url', placeholder: 'https://... a list you browse for ideas' });
+  const add = el('button.btn.btn-sm.btn-primary', { type: 'button', text: 'Save' });
   add.addEventListener('click', () => {
     if (addSource(input.value.trim())) { input.value = ''; draw(); toast('Source saved'); }
     else toast('That needs to be a full https:// link', { error: true });
@@ -1549,7 +1514,7 @@ function openSources() {
       listBox.append(el('div.link-row', null, [
         el('div', { style: { flex: '1', 'min-width': '0' } }, [
           open,
-          el('div.card-meta', null, [el('span', { text: hostOf(source.url) })]),
+          el('div.media-meta', null, [el('span', { text: hostOf(source.url) })]),
         ]),
         drop,
       ]));
@@ -1557,7 +1522,7 @@ function openSources() {
   }
   draw();
 
-  body.append(field('Add a source', el('div.row', null, [input, add])), listBox);
+  body.append(field('Add a source', el('div.field-row', null, [input, add])), listBox);
   openSheet({ title: 'Source links', body });
 }
 
@@ -1578,10 +1543,10 @@ function openSync() {
   };
   paintLine();
 
-  const pull = el('button.btn.sm.ghost', { type: 'button' }, [icon('download'), 'Pull from server']);
+  const pull = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button' }, [icon('download'), 'Pull from server']);
   pull.addEventListener('click', async () => { await refresh({ force: true }); paintLine(); render(); toast('Refreshed'); });
 
-  const push = el('button.btn.sm.ghost', { type: 'button' }, [icon('upload'), 'Push now']);
+  const push = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button' }, [icon('upload'), 'Push now']);
   push.addEventListener('click', async () => { await sync(); paintLine(); toast(state.online ? 'Pushed' : 'Still offline', { error: !state.online }); });
 
   body.append(field('Status', line));
@@ -1602,14 +1567,14 @@ function openSync() {
   ])));
   if (config.imdb) body.append(el('p.hint', { text: config.imdb.attribution }));
 
-  const undoBtn = el('button.btn.sm.ghost', { type: 'button', text: 'Undo last bulk change' });
+  const undoBtn = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button', text: 'Undo last bulk change' });
   undoBtn.addEventListener('click', () => {
     const label = undo();
     render();
     toast(label ? `Undid: ${label}` : 'Nothing to undo', { error: !label });
   });
 
-  const wipe = el('button.btn.sm.danger', { type: 'button', text: 'Delete everything' });
+  const wipe = el('button.btn.btn-sm.btn-outline-danger', { type: 'button', text: 'Delete everything' });
   wipe.addEventListener('click', async () => {
     const ok = await confirmSheet({
       title: 'Delete the whole library?',
@@ -1670,14 +1635,16 @@ function openHelp() {
   openSheet({ title: 'Search tips', body });
 }
 
-/* The year headings stick just below the toolbar, whose height depends on
- * font size and the notch — so measure it instead of guessing. */
+/* The year headings stick just below the navbar, whose height depends on the
+ * font size and the notch — so measure it instead of guessing. app.css has a
+ * --top-h good enough for the first paint; this is the real number. */
 function trackHeaderHeight() {
-  const topbar = document.getElementById('topbar');
+  const navbar = document.querySelector('.app-navbar');
+  if (!navbar) return;
   const set = () => document.documentElement.style.setProperty(
-    '--top-h', `${Math.round(topbar.getBoundingClientRect().height)}px`);
+    '--top-h', `${Math.round(navbar.getBoundingClientRect().height)}px`);
   set();
-  if ('ResizeObserver' in window) new ResizeObserver(set).observe(topbar);
+  if ('ResizeObserver' in window) new ResizeObserver(set).observe(navbar);
   else addEventListener('resize', set);
 }
 trackHeaderHeight();
@@ -1704,7 +1671,7 @@ addEventListener('keydown', (event) => {
   // The rest are the library's: its filters, its three lists, its watched
   // toggle. None of them mean anything against a catalogue.
   else if (inDiscover()) { /* nothing further */ }
-  else if (event.key === 'f') { event.preventDefault(); openFilterSheet(() => { syncControls(); render(); }); }
+  else if (event.key === 'f') { event.preventDefault(); openFilters(); }
   else if (event.key === 'w') { event.preventDefault(); flip('hideWatched'); }
   else if (event.key === 'k') { event.preventDefault(); flip('hideSkipped'); }
   else if (event.key === 's') { event.preventDefault(); dom.btnSelect.click(); }
@@ -1717,12 +1684,12 @@ addEventListener('keydown', (event) => {
 /* ------------------------------------------------------------------- boot */
 
 onChange(render);
-applyTheme(readTheme());
 loadView();
+/* An address naming a place wins over the one saved here last time. */
+const opening = readHash();
+if (opening) { filters.section = opening.section; filters.view = opening.view; }
+writeHash();
 loadDiscover();
-buildViewTabs();
-buildSideFoot();
-syncControls();
 dom.q.value = '';
 
 dom.list.replaceChildren(el('div.center-note', null, [el('div.spinner'), 'Loading your library…']));

@@ -155,7 +155,7 @@ const warned = row[0].find((n) => n.classList.has('dupe-warn'));
 if (!warned.length || !/Already in your library/.test(warned[0].text())) {
   throw new Error(`no warning on a title already there: ${row[0].text()}`);
 }
-const go = panel.find((n) => n.tagName === 'BUTTON' && n.classList.has('primary'))[0];
+const go = panel.find((n) => n.tagName === 'BUTTON' && n.classList.has('btn-primary'))[0];
 if (!go.disabled || !/already in your library/i.test(go.textContent)) {
   throw new Error(`the add button offered a duplicate: ${go.textContent}`);
 }

@@ -84,7 +84,7 @@ await tick();
 const rows = find((n) => n.classList.has('user-row'));
 check('everyone is listed', rows.map((r) => r.find((n) => n.classList.has('user-name'))[0].text()),
   ['Alice you', 'Bob']);
-check('with where they are signed in', rows.map((r) => r.find((n) => n.classList.has('card-meta'))[0]
+check('with where they are signed in', rows.map((r) => r.find((n) => n.classList.has('media-meta'))[0]
   .textContent.split(' · ')[0]), ['signed in on 2 browsers', 'not signed in yet']);
 check('you are the one person who cannot be removed here',
   [Boolean(button('Remove Alice')), Boolean(button('Remove Bob'))], [false, true]);

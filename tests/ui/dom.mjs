@@ -88,7 +88,7 @@ const doc = {
   activeElement: null,
 };
 globalThis.document = doc;
-globalThis.window = { addEventListener(){}, removeEventListener(){}, matchMedia: () => ({ matches:false, addEventListener(){} }), confirm: () => true, location: { href:'/', search:'' }, setTimeout, clearTimeout };
+globalThis.window = { addEventListener(){}, removeEventListener(){}, matchMedia: () => ({ matches:false, addEventListener(){} }), confirm: () => true, location: { href:'/', search:'', hash:'' }, setTimeout, clearTimeout };
 globalThis.localStorage = { _d:{}, getItem(k){ return this._d[k] ?? null; }, setItem(k,v){ this._d[k]=String(v); }, removeItem(k){ delete this._d[k]; }, key(i){ return Object.keys(this._d)[i] ?? null; }, get length(){ return Object.keys(this._d).length; } };
 try { Object.defineProperty(globalThis, 'navigator', { value: { clipboard: null, onLine: true }, configurable: true }); } catch { /* node supplies one */ }
 if (!globalThis.crypto) Object.defineProperty(globalThis, 'crypto', { value: { randomUUID: () => Math.random().toString(16).slice(2).padEnd(32,'0') }, configurable: true });

@@ -537,15 +537,15 @@ export function applyImport(parsed, { mode = 'merge', skipDuplicates = true }) {
 
 export function openPortingSheet(onDone, initialTab = 'import') {
   const body = el('div');
-  const tabs = el('div.tabs');
+  const tabs = el('div.nav.nav-pills.tabs', { role: 'tablist' });
   const panel = el('div');
 
   let current = initialTab;
   const tabButtons = {};
 
   for (const [id, label] of [['import', 'Import'], ['export', 'Export']]) {
-    const button = el('button', {
-      type: 'button', text: label, 'aria-selected': String(id === current),
+    const button = el('button.nav-link', {
+      type: 'button', text: label, role: 'tab', 'aria-selected': String(id === current),
       onclick: () => { current = id; draw(); },
     });
     tabButtons[id] = button;

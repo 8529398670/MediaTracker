@@ -41,12 +41,12 @@ const active = (iso) => (Date.now() - new Date(iso).getTime() < 60000
 export function openUsers() {
   const listBox = el('div.user-list', null,
     el('div.center-note', null, [el('div.spinner'), 'Loading…']));
-  const name = el('input.input', {
+  const name = el('input.form-control', {
     type: 'text', placeholder: 'Their name', maxLength: 32, autocomplete: 'off',
     spellcheck: false, enterkeyhint: 'go', 'aria-label': 'Name of the person to add',
   });
-  const add = el('button.btn.primary', { type: 'button', text: 'Add' });
-  const out = el('button.btn.sm.danger', { type: 'button' }, [icon('x'), 'Sign out of this browser']);
+  const add = el('button.btn.btn-primary', { type: 'button', text: 'Add' });
+  const out = el('button.btn.btn-sm.btn-outline-danger', { type: 'button' }, [icon('x'), 'Sign out of this browser']);
 
   let people = [];
   let mine = '';
@@ -69,12 +69,12 @@ export function openUsers() {
       : 'not signed in yet'];
     if (person.seenAt) meta.push(active(person.seenAt));
 
-    const link = el('button.btn.sm', {
+    const link = el('button.btn.btn-sm.btn-outline-secondary', {
       type: 'button', 'aria-label': `New login link for ${person.name}`,
     }, [icon('link'), 'Login link']);
     link.addEventListener('click', () => makeLink(person, link));
 
-    const key = el('button.btn.sm', {
+    const key = el('button.btn.btn-sm.btn-outline-secondary', {
       type: 'button', 'aria-label': `New API key for ${person.name}`,
     }, [icon('key'), 'API key']);
     key.addEventListener('click', () => newKey(person, async (made) => {
@@ -93,7 +93,7 @@ export function openUsers() {
       el('span', {
         text: `Unused link, made ${fmtAgo(made.createdAt)} · stops working ${fmtAgo(made.expiresAt)}`,
       }),
-      el('button.btn.sm.ghost', {
+      el('button.btn.btn-sm.btn-outline-secondary', {
         type: 'button', text: 'Cancel', 'aria-label': `Cancel the unused link for ${person.name}`,
         onclick: () => cancelLink(made),
       }),
@@ -107,7 +107,7 @@ export function openUsers() {
           made.usedAt ? `used ${fmtAgo(made.usedAt)}` : `made ${fmtAgo(made.createdAt)}, never used`,
         ].join(' · '),
       }),
-      el('button.btn.sm.ghost', {
+      el('button.btn.btn-sm.btn-outline-secondary', {
         type: 'button', text: 'Revoke',
         'aria-label': `Revoke the API key “${made.label}” of ${person.name}`,
         onclick: () => revokeKey(person, made),
@@ -121,7 +121,7 @@ export function openUsers() {
             el('span', { text: person.name }),
             isMe ? el('span.tag-badge', { text: 'you' }) : null,
           ]),
-          el('div.card-meta', { text: meta.join(' · ') }),
+          el('div.media-meta', { text: meta.join(' · ') }),
         ]),
         el('div.user-actions', null, [link, key, drop]),
       ]),
@@ -216,7 +216,7 @@ export function openUsers() {
     title: 'Users',
     body: [
       field('People', listBox),
-      field('Add someone', el('div.row.user-add', null, [name, add]),
+      field('Add someone', el('div.field-row.user-add', null, [name, add]),
         'They get a login link straight away. Everyone here can do everything, '
         + 'adding and removing people included. For a bot, add it by name and '
         + 'give it an API key.'),
@@ -233,12 +233,12 @@ export function openUsers() {
  * the last anyone sees of it — another is a tap away. */
 function showLink(name, made) {
   const url = linkUrl(made);
-  const box = el('input.input.link-box', {
+  const box = el('input.form-control.link-box', {
     type: 'text', readOnly: true, value: url, 'aria-label': `Login link for ${name}`,
   });
   box.addEventListener('focus', () => box.select());
 
-  const copy = el('button.btn.primary.grow', { type: 'button' }, [icon('copy'), 'Copy']);
+  const copy = el('button.btn.btn-primary.flex-grow-1', { type: 'button' }, [icon('copy'), 'Copy']);
   copy.addEventListener('click', async () => {
     const ok = await copyText(url);
     if (!ok) { box.focus(); box.select(); }
@@ -248,7 +248,7 @@ function showLink(name, made) {
 
   // Only over https: a phone's share sheet is the easy way to send it.
   const share = navigator.share
-    ? el('button.btn.grow', { type: 'button' }, [icon('upload'), 'Share…'])
+    ? el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button' }, [icon('upload'), 'Share…'])
     : null;
   share?.addEventListener('click', () => {
     navigator.share({ text: 'Your login link for Media Tracker. It works once.', url })
@@ -273,7 +273,7 @@ function showLink(name, made) {
 
 /* What the key is for and what it may do, then the key. */
 function newKey(person, onMade) {
-  const label = el('input.input', {
+  const label = el('input.form-control', {
     type: 'text', placeholder: 'e.g. claude bot', maxLength: 32, autocomplete: 'off',
     spellcheck: false, enterkeyhint: 'go', 'aria-label': 'What the key is for',
   });
@@ -281,7 +281,7 @@ function newKey(person, onMade) {
   const reach = el('p.hint', { text: REACH.full(person.name) });
   const pick = segmented([{ id: 'full', label: 'Full' }, { id: 'read', label: 'Read-only' }],
     access, (value) => { access = value; reach.textContent = REACH[value](person.name); });
-  const make = el('button.btn.primary.grow', { type: 'button' }, [icon('key'), 'Make key']);
+  const make = el('button.btn.btn-primary.flex-grow-1', { type: 'button' }, [icon('key'), 'Make key']);
 
   const handle = openSheet({
     title: `New API key for ${person.name}`,
@@ -316,21 +316,21 @@ function newKey(person, onMade) {
 /* The key, once. Like a link, only its hash is kept: closing this is the last
  * anyone sees of it, and a lost one is revoked and made again. */
 function showKey(name, made) {
-  const box = el('input.input.link-box', {
+  const box = el('input.form-control.link-box', {
     type: 'text', readOnly: true, value: made.key, 'aria-label': `API key for ${name}`,
   });
   box.addEventListener('focus', () => box.select());
   const example = `curl -H 'Authorization: Bearer ${made.key}' `
     + `${made.url || location.origin}/api/library`;
 
-  const copy = el('button.btn.primary.grow', { type: 'button' }, [icon('copy'), 'Copy']);
+  const copy = el('button.btn.btn-primary.flex-grow-1', { type: 'button' }, [icon('copy'), 'Copy']);
   copy.addEventListener('click', async () => {
     const ok = await copyText(made.key);
     if (!ok) { box.focus(); box.select(); }
     toast(ok ? 'Copied — give it to the bot' : 'Could not copy — select the key and copy it',
       { error: !ok });
   });
-  const copyExample = el('button.btn.grow', { type: 'button' }, [icon('copy'), 'Copy example']);
+  const copyExample = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button' }, [icon('copy'), 'Copy example']);
   copyExample.addEventListener('click', async () => {
     const ok = await copyText(example);
     toast(ok ? 'Copied the example' : 'Could not copy it', { error: !ok });

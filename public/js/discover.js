@@ -15,7 +15,7 @@ import {
   api, live, titleKey, addItem, nowISO, state, TYPE_LABEL, fillIn, stage,
 } from './store.js';
 import {
-  el, icon, field, openSheet, setChildren, toast, scoreBadge,
+  el, icon, field, select, openSheet, setChildren, toast, scoreBadge,
 } from './ui.js';
 
 const VIEW_KEY = 'mt.discover.v1';
@@ -369,7 +369,7 @@ function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
     })),
   ];
 
-  const links = el('div.card-links.disco-links', null, linksFor(film));
+  const links = el('div.media-links.disco-links', null, linksFor(film));
 
   // Each name is a way into everything else they were in. Name and comma are
   // one unbreakable piece, or a line wraps between them and the next line
@@ -387,18 +387,18 @@ function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
 
   const body = el('div.disco-body', null, [
     heading,
-    facts.length ? el('div.card-meta', null, facts) : null,
+    facts.length ? el('div.media-meta', null, facts) : null,
     people.length ? cast : null,
     badges.length ? el('div.disco-badges', null, badges) : null,
     links,
   ]);
 
   const add = mine
-    ? el('button.btn.sm.ghost.disco-act', {
+    ? el('button.btn.btn-sm.btn-outline-secondary.disco-act', {
       type: 'button', title: `Already in your library — ${TYPE_LABEL[mine.type] || mine.type}`,
       onclick: () => on.open(mine),
     }, [icon('check'), 'Added'])
-    : el('button.btn.sm.primary.disco-act', {
+    : el('button.btn.btn-sm.btn-primary.disco-act', {
       type: 'button', 'aria-label': `Add ${film.title}`,
       onclick: () => on.add(film),
     }, [icon('plus'), 'Add']);
@@ -407,12 +407,12 @@ function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
   // smaller — so it is a button on the row, not something behind a menu.
   // Already-yours rows have nothing to pass on.
   const pass = skipped
-    ? el('button.btn.sm.ghost.disco-act', {
+    ? el('button.btn.btn-sm.btn-outline-secondary.disco-act', {
       type: 'button', 'aria-label': `Put ${film.title} back`,
       title: 'Put this back among the rest',
       onclick: () => on.unskip(film, lift(node)),
     }, [icon('refresh'), 'Put back'])
-    : (mine ? null : el('button.btn.sm.ghost.disco-act.skip', {
+    : (mine ? null : el('button.btn.btn-sm.btn-outline-secondary.disco-act.skip', {
       type: 'button', 'aria-label': `Skip ${film.title}`,
       title: 'Not for me — take it off the list',
       onclick: () => on.skip(film, lift(node)),
@@ -424,7 +424,7 @@ function row(film, on, mine, { skipped = discover.showSkipped } = {}) {
   // to add it to the queue and then go and mark it watched, which is two
   // screens for the thing the eye does fastest. Already-yours rows have
   // nothing to add — that judgement belongs on the item itself.
-  const seen = mine ? null : el('button.btn.sm.ghost.disco-act.seen', {
+  const seen = mine ? null : el('button.btn.btn-sm.btn-outline-secondary.disco-act.seen', {
     type: 'button', 'aria-label': `Add ${film.title} as already watched`,
     title: 'Seen it — put it straight in the watched pile',
     onclick: () => on.watched(film),
@@ -567,7 +567,7 @@ export function renderDiscover(root, on) {
   if (cache.error) {
     nodes.push(el('div.center-note', null, [
       el('div', { text: cache.error }),
-      el('button.btn.sm.ghost', { type: 'button', text: 'Try again', onclick: on.reload }),
+      el('button.btn.btn-sm.btn-outline-secondary', { type: 'button', text: 'Try again', onclick: on.reload }),
     ]));
   } else if (cache.loading && !cache.films.length) {
     nodes.push(el('div.center-note', null, [el('div.spinner'), 'Reading the lists…']));
@@ -592,7 +592,7 @@ export function renderDiscover(root, on) {
       nodes.push(section);
     }
     if (cache.films.length < cache.total) {
-      nodes.push(el('div.disco-more', null, el('button.btn.ghost', {
+      nodes.push(el('div.disco-more', null, el('button.btn.btn-outline-secondary', {
         type: 'button',
         text: cache.loading ? 'Loading…' : `Show more (${cache.total - cache.films.length} left)`,
         disabled: cache.loading,
@@ -615,7 +615,7 @@ function emptyState(on) {
             + 'list. What is here is the half of the signal that says not this '
             + 'one, which is the half worth having.',
       }),
-      el('button.btn.primary', {
+      el('button.btn.btn-primary', {
         type: 'button',
         onclick: () => { setView({ showSkipped: false }); on.change(); },
       }, [icon('list'), 'Back to the films']),
@@ -642,39 +642,20 @@ function emptyState(on) {
           + 'year, alongside the weekly box-office number ones and the year’s '
           + 'top ten. Collect them once and they are yours to browse offline.',
     }),
-    unread ? el('button.btn.primary', {
+    unread ? el('button.btn.btn-primary', {
       type: 'button', onclick: () => openRefine(on, { focus: 'ratings' }),
     }, [icon('shield'), 'Look up the ratings']) : null,
-    narrowed ? el(unread ? 'button.btn.ghost' : 'button.btn.primary', {
+    narrowed ? el(unread ? 'button.btn.btn-outline-secondary' : 'button.btn.btn-primary', {
       type: 'button',
       onclick: () => {
         setView({ yearFrom: 0, yearTo: 0, genres: [], genreMode: 'any', ratings: [] });
         on.change();
       },
     }, [icon('x'), 'Clear the filters']) : null,
-    el(narrowed ? 'button.btn.ghost' : 'button.btn.primary',
+    el(narrowed ? 'button.btn.btn-outline-secondary' : 'button.btn.btn-primary',
       { type: 'button', onclick: on.fetch },
       [icon('download'), harvested ? 'Collect more years' : 'Collect the lists']),
   ]);
-}
-
-/* Counts and a line about what the list is showing. */
-export function discoverStats(node) {
-  const coverage = cache.coverage || { films: 0, years: {} };
-  const years = Object.keys(coverage.years || {}).length;
-  const summary = filterSummary();
-  setChildren(node, [
-    el('b', { text: String(cache.total) }),
-    el('span', { text: discover.showSkipped ? ' skipped' : ' shown' }),
-    summary ? el('span.stat-filter', { text: summary }) : null,
-    el('span.divider'),
-    el('b', { text: String(coverage.films || 0) }),
-    el('span', { text: ` collected across ${years} year${years === 1 ? '' : 's'}` }),
-    !discover.showSkipped && skippedCount() ? el('span', {
-      text: `${skippedCount()} skipped`,
-    }) : null,
-  ]);
-  node.hidden = false;
 }
 
 /* ---------------------------------------------------------------- toolbar */
@@ -772,10 +753,10 @@ function inDecade(ten) {
 }
 
 export function buildTools(bar, on) {
-  const tabs = el('div.viewtabs', { role: 'tablist', 'aria-label': 'Which films' });
+  const tabs = el('div.nav.nav-pills.tabs', { role: 'tablist', 'aria-label': 'Which films' });
 
   const tab = (id, label) => {
-    const button = el('button', {
+    const button = el('button.nav-link', {
       type: 'button', role: 'tab', dataset: { pick: id },
       'aria-selected': String(discover.filter === id),
       onclick: () => { discover.filter = id; save(); on.change(); },
@@ -794,11 +775,11 @@ export function buildTools(bar, on) {
     ...topics.map((t) => tab(`topic:${t.id}`, t.label)),
   );
 
-  const from = el('input.input.yr', {
+  const from = el('input.form-control.yr', {
     type: 'number', inputmode: 'numeric', placeholder: 'from',
     value: discover.yearFrom || '', 'aria-label': 'From year',
   });
-  const to = el('input.input.yr', {
+  const to = el('input.form-control.yr', {
     type: 'number', inputmode: 'numeric', placeholder: 'to',
     value: discover.yearTo || '', 'aria-label': 'To year',
   });
@@ -922,15 +903,23 @@ export function buildTools(bar, on) {
 
 /* ------------------------------------------------------------- refining */
 
-/* Year and genre, with room to combine them.
+/* The Filters card, Discover's half of it: year and genre, with room to
+ * combine them. The same funnel in the navbar opens this and the library's,
+ * whichever pane you are in — one way in, one card, the fields of the place
+ * you are standing.
  *
  * Nothing is drafted and applied: every tap goes straight through to the
  * list underneath and the counts come back from the same answer, so the
  * numbers on the chips are what choosing them would actually give rather
- * than what they gave before the last two taps.
+ * than what they gave before the last two taps. The library's half of the
+ * card works the other way round, because it has nothing to wait for.
  */
 export function openRefine(on, { focus = '' } = {}) {
   const body = el('div');
+  const order = el('div');
+  const following = el('div');
+  const followField = field('Following', following,
+    'Everything they were billed in, in the years showing. Tap the name to stop.');
   const years = el('div');
   const genres = el('div');
   const certs = el('div');
@@ -1000,7 +989,7 @@ export function openRefine(on, { focus = '' } = {}) {
                 + `${left} min left. You can close this; it keeps going.`,
           }),
         ]),
-        el('button.btn.sm.ghost', {
+        el('button.btn.btn-sm.btn-outline-secondary', {
           type: 'button', text: 'Stop', onclick: () => runPass('stop'),
         }),
       ]);
@@ -1020,7 +1009,7 @@ export function openRefine(on, { focus = '' } = {}) {
             + 'been looked up yet, so they answer to Not looked up rather '
             + 'than to a rating.',
       }),
-      status.network ? el('button.btn.sm.primary', {
+      status.network ? el('button.btn.btn-sm.btn-primary', {
         type: 'button', onclick: () => runPass('start'),
       }, [icon('download'), 'Look them up']) : el('p.hint', {
         text: 'Lookups are switched off in this container.',
@@ -1060,19 +1049,19 @@ export function openRefine(on, { focus = '' } = {}) {
       el('span.chip-count', { text: String(facet.count) })]);
 
   function paint() {
-    const from = el('input.input', {
+    const from = el('input.form-control', {
       type: 'number', inputmode: 'numeric', placeholder: 'from',
       value: discover.yearFrom || '', 'aria-label': 'From year',
       onchange: (event) => { setView({ yearFrom: Number(event.target.value) || 0 }); refresh(); },
     });
-    const to = el('input.input', {
+    const to = el('input.form-control', {
       type: 'number', inputmode: 'numeric', placeholder: 'to',
       value: discover.yearTo || '', 'aria-label': 'To year',
       onchange: (event) => { setView({ yearTo: Number(event.target.value) || 0 }); refresh(); },
     });
     const spread = decades();
     setChildren(years, [
-      el('div.row', null, [from, to]),
+      el('div.field-row', null, [from, to]),
       spread.length ? el('div.chip-row.decades', null, [
         el('button.chip.chip-toggle', {
           type: 'button',
@@ -1114,7 +1103,7 @@ export function openRefine(on, { focus = '' } = {}) {
           onclick: () => { expanded = true; paint(); },
         }) : null,
       ]),
-      discover.genres.length ? el('button.btn.sm.ghost', {
+      discover.genres.length ? el('button.btn.btn-sm.btn-outline-secondary', {
         type: 'button', text: 'Clear genres',
         onclick: () => { setView({ genres: [] }); refresh(); },
       }) : null,
@@ -1153,6 +1142,23 @@ export function openRefine(on, { focus = '' } = {}) {
       ]),
     ]);
 
+    setChildren(order, [select(SORTS, discover.sort, (id) => {
+      setView({ sort: id });
+      refresh();
+    }, { label: 'Sort by' })]);
+
+    /* One name, followed from a row. Clear all takes it off, so it has to be
+     * visible here — it is the one filter with nowhere else to switch it off
+     * once the row that set it has scrolled away. */
+    followField.hidden = !discover.actor;
+    setChildren(following, discover.actor ? [el('div.chip-row', null, [
+      el('button.chip.chip-toggle', {
+        type: 'button', 'aria-pressed': 'true',
+        title: `Stop following ${discover.actor}`,
+        onclick: () => { setActor(discover.actor); refresh(); },
+      }, [el('span', { text: discover.actor }), icon('x')]),
+    ])] : []);
+
     const summary = filterSummary();
     total.textContent = `${cache.total} film${cache.total === 1 ? '' : 's'}`
       + (summary ? ` — ${summary}` : ' — everything collected');
@@ -1161,6 +1167,8 @@ export function openRefine(on, { focus = '' } = {}) {
   paint();
   askPass();
   body.append(
+    field('Sort by', order),
+    followField,
     field('Year', years,
       'A decade is one tap; the boxes take any range. The number on a decade '
       + 'is what it holds under the genres chosen below.'),
@@ -1181,10 +1189,10 @@ export function openRefine(on, { focus = '' } = {}) {
     field('Showing', total),
   );
 
-  const clear = el('button.btn.ghost.grow', { type: 'button', text: 'Clear all' });
-  const done = el('button.btn.primary.grow', { type: 'button', text: 'Done' });
+  const clear = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button', text: 'Clear all' });
+  const done = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Done' });
   const handle = openSheet({
-    title: 'What to show',
+    title: 'Filters',
     body,
     footer: [clear, done],
     onClose: () => clearTimeout(timer),
@@ -1208,10 +1216,10 @@ export function openRefine(on, { focus = '' } = {}) {
 export function openHarvest(onDone) {
   const body = el('div');
   const line = el('div.sync-line');
-  const bar = el('div.progress', null, el('i'));
+  const bar = el('div.progress', { role: 'progressbar' }, el('div.progress-bar'));
   const detail = el('p.hint');
-  const start = el('button.btn.primary.grow', { type: 'button', text: 'Collect' });
-  const stop = el('button.btn.ghost', { type: 'button', text: 'Stop' });
+  const start = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Collect' });
+  const stop = el('button.btn.btn-outline-secondary', { type: 'button', text: 'Stop' });
 
   const chosen = {
     sets: new Set(['american', 'boxoffice', 'yearfilm']),
@@ -1222,7 +1230,7 @@ export function openHarvest(onDone) {
 
   const paint = (status) => {
     const pct = status.total ? Math.round((status.done / status.total) * 100) : 0;
-    bar.firstChild.style.setProperty('--w', `${pct}%`);
+    bar.firstChild.style.setProperty('width', `${pct}%`);
     bar.hidden = !status.total;
     line.replaceChildren(
       el('span.sync-dot', { class: status.running ? 'busy' : '' }),
@@ -1278,11 +1286,11 @@ export function openHarvest(onDone) {
     ])]);
   };
 
-  const from = el('input.input', {
+  const from = el('input.form-control', {
     type: 'number', inputmode: 'numeric', value: String(range.from), 'aria-label': 'From year',
     onchange: (event) => { range.from = Number(event.target.value) || 0; },
   });
-  const to = el('input.input', {
+  const to = el('input.form-control', {
     type: 'number', inputmode: 'numeric', value: String(range.to), 'aria-label': 'To year',
     onchange: (event) => { range.to = Number(event.target.value) || 0; },
   });
@@ -1291,7 +1299,7 @@ export function openHarvest(onDone) {
   const topics = el('div');
 
   body.append(
-    field('Years', el('div.row', null, [from, to]),
+    field('Years', el('div.field-row', null, [from, to]),
       'One year is three pages and about eight seconds. A whole decade is a '
       + 'couple of minutes. Nothing is fetched twice unless you ask for it again.'),
     field('What to collect from each year', sets),
@@ -1305,7 +1313,7 @@ export function openHarvest(onDone) {
         + 'archive without asking Wikipedia for any of it again.',
   }));
 
-  const rebuild = el('button.btn.sm.ghost', { type: 'button', text: 'Rebuild the merge' });
+  const rebuild = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button', text: 'Rebuild the merge' });
   rebuild.addEventListener('click', async () => {
     rebuild.disabled = true;
     try {

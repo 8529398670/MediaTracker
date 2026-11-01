@@ -117,8 +117,8 @@ export function openItem(item, { onChange, onDeleted }) {
   body.append(head);
 
   /* fields */
-  const title = el('input.input', { type: 'text', value: draft.title, placeholder: 'Title' });
-  const year = el('input.input', {
+  const title = el('input.form-control', { type: 'text', value: draft.title, placeholder: 'Title' });
+  const year = el('input.form-control', {
     type: 'number', inputmode: 'numeric', value: draft.year || '', placeholder: 'Year',
   });
   // A type no longer in the list is still this title's until it is changed.
@@ -127,7 +127,7 @@ export function openItem(item, { onChange, onDeleted }) {
   draft.type, (v) => { draft.type = v; });
 
   body.append(field('Title', title));
-  body.append(el('div.row', null, [field('Year', year), field('Type', type)]));
+  body.append(el('div.field-row', null, [field('Year', year), field('Type', type)]));
 
   body.append(field('Status', segmented(STATUSES, draft.status, (v) => {
     draft.status = v;
@@ -171,7 +171,7 @@ export function openItem(item, { onChange, onDeleted }) {
   body.append(field('Heart', el('div.chip-row', null, [heartChip])));
 
   /* tags */
-  const tags = el('input.input', {
+  const tags = el('input.form-control', {
     type: 'text', value: draft.tags.join(', '), placeholder: 'noir, rewatch, with mom',
     autocapitalize: 'none', spellcheck: false,
   });
@@ -182,7 +182,7 @@ export function openItem(item, { onChange, onDeleted }) {
   function drawLinks() {
     linkBox.replaceChildren();
     draft.links.forEach((link, index) => {
-      const url = el('input.input', { type: 'url', value: link.url, placeholder: 'https://...' });
+      const url = el('input.form-control', { type: 'url', value: link.url, placeholder: 'https://...' });
       url.addEventListener('input', () => { draft.links[index].url = url.value.trim(); });
       const remove = el('button.icon-btn', {
         type: 'button', 'aria-label': 'Remove link',
@@ -190,7 +190,7 @@ export function openItem(item, { onChange, onDeleted }) {
       }, icon('trash'));
       linkBox.append(el('div.link-row', null, [url, remove]));
     });
-    const add = el('button.btn.sm.ghost', {
+    const add = el('button.btn.btn-sm.btn-outline-secondary', {
       type: 'button', onclick: () => { draft.links.push({ label: '', url: '' }); drawLinks(); },
     }, [icon('plus'), 'Add link']);
     linkBox.append(add);
@@ -199,18 +199,18 @@ export function openItem(item, { onChange, onDeleted }) {
   body.append(field('Links', linkBox, 'Where to actually watch it.'));
 
   /* notes */
-  const notes = el('textarea.input', { placeholder: 'Anything worth remembering', rows: 3 });
+  const notes = el('textarea.form-control', { placeholder: 'Anything worth remembering', rows: 3 });
   notes.value = draft.notes || '';
   body.append(field('Notes', notes));
 
   /* dates */
-  const added = el('input.input', { type: 'date', value: isoToDateInput(draft.addedAt) });
-  const watched = el('input.input', { type: 'date', value: isoToDateInput(draft.watchedAt) });
-  body.append(el('div.row', null, [field('Added', added), field('Watched', watched)]));
+  const added = el('input.form-control', { type: 'date', value: isoToDateInput(draft.addedAt) });
+  const watched = el('input.form-control', { type: 'date', value: isoToDateInput(draft.watchedAt) });
+  body.append(el('div.field-row', null, [field('Added', added), field('Watched', watched)]));
 
   /* metadata refresh */
-  const posterUrl = el('input.input', { type: 'url', value: draft.poster || '', placeholder: 'Poster image URL' });
-  const lookupBtn = el('button.btn.sm.ghost', { type: 'button' }, [icon('sparkle'), 'Fetch artwork & details']);
+  const posterUrl = el('input.form-control', { type: 'url', value: draft.poster || '', placeholder: 'Poster image URL' });
+  const lookupBtn = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button' }, [icon('sparkle'), 'Fetch artwork & details']);
   lookupBtn.addEventListener('click', () => {
     const handle = openLookupSheet({
       query: title.value || draft.title,
@@ -270,8 +270,8 @@ export function openItem(item, { onChange, onDeleted }) {
   body.append(field('Poster URL', posterUrl));
 
   /* footer */
-  const del = el('button.btn.danger', { type: 'button' }, [icon('trash')]);
-  const save = el('button.btn.primary.grow', { type: 'button', text: 'Save' });
+  const del = el('button.btn.btn-outline-danger', { type: 'button' }, [icon('trash')]);
+  const save = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Save' });
   const handle = openSheet({ title: 'Edit', body, footer: [del, save] });
 
   del.addEventListener('click', async () => {
@@ -373,7 +373,7 @@ export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
   // book as the book it was read from.
   const asked = lookupKind(kind);
   let mediaKind = ['movie', 'tv', 'book', 'podcast'].includes(asked) ? asked : 'any';
-  const input = el('input.input', {
+  const input = el('input.form-control', {
     type: 'search', value: query, placeholder: 'Title, or a link to paste',
     enterkeyhint: 'search', autocapitalize: 'words',
   });
@@ -421,7 +421,7 @@ export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
       return;
     }
     for (const row of data.results) {
-      const use = el('button.btn.sm.primary', { type: 'button', text: actionLabel });
+      const use = el('button.btn.btn-sm.btn-primary', { type: 'button', text: actionLabel });
       use.addEventListener('click', async () => {
         use.disabled = true;
         // The top answer arrives complete; the rest are search results, and
@@ -442,7 +442,7 @@ export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
         row.poster ? el('img', { src: row.poster, alt: '', loading: 'lazy' }) : el('img', { alt: '' }),
         el('div.result-body', null, [
           el('h4', { text: row.title }),
-          el('div.card-meta', null, [
+          el('div.media-meta', null, [
             row.year ? el('span', { text: String(row.year) }) : null,
             el('span.tag-badge.type', { text: TYPE_LABEL[row.type] || row.type }),
             row.source ? el('span', { text: row.source }) : null,
@@ -481,14 +481,14 @@ export function openLookupSheet({ query = '', year = null, kind = 'any', onPick,
 
 export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
   const body = el('div');
-  const tabs = el('div.tabs');
+  const tabs = el('div.nav.nav-pills.tabs', { role: 'tablist' });
   const panel = el('div');
   let current = 'add';
   const buttons = {};
 
   for (const [id, label] of [['add', 'Add anything'], ['manual', 'By hand'], ['paste', 'Files & export']]) {
-    const button = el('button', {
-      type: 'button', text: label, 'aria-selected': String(id === current),
+    const button = el('button.nav-link', {
+      type: 'button', text: label, role: 'tab', 'aria-selected': String(id === current),
       onclick: () => { current = id; draw(); },
     });
     buttons[id] = button;
@@ -512,14 +512,14 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
   function manualPanel() {
     const wrap = el('div');
     const draft = { type: defaultType, status: 'queue' };
-    const title = el('input.input', { type: 'text', placeholder: 'Title', 'data-autofocus': '' });
-    const year = el('input.input', { type: 'number', inputmode: 'numeric', placeholder: 'Year' });
-    const link = el('input.input', { type: 'url', placeholder: 'https://... (optional)' });
-    const tags = el('input.input', { type: 'text', placeholder: 'tags, comma separated', autocapitalize: 'none' });
+    const title = el('input.form-control', { type: 'text', placeholder: 'Title', 'data-autofocus': '' });
+    const year = el('input.form-control', { type: 'number', inputmode: 'numeric', placeholder: 'Year' });
+    const link = el('input.form-control', { type: 'url', placeholder: 'https://... (optional)' });
+    const tags = el('input.form-control', { type: 'text', placeholder: 'tags, comma separated', autocapitalize: 'none' });
 
     wrap.append(
       field('Title', title),
-      el('div.row', null, [
+      el('div.field-row', null, [
         field('Year', year),
         field('Type', select(TYPES, draft.type, (v) => { draft.type = v; })),
       ]),
@@ -537,7 +537,7 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
       warn.hidden = !match;
       if (!match) return;
       warn.classList.toggle('sure', isCertain(match));
-      warn.replaceChildren(warning(match), el('button.btn.sm.ghost', {
+      warn.replaceChildren(warning(match), el('button.btn.btn-sm.btn-outline-secondary', {
         type: 'button', text: 'Open', onclick: () => openMine(match.item),
       }));
     };
@@ -545,8 +545,8 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
     year.addEventListener('input', check);
     wrap.insertBefore(warn, wrap.children[1] || null);
 
-    const save = el('button.btn.primary.grow', { type: 'button', text: 'Add to library' });
-    const saveAndNext = el('button.btn.ghost', { type: 'button', text: 'Add & keep going' });
+    const save = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Add to library' });
+    const saveAndNext = el('button.btn.btn-outline-secondary', { type: 'button', text: 'Add & keep going' });
 
     const commit = () => {
       const name = title.value.trim();
@@ -583,7 +583,7 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
       toast(`Added "${created.title}"`);
     });
 
-    wrap.append(el('div.row', null, [saveAndNext, save]));
+    wrap.append(el('div.field-row', null, [saveAndNext, save]));
     return wrap;
   }
 
@@ -594,7 +594,7 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
             + 'Pasting a list does not need this tab — "Add anything" takes one.',
       }),
     ]);
-    const go = el('button.btn.primary.grow', { type: 'button', text: 'Import & export' });
+    const go = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Import & export' });
     go.addEventListener('click', () => { handle.close(); openPortingSheet(onDone, 'import'); });
     wrap.append(el('div.field', null, [go]));
     return wrap;

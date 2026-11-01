@@ -211,8 +211,8 @@ export function markType() {
 
   let chosen = '';
   const hint = el('p.hint');
-  const cancel = el('button.btn.ghost.grow', { type: 'button', text: 'Cancel' });
-  const go = el('button.btn.primary.grow', { type: 'button', text: 'Pick a type', disabled: true });
+  const cancel = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button', text: 'Cancel' });
+  const go = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Pick a type', disabled: true });
 
   const chips = el('div.chip-row.type-pick');
   for (const type of TYPES) {
@@ -306,12 +306,12 @@ export function wirePicking({ list, barNode, button, changed }) {
 }
 
 const cardOf = (target) => (target && target.closest
-  ? target.closest('.card[data-id], .qrow[data-id]') : null);
+  ? target.closest('.media-card[data-id], .qrow[data-id]') : null);
 
 /** Every card on the page, in the order the page lists them. */
 function order() {
   const ids = [];
-  for (const node of page.list.querySelectorAll('.card[data-id], .qrow[data-id]')) {
+  for (const node of page.list.querySelectorAll('.media-card[data-id], .qrow[data-id]')) {
     if (!ids.includes(node.dataset.id)) ids.push(node.dataset.id);
   }
   return ids;
@@ -320,11 +320,11 @@ function order() {
 function buildBar(node) {
   bar.count = el('b.sel-count', { 'aria-live': 'polite' });
   bar.note = el('span.sel-note');
-  bar.all = el('button.btn.sm.ghost.sel-all', {
+  bar.all = el('button.btn.btn-sm.btn-outline-secondary.sel-all', {
     type: 'button',
     onclick: () => { if (allShownPicked()) unpickAll(); else pickAll(shown); },
   });
-  const cancel = el('button.btn.sm.ghost.sel-cancel', {
+  const cancel = el('button.btn.btn-sm.btn-outline-secondary.sel-cancel', {
     type: 'button', title: 'Stop selecting (Esc)', 'aria-label': 'Cancel',
     onclick: () => { stopPicking(); },
   }, [icon('x'), el('span', { text: 'Cancel' })]);
@@ -336,7 +336,7 @@ function buildBar(node) {
     act('watched', 'check', 'Watched', 'Mark them watched', () => markStatus('watched')),
     act('dropped', 'skip', 'Skipped', 'Mark them skipped', () => markStatus('dropped')),
     act('type', 'tag', 'Type', 'Mark them as a type — Movie, TV, Audio Book…', () => markType()),
-    act('delete', 'trash', 'Delete', 'Delete them', () => remove(), 'danger'),
+    act('delete', 'trash', 'Delete', 'Delete them', () => remove(), 'btn-outline-danger'),
   ];
 
   // Flat, so one grid can lay it out as two rows on a phone and one on a desk.
@@ -386,7 +386,7 @@ function syncMarks() {
   if (!page.list || !page.list.querySelectorAll) return;
   if (!picking.on && !marked) return;
   marked = false;
-  for (const node of page.list.querySelectorAll('.card[data-id], .qrow[data-id]')) {
+  for (const node of page.list.querySelectorAll('.media-card[data-id], .qrow[data-id]')) {
     const on = picking.on && picking.ids.has(node.dataset.id);
     if (on) { node.classList.add('is-selected'); marked = true; }
     else node.classList.remove('is-selected');

@@ -58,11 +58,11 @@ function mark(node, item, on) {
 const pickBox = () => el('span.sel', { 'aria-hidden': 'true' });
 
 export function card(item, on) {
-  const node = el('article.card', { dataset: { id: item.id } });
+  const node = el('article.media-card', { dataset: { id: item.id } });
   mark(node, item, on);
 
   /* poster */
-  const poster = el('button.card-poster', {
+  const poster = el('button.media-poster', {
     type: 'button',
     'aria-label': `Open ${item.title}`,
     onclick: () => on.open(item),
@@ -80,13 +80,13 @@ export function card(item, on) {
   }
 
   /* body */
-  const title = el('h3.card-title', null, [
+  const title = el('h3.media-title', null, [
     item.title || 'Untitled',
     ' ',
     yearControl(item, on),
   ]);
 
-  const meta = el('div.card-meta', null, [
+  const meta = el('div.media-meta', null, [
     el('span.tag-badge.type', { text: TYPE_LABEL[item.type] || item.type }),
     item.status !== 'queue'
       ? el('span', { class: `tag-badge st-${item.status}`, text: STATUS_LABEL[item.status] })
@@ -117,7 +117,7 @@ export function card(item, on) {
   const people = (item.cast || []).slice(0, 3).join(', ');
   const billing = people ? el('div.card-cast', { text: people }) : null;
 
-  const tap = el('div.card-tap', {
+  const tap = el('div.media-tap', {
     role: 'button',
     tabindex: '0',
     'aria-label': `Open ${item.title}`,
@@ -128,10 +128,10 @@ export function card(item, on) {
     },
   }, [title, meta]);
 
-  const wrap = el('div.card-body', null, [tap, billing]);
+  const wrap = el('div.media-body', null, [tap, billing]);
   const refs = refLinks(item);
   if (item.links.length || refs) {
-    wrap.append(el('div.card-links', null, [
+    wrap.append(el('div.media-links', null, [
       ...item.links.slice(0, 2).map((link) => el('a.link-chip', {
         href: link.url, target: '_blank', rel: 'noopener noreferrer',
         onclick: (event) => event.stopPropagation(),
@@ -158,7 +158,7 @@ export function card(item, on) {
   });
 
   node.append(pickBox(), poster, wrap,
-    el('div.card-side', null, [heart, rate, checkButton(item, on)]));
+    el('div.media-side', null, [heart, rate, checkButton(item, on)]));
   return node;
 }
 
@@ -342,7 +342,7 @@ export function refLinks(item) {
       onclick: (event) => event.stopPropagation(),
     }, icon(ref.icon)));
   }
-  return chips.length ? el('div.card-refs', null, chips) : null;
+  return chips.length ? el('div.media-refs', null, chips) : null;
 }
 
 function placeholder(item) {
@@ -393,7 +393,7 @@ const track = (item, node) => {
  * would cost more than the render. */
 function anchorOf(root) {
   const node = document.elementFromPoint(Math.min(48, window.innerWidth / 2), 150);
-  const found = node && node.closest ? node.closest('.card') : null;
+  const found = node && node.closest ? node.closest('.media-card') : null;
   if (!found || !root.contains(found)) return null;
   return { id: found.dataset.id, top: found.getBoundingClientRect().top };
 }
@@ -518,7 +518,7 @@ export function stripSection(cls, { label, count, note, action }, children) {
     el('h2', { text: label }),
     count !== undefined ? el('span.group-count', { text: String(count) }) : null,
     note ? el('span.strip-note', { text: note }) : null,
-    action ? el('button.btn.sm.ghost.strip-act', {
+    action ? el('button.btn.btn-sm.btn-outline-secondary.strip-act', {
       type: 'button', text: action.label, onclick: action.fn,
     }) : null,
   ]);
@@ -547,7 +547,7 @@ function foundLinks(row) {
     onclick: (event) => event.stopPropagation(),
   }, [icon(name), label]);
 
-  return el('div.card-links.found-links', null, [
+  return el('div.media-links.found-links', null, [
     chip('wiki', 'Wikipedia',
       article || `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(terms)}`,
       article ? `${title} on Wikipedia` : `Search Wikipedia for ${title}`),
@@ -572,7 +572,7 @@ function foundLinks(row) {
 export function foundRow(row, { badge = '', mine = null, warn = '', on }) {
   const body = el('div.result-body', null, [
     el('h4', { text: row.title || '?' }),
-    el('div.card-meta', null, [
+    el('div.media-meta', null, [
       row.year ? el('span', { text: String(row.year) }) : null,
       el('span.tag-badge.type', { text: TYPE_LABEL[row.type] || row.type || '' }),
       row.creator ? el('span', { text: row.creator }) : null,
@@ -591,16 +591,16 @@ export function foundRow(row, { badge = '', mine = null, warn = '', on }) {
     : el('img', { alt: '' });
 
   const acts = mine
-    ? [el('button.btn.sm.ghost', {
+    ? [el('button.btn.btn-sm.btn-outline-secondary', {
         type: 'button', title: `Already in your library — ${TYPE_LABEL[mine.type] || mine.type}`,
         onclick: () => on.open(mine),
       }, [icon('check'), 'Added'])]
     : [
-        el('button.btn.sm.primary', {
+        el('button.btn.btn-sm.btn-primary', {
           type: 'button', 'aria-label': `Add ${row.title}`,
           onclick: () => on.add(row),
         }, [icon('plus'), 'Add']),
-        el('button.btn.sm.ghost', {
+        el('button.btn.btn-sm.btn-outline-secondary', {
           type: 'button', 'aria-label': `Add ${row.title} as already watched`,
           title: 'Seen it — straight to the watched pile',
           onclick: () => on.watched(row),
@@ -663,7 +663,7 @@ function queueRow(item, index, on) {
 
   // The artwork, small: enough to know the film at a glance without making
   // the row a card. Opens it, like the card's does.
-  const art = el('button.card-poster.qposter', {
+  const art = el('button.media-poster.qposter', {
     type: 'button', tabindex: '-1', 'aria-label': `Open ${item.title}`,
     onclick: () => on.open(item),
   });
@@ -1157,7 +1157,7 @@ export function renderEmpty(node, {
 
   // A hit in another list is worth pointing at rather than making you hunt.
   const pointer = elsewhere && onGo
-    ? el('button.btn.ghost', {
+    ? el('button.btn.btn-outline-secondary', {
         type: 'button',
         text: `${elsewhere.count} in ${elsewhere.label}`,
         onclick: () => onGo(elsewhere),
@@ -1172,8 +1172,8 @@ export function renderEmpty(node, {
       el('p', { text: 'Not in your library, not in the lists, and nothing the providers '
                     + 'know by that name. A link works where a name did not.' }),
       el('div.chip-row', null, [
-        el('button.btn.primary', { type: 'button', text: 'Add it anyway', onclick: onAdd }),
-        el('button.btn.ghost', { type: 'button', text: 'Clear filters', onclick: onClear }),
+        el('button.btn.btn-primary', { type: 'button', text: 'Add it anyway', onclick: onAdd }),
+        el('button.btn.btn-outline-secondary', { type: 'button', text: 'Clear filters', onclick: onClear }),
       ]),
     );
     return;
@@ -1186,7 +1186,7 @@ export function renderEmpty(node, {
                                 : 'Nothing here passes the current filters.' }),
       el('div.chip-row', null, [
         pointer,
-        el('button.btn.primary', { type: 'button', text: 'Clear filters', onclick: onClear }),
+        el('button.btn.btn-primary', { type: 'button', text: 'Clear filters', onclick: onClear }),
       ]),
     );
     return;
@@ -1198,7 +1198,7 @@ export function renderEmpty(node, {
     el('p', { text: line }),
     el('div.chip-row', null, [
       pointer,
-      el('button.btn.primary', { type: 'button', text: 'Add something', onclick: onAdd }),
+      el('button.btn.btn-primary', { type: 'button', text: 'Add something', onclick: onAdd }),
     ]),
   );
 }

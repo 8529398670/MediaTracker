@@ -32,6 +32,7 @@ globalThis.fetch = async (url, init) => {
 const store = await import('./store.js');
 const {
   filters, apply, sectionOf, sections, addingType, activeCount, loadView, facetPool,
+  openFilterSheet, resetFilters,
 } = await import('./filters.js');
 const select = await import('./select.js');
 const views = await import('./views.js');
@@ -127,6 +128,40 @@ localStorage.setItem('mt.view.v2', JSON.stringify({ section: 'other', types: ['m
 loadView();
 check('the old type filters are dropped on load', [filters.types, filters.sectionTypes, filters.group],
   [undefined, undefined, 'year']);
+
+/* ------------------------------------------------- the one Filters card */
+
+/* Filtering lives in one card now — there is no filter panel in the sidebar
+ * and no filter row above the list. So whatever is on has to be *in* the
+ * card, including something the list on screen has nothing left to match:
+ * the card is the only way back off it. */
+
+resetFilters();
+filters.section = 'movie';
+filters.view = 'list';
+const chips = () => inSheet((n) => n.classList.contains('chip-toggle')).map((n) => n.text());
+
+filters.genres = ['Film Noir'];        // nothing in the library carries it
+openFilterSheet(() => {});
+check('the card is called Filters', sheetTitle(), 'Filters');
+check('a genre the list has none of is still in the card, with its zero',
+  chips().includes('Film Noir 0'), true);
+check('and it sorts in front of the ones that are there',
+  chips().indexOf('Film Noir 0') < chips().indexOf('Crime 1'), true);
+button('Clear all').fire('click');
+check('Clear all empties the lot', [filters.genres, activeCount()], [[], 0]);
+
+/* Hiding the watched or the skipped only means anything on the List, so the
+ * card does not offer it anywhere else. */
+filters.view = 'watched';
+openFilterSheet(() => {});
+check('the List-only switches are not offered on the watched pile',
+  [Boolean(button('Hide watched')), Boolean(button('Hide skipped'))], [false, false]);
+check('the ones that work everywhere still are', Boolean(button('Loved only')), true);
+check('and the statuses are under the same label as them',
+  Boolean(button('Watching')), true);
+button('Clear all').fire('click');
+filters.view = 'list';
 
 /* ------------------------------------------------------------- the cards */
 

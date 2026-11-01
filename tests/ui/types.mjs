@@ -43,7 +43,8 @@ const toasts = document.getElementById('toast-host');
 const inSheet = (pred) => host.find(pred);
 const sheetTitle = () => (inSheet((n) => n.tagName === 'H2')[0] || { textContent: '' }).textContent;
 const primary = () => inSheet((n) => n.tagName === 'BUTTON'
-  && (n.classList.has('primary') || n.classList.has('danger')) && n.classList.has('grow'))[0];
+  && (n.classList.has('btn-primary') || n.classList.has('btn-danger'))
+  && n.classList.has('flex-grow-1'))[0];
 const typeInto = (text) => {
   const box = inSheet((n) => n.tagName === 'INPUT')[0];
   box.value = text;

@@ -91,11 +91,11 @@ export function openTypes(onChange = () => {}) {
             row.listed ? '' : 'not in the list'].filter(Boolean).join(' · '),
         }),
       ]),
-      el('button.btn.sm.ghost', {
+      el('button.btn.btn-sm.btn-outline-secondary', {
         type: 'button', 'aria-label': `Rename ${row.label}`, title: 'Rename',
         onclick: () => editType(row, done),
       }, [icon('edit'), el('span', { text: 'Rename' })]),
-      el('button.btn.sm.ghost.danger', {
+      el('button.btn.btn-sm.btn-outline-danger', {
         type: 'button', 'aria-label': `Delete ${row.label}`, title: 'Delete',
         disabled: row.listed && listed <= 1,
         onclick: () => deleteType(row, done),
@@ -106,7 +106,7 @@ export function openTypes(onChange = () => {}) {
   };
   const done = () => { draw(); onChange(); };
 
-  const add = el('button.btn.primary.grow', {
+  const add = el('button.btn.btn-primary.flex-grow-1', {
     type: 'button', onclick: () => editType(null, done),
   }, [icon('plus'), el('span', { text: 'Add a type' })]);
 
@@ -129,7 +129,7 @@ export function openTypes(onChange = () => {}) {
 /** Add a type (`row` null), or rename one and change what it is looked up as. */
 export function editType(row, done = () => {}) {
   const adding = !row;
-  const name = el('input.input', {
+  const name = el('input.form-control', {
     type: 'text', value: adding ? '' : row.label, maxLength: 40,
     placeholder: 'Stand-up Comedy', autocapitalize: 'words', 'data-autofocus': '',
     'aria-label': 'Name',
@@ -143,8 +143,8 @@ export function editType(row, done = () => {}) {
     check();
   }));
   const note = el('p.hint.type-clash');
-  const cancel = el('button.btn.ghost.grow', { type: 'button', text: 'Cancel' });
-  const go = el('button.btn.primary.grow', { type: 'button' });
+  const cancel = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button', text: 'Cancel' });
+  const go = el('button.btn.btn-primary.flex-grow-1', { type: 'button' });
 
   const wanted = () => name.value.trim().replace(/\s+/g, ' ').slice(0, 40);
 
@@ -230,8 +230,8 @@ export function deleteType(row, done = () => {}) {
 
   const chips = el('div.chip-row.type-pick');
   const where = el('p.hint');
-  const cancel = el('button.btn.ghost.grow', { type: 'button', text: 'Cancel' });
-  const go = el('button.btn.danger.grow', { type: 'button' });
+  const cancel = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button', text: 'Cancel' });
+  const go = el('button.btn.btn-danger.flex-grow-1', { type: 'button' });
 
   const paint = () => {
     for (const chip of chips.children) {

@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Media Tracker</title>
 <meta name="description" content="Personal media queue, tracker and organizer.">
-<meta name="color-scheme" content="light dark">
+<!-- Light, always, whatever the phone is set to. A theme is a choice made
+     here, in the menu, and nowhere else. -->
+<meta name="color-scheme" content="light">
 <meta name="theme-color" content="#f6f7fb">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -14,40 +16,41 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/favicon.svg">
 <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<!-- Before the stylesheets paint, so a saved dark theme never flashes light.
+     A plain script, not a module: a module is deferred and would paint first. -->
+<script src="/js/theme.js"></script>
+<!-- Bootstrap 5 and its icon font, vendored (see /vendor/README.md), then this
+     app's own tokens and the parts Bootstrap does not have on top. -->
+<link rel="stylesheet" href="/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/vendor/bootstrap-icons.min.css">
 <link rel="stylesheet" href="/css/app.css">
+<!-- Deferred, and before app.js, so `bootstrap` is there when the app asks. -->
+<script defer src="/vendor/bootstrap.bundle.min.js"></script>
 <script type="module" src="/js/app.js"></script>
 </head>
 <body>
 
 <a class="skip-link" href="#library">Skip to library</a>
 
-<nav class="sidebar" id="sidebar" aria-label="Sections">
-  <div class="side-brand">
-    <svg class="brand-mark" aria-hidden="true"><use href="#i-brand"></use></svg>
-    <span class="brand-name">Media Tracker</span>
-  </div>
-  <div class="side-group">
-    <div class="side-head"><span>Library</span></div>
-    <div id="side-sections"></div>
-  </div>
-  <div class="side-group" id="side-discover"></div>
-  <div class="side-group" id="side-facets" hidden></div>
-  <div class="side-group side-foot" id="side-foot"></div>
-</nav>
-<div class="nav-scrim" id="nav-scrim" hidden></div>
-
-<header class="topbar" id="topbar">
-  <div class="bar bar-main">
-    <button class="icon-btn nav-btn" id="btn-nav" type="button" aria-label="Sections and filters"
-            aria-controls="sidebar">
-      <svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg>
+<!-- One row, at any width: the way into the sidebar, the brand, the search,
+     and then everything you can do: add, filter, select, the overflow. The +
+     and the funnel are here at every width -- adding is the point of the app
+     and the Filters card is the only place filters live now; Select moves into
+     the overflow menu on a phone, so nothing wraps and nothing scrolls
+     sideways. -->
+<nav class="navbar app-navbar border-bottom sticky-top">
+  <div class="container-fluid flex-nowrap gap-2">
+    <button class="btn app-icon-button" id="btn-nav" type="button"
+            aria-label="Sections" aria-controls="sidebar" aria-expanded="false">
+      <i class="bi bi-list" aria-hidden="true"></i>
     </button>
-    <div class="brand">
+
+    <a class="navbar-brand d-flex align-items-center gap-2 me-0 py-0" href="#" id="brand-home">
       <svg class="brand-mark" aria-hidden="true"><use href="#i-brand"></use></svg>
       <span class="brand-name">Media Tracker</span>
-    </div>
+    </a>
 
-    <div class="search-field">
+    <div class="search-field flex-grow-1">
       <svg class="ico search-field-ico" aria-hidden="true"><use href="#i-search"></use></svg>
       <input id="q" type="search" placeholder="Search everything…" autocomplete="off"
              autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search library">
@@ -56,73 +59,64 @@
       </button>
     </div>
 
-    <div class="bar-lib" id="toolbar">
-      <div class="viewtabs" id="viewtabs" role="tablist" aria-label="List"></div>
-      <label class="chip chip-select" id="wrap-sort">
-        <svg class="ico" aria-hidden="true"><use href="#i-sort"></use></svg>
-        <select id="sel-sort" aria-label="Sort by">
-          <option value="added-desc">Newest added</option>
-          <option value="added-asc">Oldest added</option>
-          <option value="watched-desc">Recently watched</option>
-          <option value="title-asc">Title A→Z</option>
-          <option value="title-desc">Title Z→A</option>
-          <option value="year-desc">Year, new→old</option>
-          <option value="year-asc">Year, old→new</option>
-          <option value="rating-desc">My rating, high→low</option>
-          <option value="rating-asc">My rating, low→high</option>
-          <option value="imdb-desc">IMDb rating, high→low</option>
-          <option value="updated-desc">Recently changed</option>
-        </select>
-      </label>
-      <label class="chip chip-select" id="wrap-group">
-        <select id="sel-group" aria-label="Group by">
-          <option value="year">By year</option>
-          <option value="decade">By decade</option>
-          <option value="status">By status</option>
-          <option value="rating">By rating</option>
-          <option value="added">By month added</option>
-          <option value="none">No grouping</option>
-        </select>
-      </label>
-    </div>
-
-    <button class="icon-btn" id="btn-filters" type="button" aria-label="Filters">
-      <svg class="ico" aria-hidden="true"><use href="#i-filter"></use></svg>
-      <span class="dot-badge" id="filter-badge" hidden></span>
+    <button class="btn app-icon-button add-button" id="btn-add" type="button"
+            aria-label="Add something" title="Add something (n)">
+      <i class="bi bi-plus-lg" aria-hidden="true"></i>
     </button>
-    <button class="icon-btn" id="btn-select" type="button" aria-label="Select several"
-            aria-pressed="false" title="Select several (s)">
-      <svg class="ico" aria-hidden="true"><use href="#i-select"></use></svg>
+    <button class="btn app-icon-button" id="btn-filters"
+            type="button" aria-label="Filters" title="Filters (f)">
+      <i class="bi bi-funnel" aria-hidden="true"></i>
     </button>
-    <button class="icon-btn" id="btn-menu" type="button" aria-label="Menu">
-      <svg class="ico" aria-hidden="true"><use href="#i-more"></use></svg>
+    <button class="btn app-icon-button d-none d-md-inline-flex" id="btn-select" type="button"
+            aria-label="Select several" aria-pressed="false" title="Select several (s)">
+      <i class="bi bi-check2-square" aria-hidden="true"></i>
+    </button>
+    <button class="btn app-icon-button" id="btn-menu" type="button" aria-label="Menu">
+      <i class="bi bi-three-dots" aria-hidden="true"></i>
     </button>
   </div>
+</nav>
 
-  <div class="bar bar-tools" id="disco-tools" hidden></div>
+<div class="app-shell">
+  <!-- A slide-in panel on a phone, a fixed column from lg up: one component,
+       both behaviours. Everything you can navigate to is in here -- the
+       sections with their three lists, and Discover. Nothing else: filtering is
+       the Filters card off the funnel, and the tools are in the ... menu, both
+       in the navbar. There is no tab row anywhere in the app. -->
+  <aside class="offcanvas-lg offcanvas-start app-sidebar" id="sidebar" tabindex="-1"
+         aria-labelledby="sidebar-title">
+    <div class="offcanvas-header border-bottom">
+      <h2 class="offcanvas-title h6 mb-0 d-flex align-items-center gap-2" id="sidebar-title">
+        <svg class="brand-mark" aria-hidden="true"><use href="#i-brand"></use></svg>
+        <span>Media Tracker</span>
+      </h2>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+              data-bs-target="#sidebar" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+      <nav class="side-nav" id="side-nav" aria-label="Sections">
+        <div class="side-head"><span>Library</span></div>
+        <div id="side-sections"></div>
+        <div class="side-group" id="side-discover"></div>
+      </nav>
+    </div>
+  </aside>
 
-</header>
-
-<main id="library" class="library" tabindex="-1">
-  <div class="stats" id="stats" hidden></div>
-  <div class="active-filters" id="active-filters" hidden></div>
-  <div id="list" class="list"></div>
-  <div id="empty" class="empty-state" hidden></div>
-</main>
+  <main id="library" class="library app-main" tabindex="-1">
+    <div class="bar bar-tools" id="disco-tools" hidden></div>
+    <div class="active-filters" id="active-filters" hidden></div>
+    <div id="list" class="list"></div>
+    <div id="empty" class="empty-state" hidden></div>
+  </main>
+</div>
 
 <nav class="yearmap" id="yearmap" aria-label="Jump to a section" hidden></nav>
 <div class="ym-bubble" id="ym-bubble" aria-hidden="true" hidden></div>
 
-<div class="fab-dock">
-  <button class="fab" id="btn-add" type="button" aria-label="Add something">
-    <svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg>
-  </button>
-</div>
-
 <div class="select-bar" id="select-bar" role="region" aria-label="Selected titles" hidden></div>
 
 <div class="sheet-host" id="sheet-host" hidden></div>
-<div class="toast-host" id="toast-host" aria-live="polite"></div>
+<div class="toast-container toast-host" id="toast-host" aria-live="polite"></div>
 
 <svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></symbol>

@@ -947,6 +947,12 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, blob, ctype, self._img_headers(etag), compress=False)
 
     @staticmethod
+    def _vendor_headers() -> dict:
+        """Pinned to a version by its own contents, so it can be kept."""
+        return {"Cache-Control": "public, max-age=31536000, immutable",
+                "Pragma": None, "Expires": None}
+
+    @staticmethod
     def _img_headers(etag: str) -> dict:
         """Artwork never changes under a given URL, so let it be kept."""
         return {"Cache-Control": "public, max-age=31536000, immutable",
@@ -988,6 +994,13 @@ class Handler(BaseHTTPRequestHandler):
         # days after it was last set, so this is what makes a sign-in for good.
         renew = ({"Set-Cookie": self._session_cookie(self.token)}
                  if self.user and target.name == "index.html" else None)
+        # A vendored library carries its version in the file, so a URL under
+        # /vendor/ never answers anything different.  Let the browser keep it,
+        # or Bootstrap and its icon font are ~430KB fetched again on every
+        # load.  Everything else stays no-store, so an edit to this app's own
+        # files is still live on the next refresh.
+        if path.startswith("/vendor/"):
+            renew = {**self._vendor_headers(), **(renew or {})}
         self._send(200, body, ctype, renew)
 
     @staticmethod

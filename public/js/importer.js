@@ -162,7 +162,7 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpe
   const wrap = el('div');
   const opts = { type: defaultType === 'any' ? 'movie' : defaultType, status: 'queue' };
 
-  const area = el('textarea.input', {
+  const area = el('textarea.form-control', {
     rows: 4,
     spellcheck: false,
     'data-autofocus': '',
@@ -226,7 +226,7 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpe
 
     const body = el('div.result-body', null, [
       el('h4', { text: (shown && shown.title) || item.title || item.raw }),
-      el('div.card-meta', null, [
+      el('div.media-meta', null, [
         (shown && shown.year) || item.year
           ? el('span', { text: String((shown && shown.year) || item.year) }) : null,
         el('span.tag-badge.type', {
@@ -240,7 +240,7 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpe
           ? el('p.hint', { text: item.note }) : null),
       item.match ? el('p.dupe-warn', { class: isCertain(item.match) ? 'sure' : null }, [
         warning(item.match),
-        onOpen ? el('button.btn.sm.ghost', {
+        onOpen ? el('button.btn.btn-sm.btn-outline-secondary', {
           type: 'button', text: 'Open', onclick: () => onOpen(item.match.item),
         }) : null,
       ]) : null,
@@ -253,7 +253,7 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpe
     const parts = [tick, art, body];
 
     if (item.state === 'unsure') {
-      const pick = el('button.btn.sm.ghost', { type: 'button', text: 'Pick' });
+      const pick = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button', text: 'Pick' });
       pick.addEventListener('click', () => choose(item));
       parts.push(pick);
     }
@@ -325,7 +325,7 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpe
 
   function paintFooter() {
     footer.replaceChildren();
-    const go = el('button.btn.primary.grow', { type: 'button' });
+    const go = el('button.btn.btn-primary.flex-grow-1', { type: 'button' });
 
     if (bulk) {
       go.textContent = bulk.items.length

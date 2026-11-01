@@ -5,7 +5,7 @@ import {
   TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL, allTags, allCerts, allGenres, live, genreLabels,
   fold, otherTypes, defaultOther, typesVersion, scoreOf,
 } from './store.js';
-import { el, field, openSheet, toast } from './ui.js';
+import { el, field, select, openSheet, toast } from './ui.js';
 
 const VIEW_KEY = 'mt.view.v2';
 
@@ -32,6 +32,32 @@ export const SECTION_LABEL = new Proxy({}, {
 });
 
 export const sectionOf = (item) => item.type;
+
+/* How the list is ordered and how it is cut into groups. These were two
+ * selects wedged into the top bar; they belong with the other things that
+ * change what the list shows. */
+export const SORT_OPTIONS = [
+  { id: 'added-desc', label: 'Newest added' },
+  { id: 'added-asc', label: 'Oldest added' },
+  { id: 'watched-desc', label: 'Recently watched' },
+  { id: 'title-asc', label: 'Title A→Z' },
+  { id: 'title-desc', label: 'Title Z→A' },
+  { id: 'year-desc', label: 'Year, new→old' },
+  { id: 'year-asc', label: 'Year, old→new' },
+  { id: 'rating-desc', label: 'My rating, high→low' },
+  { id: 'rating-asc', label: 'My rating, low→high' },
+  { id: 'imdb-desc', label: 'IMDb rating, high→low' },
+  { id: 'updated-desc', label: 'Recently changed' },
+];
+
+export const GROUP_OPTIONS = [
+  { id: 'year', label: 'By year' },
+  { id: 'decade', label: 'By decade' },
+  { id: 'status', label: 'By status' },
+  { id: 'rating', label: 'By rating' },
+  { id: 'added', label: 'By month added' },
+  { id: 'none', label: 'No grouping' },
+];
 
 export const VIEWS = [
   { id: 'list',    label: 'List' },
@@ -464,65 +490,113 @@ export function openFilterSheet(onApply) {
     return chip;
   };
 
+  /* Case folds on the way in and out: a genre is whatever spelling the first
+   * title to carry it used, and that can change under you as the library
+   * does, while what is filtered on was spelt the way it was the day it was
+   * picked. apply() compares them folded, so this has to as well. */
   const multiChips = (options, list) => {
+    const at = (id) => list.findIndex((x) => String(x).toLowerCase() === String(id).toLowerCase());
     const row = el('div.chip-row');
     for (const option of options) {
       const chip = el('button.chip.chip-toggle', {
         type: 'button', text: option.label,
-        'aria-pressed': String(list.includes(option.id)),
+        'aria-pressed': String(at(option.id) !== -1),
       });
       chip.addEventListener('click', () => {
-        const index = list.indexOf(option.id);
+        const index = at(option.id);
         if (index === -1) list.push(option.id); else list.splice(index, 1);
-        chip.setAttribute('aria-pressed', String(list.includes(option.id)));
+        chip.setAttribute('aria-pressed', String(at(option.id) !== -1));
       });
       row.append(chip);
     }
     return row;
   };
 
-  body.append(field('Status', multiChips(STATUSES, draft.statuses)));
+  /* Chosen first, then the rest by how common they are — and anything chosen
+   * that the list on screen has none of still stands there with a zero. This
+   * card is the only place filters are set now, so a filter that is on has to
+   * be visible in it, or it cannot be switched off.
+   *
+   * A cap counts the tail only; what is picked is never behind it. */
+  const offered = (rows, picked, name = (id) => id, cap = 0) => {
+    const seen = new Set(rows.map(([id]) => String(id).toLowerCase()));
+    const held = picked.filter((id) => !seen.has(String(id).toLowerCase())).map((id) => [id, 0]);
+    const all = [...held, ...rows];
+    const on = ([id]) => picked.some((x) => String(x).toLowerCase() === String(id).toLowerCase());
+    const sorted = [...all.filter(on), ...all.filter((row) => !on(row))];
+    const shown = cap ? sorted.slice(0, Math.max(cap, sorted.filter(on).length)) : sorted;
+    return shown.map(([id, count]) => ({ id, label: `${name(id)} ${count}` }));
+  };
 
-  const tags = allTags();
-  if (tags.length) {
-    body.append(field(
-      'Tags',
-      multiChips(tags.slice(0, 60).map(([tag, count]) => ({ id: tag, label: `${tag} ${count}` })), draft.tags),
-      tags.length > 60 ? 'Showing the 60 most used tags - search #tag for the rest.' : null,
-    ));
+  /* Order and grouping first: they are what gets reached for most, and they
+   * used to be the two selects crammed into the top bar. Not on the queue,
+   * which keeps the order you put it in by hand — that is the whole point of
+   * it, and an order to sort it by would only be a way to lose it. */
+  if (filters.view !== 'queue') {
+    body.append(el('div.field-row', null, [
+      field('Sort by', select(SORT_OPTIONS, draft.sort, (id) => { draft.sort = id; }, { label: 'Sort by' })),
+      field('Group', select(GROUP_OPTIONS, draft.group, (id) => { draft.group = id; }, { label: 'Group by' })),
+    ]));
   }
 
+  /* Where a title is and what is true of it, under one label: both are only
+   * ways of saying which titles you want to see, and splitting them put half
+   * the answer at the top of the card and half of it in the middle.
+   *
+   * The statuses are any-of, and none picked is all of them; each switch
+   * below them is a condition of its own, so they stack. Two rows rather
+   * than one, because those are two different promises.
+   *
+   * Hiding what you have watched or skipped only means anything on the List:
+   * the Queue has neither in it and the Watched pile is all of one. apply()
+   * ignores them elsewhere, so they are not offered elsewhere either. */
+  const onList = filters.view === 'list';
+  body.append(field('Which titles', el('div.chip-stack', null, [
+    multiChips(STATUSES, draft.statuses),
+    el('div.chip-row', null, [
+      toggleChip('Loved only', () => draft.heartsOnly, (v) => { draft.heartsOnly = v; }),
+      toggleChip('Unrated only', () => draft.unratedOnly, (v) => { draft.unratedOnly = v; }),
+      onList ? toggleChip('Hide watched', () => draft.hideWatched, (v) => { draft.hideWatched = v; }) : null,
+      onList ? toggleChip('Hide skipped', () => draft.hideSkipped, (v) => { draft.hideSkipped = v; }) : null,
+      toggleChip('Has a link', () => draft.hasLinks, (v) => { draft.hasLinks = v; if (v) draft.noLinks = false; }),
+      toggleChip('Missing a link', () => draft.noLinks, (v) => { draft.noLinks = v; if (v) draft.hasLinks = false; }),
+    ]),
+  ]), onList
+    ? 'No status picked is all of them. Hide watched is w and Hide skipped is k from the list itself — a search still finds what they hide.'
+    : 'No status picked is all of them.'));
+
+  const from = el('input.form-control', {
+    type: 'number', inputmode: 'numeric', placeholder: 'from', value: draft.yearFrom || '',
+    'aria-label': 'From year',
+  });
+  const to = el('input.form-control', {
+    type: 'number', inputmode: 'numeric', placeholder: 'to', value: draft.yearTo || '',
+    'aria-label': 'To year',
+  });
+  from.addEventListener('input', () => { draft.yearFrom = Number(from.value) || null; });
+  to.addEventListener('input', () => { draft.yearTo = Number(to.value) || null; });
+  body.append(field('Year range', el('div.field-row', null, [from, to])));
+
   const certs = allCerts();
-  if (certs.length > 1) {
+  if (certs.length > 1 || draft.certs.length) {
     body.append(field(
       'Age rating',
-      multiChips(certs.map(([cert, count]) => (
-        { id: cert, label: `${cert || 'Not rated'} ${count}` })), draft.certs),
-      'What the ratings board gave it — separate from the score you give it.',
+      multiChips(offered(certs, draft.certs, (cert) => cert || 'Not rated'), draft.certs),
+      'What the ratings board gave it — separate from the score you give it. '
+      + 'Picking several is any of them.',
     ));
   }
 
   const genres = allGenres(facetPool());
-  if (genres.length) {
+  if (genres.length || draft.genres.length) {
     body.append(field(
       'Genre',
-      multiChips(genres.map(([genre, count]) => ({ id: genre, label: `${genre} ${count}` })),
-        draft.genres),
+      multiChips(offered(genres, draft.genres), draft.genres),
       'Pick two and a title has to be both.',
     ));
   }
 
-  const flags = el('div.chip-row', null, [
-    toggleChip('Loved only', () => draft.heartsOnly, (v) => { draft.heartsOnly = v; }),
-    toggleChip('Unrated only', () => draft.unratedOnly, (v) => { draft.unratedOnly = v; }),
-    toggleChip('Hide watched', () => draft.hideWatched, (v) => { draft.hideWatched = v; }),
-    toggleChip('Hide skipped', () => draft.hideSkipped, (v) => { draft.hideSkipped = v; }),
-    toggleChip('Has a link', () => draft.hasLinks, (v) => { draft.hasLinks = v; if (v) draft.noLinks = false; }),
-    toggleChip('Missing a link', () => draft.noLinks, (v) => { draft.noLinks = v; if (v) draft.hasLinks = false; }),
-  ]);
-  body.append(field('Flags', flags));
-
-  const minRating = el('select.input');
+  const minRating = el('select.form-select');
   minRating.append(el('option', { value: '0', text: 'Any rating' }));
   for (let n = 1; n <= 10; n += 1) {
     minRating.append(el('option', { value: String(n), text: `${n}+` }));
@@ -531,18 +605,20 @@ export function openFilterSheet(onApply) {
   minRating.addEventListener('change', () => { draft.minRating = Number(minRating.value); });
   body.append(field('Minimum rating', minRating));
 
-  const from = el('input.input', {
-    type: 'number', inputmode: 'numeric', placeholder: 'from', value: draft.yearFrom || '',
-  });
-  const to = el('input.input', {
-    type: 'number', inputmode: 'numeric', placeholder: 'to', value: draft.yearTo || '',
-  });
-  from.addEventListener('input', () => { draft.yearFrom = Number(from.value) || null; });
-  to.addEventListener('input', () => { draft.yearTo = Number(to.value) || null; });
-  body.append(field('Year range', el('div.row', null, [from, to])));
+  /* Tags last: a library grows more of them than anything else here, so this
+   * is the field that can run to several lines, and the short ones above it
+   * stay within reach of the top of the card. */
+  const tags = allTags();
+  if (tags.length || draft.tags.length) {
+    body.append(field(
+      'Tags',
+      multiChips(offered(tags, draft.tags, (tag) => `#${tag}`, 60), draft.tags),
+      tags.length > 60 ? 'The 60 most used, and whatever you have picked - search #tag for the rest.' : null,
+    ));
+  }
 
-  const clearBtn = el('button.btn.ghost.grow', { type: 'button', text: 'Clear all' });
-  const applyBtn = el('button.btn.primary.grow', { type: 'button', text: 'Show results' });
+  const clearBtn = el('button.btn.btn-outline-secondary.flex-grow-1', { type: 'button', text: 'Clear all' });
+  const applyBtn = el('button.btn.btn-primary.flex-grow-1', { type: 'button', text: 'Show results' });
 
   const handle = openSheet({ title: 'Filters', body, footer: [clearBtn, applyBtn] });
 
