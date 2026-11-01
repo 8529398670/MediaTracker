@@ -13,7 +13,8 @@
  * under that. */
 
 import {
-  TYPES, TYPE_LABEL, live, otherTypes, setOtherTypes, patchMany, checkpoint, lookupKind, defaultOther,
+  TYPES, TYPE_LABEL, live, otherTypes, setOtherTypes, patchMany, edit, current,
+  undoIfCurrent, lookupKind, defaultOther,
   fold,
 } from './store.js';
 import { el, icon, field, openSheet, toast, segmented, setChildren } from './ui.js';
@@ -204,11 +205,16 @@ export function editType(row, done = () => {}) {
       said = `“${want}” is in the list now`;
     }
     handle.close();
-    setOtherTypes(list);
+    edit(adding ? `add the type ${want}` : `rename the type ${row.label}`,
+      () => setOtherTypes(list));
+    const step = current();
     done();
     toast(said, {
       ms: 9000,
-      action: { label: 'Undo', fn: () => { setOtherTypes(before); done(); } },
+      action: {
+        label: 'Undo',
+        fn: () => { if (!undoIfCurrent(step)) setOtherTypes(before); done(); },
+      },
     });
   });
   return handle;
@@ -284,11 +290,13 @@ export function deleteType(row, done = () => {}) {
       ? { type: to } : { type: to, order: null }]);
     const back = titles.map((item) => [item.id, { type: item.type, order: item.order ?? null }]);
     handle.close();
-    if (moves.length) {
-      checkpoint(`delete the type ${row.label}`);
-      patchMany(moves);
-    }
-    if (row.listed) setOtherTypes(before.filter((t) => t.id !== row.id));
+    /* The titles move and the type goes: two changes to the library, one
+     * thing done, so one press of Undo takes both back. */
+    edit(`delete the type ${row.label}`, () => {
+      if (moves.length) patchMany(moves);
+      if (row.listed) setOtherTypes(before.filter((t) => t.id !== row.id));
+    });
+    const step = current();
     // A section that no longer exists cannot stay open: follow the titles.
     if (filters.section === row.id) { filters.section = to || defaultOther(); saveView(); }
     done();
@@ -297,8 +305,10 @@ export function deleteType(row, done = () => {}) {
       action: {
         label: 'Undo',
         fn: () => {
-          if (row.listed) setOtherTypes(before);
-          if (back.length) patchMany(back);
+          if (!undoIfCurrent(step)) {
+            if (row.listed) setOtherTypes(before);
+            if (back.length) patchMany(back);
+          }
           done();
         },
       },

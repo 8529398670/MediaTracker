@@ -12,7 +12,7 @@
  * several places, and the bar says how much of it is out of sight. */
 
 import {
-  TYPES, TYPE_LABEL, getItem, patchMany, checkpoint, statusFields, nowISO,
+  TYPES, TYPE_LABEL, getItem, patchMany, edit, current, undoIfCurrent, statusFields, nowISO,
 } from './store.js';
 import { el, icon, openSheet, toast, confirmSheet, setChildren } from './ui.js';
 import { SECTION_LABEL, sectionOf } from './filters.js';
@@ -104,18 +104,20 @@ export function unpickAll() {
 
 /* ------------------------------------------------------------ the doing */
 
-/* A change to many titles at once, with the way back. What each field held
- * before is kept, so Undo is a patch as well — it survives the fill-in pass
- * writing in between, where putting a whole snapshot back would lose to it.
- * The snapshot is taken too, for "Undo last bulk change" in Sync & storage. */
+/* A change to many titles at once, with the way back. A hundred titles
+ * ticked is one entry in the journal, so one press of Ctrl+Z — or one tap on
+ * the toast, which takes that same step back while it is still the last one.
+ * What each field held before is kept here as well, for the case where the
+ * toast has sat on screen while other edits landed: then the patch goes in by
+ * hand and becomes an edit of its own, which is what it is. */
 function commit(label, patches, said) {
   if (!patches.length) return 0;
   const before = patches.map(([id, fields]) => {
     const item = getItem(id);
     return [id, Object.fromEntries(Object.keys(fields).map((key) => [key, item[key] ?? null]))];
   });
-  checkpoint(label);
-  const changed = patchMany(patches);
+  const changed = edit(label, () => patchMany(patches));
+  const step = current();
   picking.on = false;              // the job is done; nothing to ask about
   picking.ids.clear();
   picking.anchor = '';
@@ -123,7 +125,14 @@ function commit(label, patches, said) {
   page.changed();
   toast(said, {
     ms: 9000,
-    action: { label: 'Undo', fn: () => { patchMany(before); page.changed(); toast('Undone'); } },
+    action: {
+      label: 'Undo',
+      fn: () => {
+        if (!undoIfCurrent(step)) patchMany(before);
+        page.changed();
+        toast('Undone');
+      },
+    },
   });
   return changed;
 }

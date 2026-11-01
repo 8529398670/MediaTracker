@@ -308,10 +308,17 @@ a { color: var(--accent-2); }
   font-size: 1.2rem;
   line-height: 1;
 }
-.app-icon-button:hover,
-.app-icon-button:focus-visible { color: var(--accent); border-color: var(--accent); }
-.app-icon-button:active { transform: scale(.94); }
+.app-icon-button:not(:disabled):hover,
+.app-icon-button:not(:disabled):focus-visible { color: var(--accent); border-color: var(--accent); }
+.app-icon-button:not(:disabled):active { transform: scale(.94); }
 .app-icon-button.on { color: var(--accent); border-color: var(--accent); }
+/* Nothing to go back to, and it says so rather than lighting up under the
+   finger. Still focusable, so a keyboard is told the same thing. */
+.app-icon-button:disabled {
+  color: var(--text-3);
+  opacity: .55;
+  cursor: default;
+}
 
 /* Adding is what the app is for, so + is not one more grey outline in the
    row. It used to be a floating button over the bottom right corner; it is

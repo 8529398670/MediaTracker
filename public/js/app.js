@@ -1,8 +1,9 @@
 /* Wiring: boot the store, render on change, and hook up the chrome. */
 
 import {
-  api, state, boot, onChange, notify, refresh, sync, live, stats, allTags,
-  toggleHeart, toggleWatched, removeSource, addSource, checkpoint, undo,
+  api, state, boot, onChange, refresh, sync, live, stats, allTags,
+  toggleHeart, toggleWatched, removeSource, addSource, edit, undo, redo,
+  canUndo, canRedo, undoLabel, redoLabel, current, undoIfCurrent,
   reorderQueue, patchItem, getItem, addItem, fillIn, stage,
   TYPE_LABEL, STATUS_LABEL, patchMany, fold,
   enrich, watchEnrich, staging, staged, unstage, otherTypes,
@@ -68,6 +69,8 @@ const dom = {
   activeFilters: $('#active-filters'),
   btnFilters: $('#btn-filters'),
   btnSelect: $('#btn-select'),
+  btnUndo: $('#btn-undo'),
+  btnRedo: $('#btn-redo'),
   btnMenu: $('#btn-menu'),
   btnAdd: $('#btn-add'),
   discoTools: $('#disco-tools'),
@@ -84,7 +87,7 @@ const lingerTimers = new Map();
 
 const handlers = {
   open: (item) => openItem(item, { onChange: render, onDeleted: render }),
-  heart: (item) => { toggleHeart(item.id); },
+  heart: (item) => { edit(item.heart ? 'take the heart off' : 'heart it', () => toggleHeart(item.id)); },
   rate: (item) => openRating(item, render),
   leaving: (item) => lingering.has(item.id),
   selected: (item) => isPicked(item),
@@ -93,7 +96,8 @@ const handlers = {
     // The card may be holding a copy a sync has since replaced; go by id.
     const item = getItem(shown.id) || shown;
     const wasWatched = item.status === 'watched';
-    toggleWatched(item.id);
+    edit(wasWatched ? 'put it back in the queue' : 'tick it off',
+      () => toggleWatched(item.id));
     // Does the tick take it out of the list on screen? Then it is held there,
     // greyed out, for a moment first. A second tap inside that moment puts it
     // back as if nothing happened; the same tap after it has gone is a trip
@@ -138,7 +142,7 @@ const handlers = {
     render();
   },
   year: (item, year) => {
-    patchItem(item.id, { year });
+    edit(year ? 'set the year' : 'clear the year', () => patchItem(item.id, { year }));
     render();
     if (!year) { toast(`Year cleared from "${item.title}"`); return; }
     // Grouped by year, it has just moved somewhere else — offer to follow it.
@@ -169,8 +173,15 @@ function sectionQueue() {
 
 /* A search or a filter can hide part of the queue. Reordering what you can
  * see must not scramble what you cannot, so the visible titles are written
- * back into the slots they already occupied in the full queue. */
+ * back into the slots they already occupied in the full queue.
+ *
+ * One name for every move, so dragging a row and then holding the arrow key
+ * on it is one step back rather than twelve. */
 function commitQueueOrder(visibleIds) {
+  return edit('reorder the queue', () => writeQueueOrder(visibleIds));
+}
+
+function writeQueueOrder(visibleIds) {
   const all = sectionQueue().map((item) => item.id);
   const visible = new Set(visibleIds);
   const next = [...all];
@@ -178,6 +189,27 @@ function commitQueueOrder(visibleIds) {
   all.forEach((id, index) => { if (visible.has(id)) slots.push(index); });
   slots.forEach((slot, index) => { next[slot] = visibleIds[index]; });
   reorderQueue(next);
+}
+
+/* The two arrows, and what they would take back. Painted from the journal on
+ * every repaint rather than wired to each edit: everything that changes the
+ * library ends in a repaint anyway, and there is one place to be wrong. */
+function paintHistory() {
+  const back = undoLabel();
+  const forward = redoLabel();
+  dom.btnUndo.disabled = !canUndo();
+  dom.btnRedo.disabled = !canRedo();
+  dom.btnUndo.title = canUndo() ? `Undo ${back || 'the last change'} (Ctrl+Z)` : 'Nothing to undo';
+  dom.btnRedo.title = canRedo() ? `Redo ${forward || 'that change'} (Ctrl+Y)` : 'Nothing to redo';
+}
+
+/** Step back, or forward, and say which change it was. */
+function stepHistory(forward) {
+  const label = forward ? redo() : undo();
+  render();
+  toast(label
+    ? `${forward ? 'Redid' : 'Undid'}: ${label}`
+    : `Nothing to ${forward ? 'redo' : 'undo'}`, { error: !label });
 }
 
 let pending = 0;
@@ -188,6 +220,7 @@ function render() {
 
 function paint() {
   const everything = live();
+  paintHistory();
 
   if (inDiscover()) { paintSidebar(everything); paintDiscover(); return; }
   // A section whose type was deleted, here or on another device: go home.
@@ -488,7 +521,7 @@ async function takeFound(row, status) {
     });
     if (!go) return;
   }
-  const item = addItem(made);
+  const item = edit(`add “${made.title}”`, () => addItem(made));
   stage([item.id]);
   render();
   fillIn([item.id]);
@@ -1233,15 +1266,19 @@ async function keepOne(keep, others, done) {
     ...others.map((item) => [item.id, { deleted: false, deletedAt: null }]),
   ];
   const stamp = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  patchMany([
+  edit(`keep one “${keep.title}”`, () => patchMany([
     [keep.id, fields],
     ...others.map((item) => [item.id, { deleted: true, deletedAt: stamp }]),
-  ]);
+  ]));
+  const step = current();
   render();
   done();
   toast(`Kept “${keep.title}”, ${others.length} folded in`, {
     ms: 9000,
-    action: { label: 'Undo', fn: () => { patchMany(back); render(); done(); } },
+    action: {
+      label: 'Undo',
+      fn: () => { if (!undoIfCurrent(step)) patchMany(back); render(); done(); },
+    },
   });
 }
 
@@ -1332,6 +1369,8 @@ wirePicking({
   list: dom.list, barNode: dom.selectBar, button: dom.btnSelect, changed: render,
 });
 dom.btnAdd.addEventListener('click', () => addHere());
+dom.btnUndo.addEventListener('click', () => stepHistory(false));
+dom.btnRedo.addEventListener('click', () => stepHistory(true));
 dom.btnMenu.addEventListener('click', openMenu);
 
 /* ------------------------------------------------------------------- menu */
@@ -1349,8 +1388,12 @@ function openMenu() {
    * on a platform, and a plain append writes the word "null" into the menu for
    * each one that is not. */
   setChildren(body, [
-    // Filters has the funnel in the navbar at every width now; Select does not,
-    // so on a phone this is where it is.
+    // Filters has the funnel in the navbar at every width now; Select and the
+    // two arrows do not, so on a phone this is where they are.
+    ROOMY.matches || !canUndo() ? null : entry('undo', 'Undo', undoLabel(),
+      () => { handle.close(); stepHistory(false); }),
+    ROOMY.matches || !canRedo() ? null : entry('redo', 'Redo', redoLabel(),
+      () => { handle.close(); stepHistory(true); }),
     ROOMY.matches ? null : entry('select', 'Select several',
       'Tick titles and change them together',
       () => { handle.close(); dom.btnSelect.click(); }),
@@ -1489,7 +1532,11 @@ function openSources() {
   const input = el('input.form-control', { type: 'url', placeholder: 'https://... a list you browse for ideas' });
   const add = el('button.btn.btn-sm.btn-primary', { type: 'button', text: 'Save' });
   add.addEventListener('click', () => {
-    if (addSource(input.value.trim())) { input.value = ''; draw(); toast('Source saved'); }
+    if (edit('save a source link', () => addSource(input.value.trim()))) {
+      input.value = '';
+      draw();
+      toast('Source saved');
+    }
     else toast('That needs to be a full https:// link', { error: true });
   });
 
@@ -1509,7 +1556,7 @@ function openSources() {
       });
       const drop = el('button.icon-btn', {
         type: 'button', 'aria-label': 'Remove',
-        onclick: () => { removeSource(source.id); draw(); },
+        onclick: () => { edit('remove a source link', () => removeSource(source.id)); draw(); },
       }, icon('trash'));
       listBox.append(el('div.link-row', null, [
         el('div', { style: { flex: '1', 'min-width': '0' } }, [
@@ -1567,12 +1614,10 @@ function openSync() {
   ])));
   if (config.imdb) body.append(el('p.hint', { text: config.imdb.attribution }));
 
-  const undoBtn = el('button.btn.btn-sm.btn-outline-secondary', { type: 'button', text: 'Undo last bulk change' });
-  undoBtn.addEventListener('click', () => {
-    const label = undo();
-    render();
-    toast(label ? `Undid: ${label}` : 'Nothing to undo', { error: !label });
+  const undoBtn = el('button.btn.btn-sm.btn-outline-secondary', {
+    type: 'button', text: undoLabel() ? `Undo ${undoLabel()}` : 'Undo the last change',
   });
+  undoBtn.addEventListener('click', () => stepHistory(false));
 
   const wipe = el('button.btn.btn-sm.btn-outline-danger', { type: 'button', text: 'Delete everything' });
   wipe.addEventListener('click', async () => {
@@ -1582,11 +1627,17 @@ function openSync() {
       confirmLabel: 'Delete everything', danger: true,
     });
     if (!ok) return;
-    checkpoint('delete everything');
-    for (const item of live()) { item.deleted = true; item.deletedAt = new Date().toISOString(); }
-    notify();
+    /* Through patchMany, not by hand: setting `deleted` on each item and
+     * only notifying left the library unsaved and the tombstones undated, so
+     * a reload brought all of it back from the server. */
+    const stamp = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    edit('delete everything', () => patchMany(
+      live().map((item) => [item.id, { deleted: true, deletedAt: stamp }])));
+    const step = current();
     render();
-    toast('Library cleared', { action: { label: 'Undo', fn: () => { undo(); render(); } } });
+    toast('Library cleared', {
+      action: { label: 'Undo', fn: () => { if (undoIfCurrent(step)) render(); } },
+    });
   });
 
   body.append(field('Danger zone', el('div.chip-row', null, [undoBtn, wipe])));
@@ -1628,6 +1679,8 @@ function openHelp() {
     row('f', 'filters'),
     row('w', 'toggle hide watched'),
     row('s', 'select several'),
+    row('Ctrl+Z', 'undo the last change to the library'),
+    row('Ctrl+Y', 'redo it — Ctrl+Shift+Z does the same'),
     row('shift-click', 'while selecting: everything in between'),
     row('Esc', 'close the sheet, or stop selecting'),
   ])));
@@ -1653,6 +1706,22 @@ trackHeaderHeight();
 
 addEventListener('keydown', (event) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  /* The way back is the one shortcut that holds a modifier, so it is read
+   * before the rest are turned away. Not while typing — in a box, Ctrl+Z is
+   * the browser's own undo of the words, which is what anyone means by it
+   * there — and not with a sheet open, because the editor holds a draft of
+   * the title it is showing and its Save would write the undone state
+   * straight back. Alt is left out of it: on some layouts AltGr arrives as
+   * Ctrl+Alt, and that is someone typing a bracket. */
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !typing && dom.sheetHost.hidden) {
+    const key = event.key.toLowerCase();
+    const forward = key === 'y' || (key === 'z' && event.shiftKey);
+    if (key === 'y' || key === 'z') {
+      event.preventDefault();
+      stepHistory(forward);
+      return;
+    }
+  }
   if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
   // A sheet takes Escape first (ui.js); only with none open does it stop a pick.
   if (event.key === 'Escape') {

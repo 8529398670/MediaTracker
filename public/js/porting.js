@@ -7,8 +7,8 @@
  */
 
 import {
-  state, live, newItem, titleKey, addMany, replaceAll, addSource, checkpoint,
-  TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL,
+  state, live, newItem, titleKey, addMany, replaceAll, addSource, edit,
+  patchMany, nowISO, TYPES, STATUSES, TYPE_LABEL, STATUS_LABEL,
 } from './store.js';
 import {
   el, openSheet, toast, download, copyText, fmtDate,
@@ -469,11 +469,13 @@ export function parseAny(text, options) {
 
 /* ------------------------------------------------------------ apply import */
 
+/* One import, one step back: it adds titles, folds detail into the ones
+ * already there and saves any bare links it passed, and edit() makes the lot
+ * of it a single entry rather than one per call. */
 export function applyImport(parsed, { mode = 'merge', skipDuplicates = true }) {
   const report = { added: 0, merged: 0, skipped: 0, sources: 0 };
 
   if (mode === 'replace') {
-    checkpoint('replace library');
     const items = parsed.items.map((raw) => newItem(raw));
     replaceAll(items, parsed.sources.map((s) => ({
       id: Math.random().toString(36).slice(2), url: s.url, title: s.title || '',
@@ -484,7 +486,10 @@ export function applyImport(parsed, { mode = 'merge', skipDuplicates = true }) {
     return report;
   }
 
-  checkpoint('import');
+  return edit('import', () => mergeImport(parsed, skipDuplicates, report));
+}
+
+function mergeImport(parsed, skipDuplicates, report) {
   const existing = new Map();
   for (const item of live()) existing.set(titleKey(item.title, item.year), item);
   // A title with no year should still match one that has a year.
@@ -495,28 +500,37 @@ export function applyImport(parsed, { mode = 'merge', skipDuplicates = true }) {
   }
 
   const fresh = [];
+  /* Gathered rather than written one title at a time: a file of five hundred
+   * rows would otherwise save the library five hundred times over. Keyed by
+   * id so two rows naming the same title fold into one patch, each reading
+   * what the one before it added. */
+  const patches = new Map();
   for (const raw of parsed.items) {
     const exact = existing.get(titleKey(raw.title, raw.year));
     const loose = raw.year ? null : looseIndex.get(titleKey(raw.title, null));
     const match = exact || loose;
 
     if (match && skipDuplicates) {
-      // Not a straight skip: fold in anything the existing entry is missing.
-      let changed = false;
-      for (const link of raw.links || []) {
-        if (!match.links.some((l) => l.url === link.url)) { match.links.push(link); changed = true; }
+      /* Not a straight skip: fold in anything the existing entry is missing.
+       * New arrays, never a push into the ones the library holds — an edit
+       * made in place is invisible to the merge, to the undo journal, and to
+       * anything holding the array it grew. */
+      const soFar = patches.get(match.id) || {};
+      const now = { ...match, ...soFar };
+      const fields = {};
+      const links = (raw.links || []).filter((link) => !now.links.some((l) => l.url === link.url));
+      if (links.length) fields.links = [...now.links, ...links];
+      const tags = (raw.tags || []).filter((tag) => !now.tags.includes(tag));
+      if (tags.length) fields.tags = [...now.tags, ...tags];
+      if (!now.year && raw.year) fields.year = raw.year;
+      if (raw.status === 'watched' && now.status !== 'watched') {
+        fields.status = 'watched';
+        fields.watchedAt = raw.watchedAt || nowISO();
       }
-      for (const tag of raw.tags || []) {
-        if (!match.tags.includes(tag)) { match.tags.push(tag); changed = true; }
-      }
-      if (!match.year && raw.year) { match.year = raw.year; changed = true; }
-      if (raw.status === 'watched' && match.status !== 'watched') {
-        match.status = 'watched';
-        match.watchedAt = raw.watchedAt || new Date().toISOString();
-        changed = true;
-      }
-      if (changed) { match.updatedAt = new Date().toISOString(); report.merged += 1; }
-      else report.skipped += 1;
+      if (Object.keys(fields).length) {
+        patches.set(match.id, { ...soFar, ...fields });
+        report.merged += 1;
+      } else report.skipped += 1;
       continue;
     }
 
@@ -526,6 +540,7 @@ export function applyImport(parsed, { mode = 'merge', skipDuplicates = true }) {
     report.added += 1;
   }
 
+  if (patches.size) patchMany([...patches]);
   if (fresh.length) addMany(fresh);
   for (const source of parsed.sources || []) {
     if (addSource(source.url, source.title, source.tags)) report.sources += 1;

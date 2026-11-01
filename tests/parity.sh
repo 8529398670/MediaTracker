@@ -20,11 +20,16 @@ export const STATUSES=[{id:'queue'},{id:'watching'},{id:'watched'},{id:'dropped'
 export const TYPE_LABEL={};export const STATUS_LABEL={};
 export const live=()=>[];export const newItem=(x)=>x;export const titleKey=(t,y)=>`${t}|${y}`;
 export const addMany=()=>{};export const replaceAll=()=>{};export const addSource=()=>{};
-export const checkpoint=()=>{};export const api=async()=>({});export const addItem=(x)=>x;
+export const edit=(label,fn)=>fn();export const patchMany=()=>0;export const patchItem=()=>null;
+export const nowISO=()=>'1970-01-01T00:00:00Z';
+export const api=async()=>({});export const addItem=(x)=>x;
 export const sync=async()=>{};export const refresh=async()=>{};
 export const fillIn=async()=>false;export const stage=()=>{};
 export const fold=(t)=>String(t??'').toLowerCase();
 export const lookupKind=(t)=>t;export const defaultOther=()=>'other';
+EOF
+cat > "$work/dupes.js" <<'EOF'
+export const bestMatch=()=>null;export const isCertain=()=>false;export const warning=()=>'';
 EOF
 cat > "$work/ui.js" <<'EOF'
 export const el=()=>({append(){},replaceChildren(){},style:{setProperty(){}},addEventListener(){}});

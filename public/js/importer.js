@@ -11,7 +11,7 @@
  */
 
 import {
-  api, addMany, newItem, live, titleKey, fillIn, stage,
+  api, addMany, newItem, live, titleKey, edit, fillIn, stage,
   TYPES, STATUSES, TYPE_LABEL, lookupKind, defaultOther,
 } from './store.js';
 import { el, field, openSheet, segmented, toast } from './ui.js';
@@ -416,7 +416,8 @@ export function universalPanel(onDone, { defaultType = 'movie', text = '', onOpe
       fresh.push(made);
       seen.set(titleKey(made.title, made.year), made);
     }
-    if (fresh.length) addMany(fresh);
+    if (fresh.length) edit(`add ${fresh.length} ${fresh.length === 1 ? 'title' : 'titles'}`,
+      () => addMany(fresh));
     return { added: fresh.length, already, ids: fresh.map((i) => i.id) };
   }
 

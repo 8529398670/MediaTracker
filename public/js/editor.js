@@ -6,7 +6,7 @@
 
 import {
   state, api, TYPES, STATUSES, TYPE_LABEL, addItem, patchItem, removeItem,
-  checkpoint, undo, nowISO, genreLabels, fillIn, stage, lookupKind, scoreOf,
+  edit, current, undoIfCurrent, nowISO, genreLabels, fillIn, stage, lookupKind, scoreOf,
 } from './store.js';
 import {
   el, icon, field, openSheet, toast, confirmSheet, segmented, select,
@@ -60,7 +60,7 @@ export function openRating(item, onSave) {
     const next = !(heart.getAttribute('aria-pressed') === 'true');
     heart.setAttribute('aria-pressed', String(next));
     heart.replaceChildren(icon(next ? 'heart-fill' : 'heart'), el('span', { text: 'Loved' }));
-    patchItem(item.id, { heart: next });
+    edit(next ? 'heart it' : 'take the heart off', () => patchItem(item.id, { heart: next }));
     onSave();
   });
 
@@ -74,7 +74,7 @@ export function openRating(item, onSave) {
   });
 
   function commit() {
-    patchItem(item.id, { rating: value || null });
+    edit(value ? 'rate it' : 'clear the rating', () => patchItem(item.id, { rating: value || null }));
     onSave();
     setTimeout(() => handle.close(), 140);
   }
@@ -281,11 +281,13 @@ export function openItem(item, { onChange, onDeleted }) {
       confirmLabel: 'Delete', danger: true,
     });
     if (!ok) return;
-    checkpoint('delete');
-    removeItem(item.id);
+    edit(`delete “${item.title}”`, () => removeItem(item.id));
+    const step = current();
     handle.close();
     onDeleted && onDeleted();
-    toast(`Deleted "${item.title}"`, { action: { label: 'Undo', fn: () => { undo(); onChange(); } } });
+    toast(`Deleted "${item.title}"`, {
+      action: { label: 'Undo', fn: () => { if (undoIfCurrent(step)) onChange(); } },
+    });
   });
 
   save.addEventListener('click', () => {
@@ -320,7 +322,7 @@ export function openItem(item, { onChange, onDeleted }) {
     };
     if (fields.watchedAt && fields.status !== 'watched') fields.status = 'watched';
     if (!fields.watchedAt && fields.status === 'watched') fields.watchedAt = nowISO();
-    patchItem(item.id, fields);
+    edit(`edit “${fields.title}”`, () => patchItem(item.id, fields));
     handle.close();
     onChange();
     toast('Saved');
@@ -551,7 +553,7 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
     const commit = () => {
       const name = title.value.trim();
       if (!name) { toast('A title is needed', { error: true }); return null; }
-      const created = addItem({
+      const created = edit('add a title by hand', () => addItem({
         title: name,
         year: Number(year.value) || null,
         type: draft.type,
@@ -560,7 +562,7 @@ export function openAdd(onDone, { defaultType = 'movie', text = '' } = {}) {
         links: /^https?:\/\//i.test(link.value.trim())
           ? [{ label: hostOf(link.value.trim()), url: link.value.trim() }] : [],
         tags: tags.value.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
-      });
+      }));
       // By hand is still a title the providers may know: it goes to the
       // strip and to the fill-in pass the same as a pasted one.
       stage([created.id]);

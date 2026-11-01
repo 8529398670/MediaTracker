@@ -12,7 +12,7 @@
  */
 
 import {
-  api, live, titleKey, addItem, nowISO, state, TYPE_LABEL, fillIn, stage,
+  api, live, titleKey, addItem, edit, nowISO, state, TYPE_LABEL, fillIn, stage,
 } from './store.js';
 import {
   el, icon, field, select, openSheet, setChildren, toast, scoreBadge,
@@ -463,7 +463,7 @@ function lift(node) {
  * which is what lets the enricher ask Wikidata for the IMDb id directly. */
 export function addFilm(film, { status = 'queue' } = {}) {
   const tags = (film.signals?.topics || []).slice(0, 3);
-  const item = addItem({
+  const item = edit(`add “${film.title}”`, () => addItem({
     title: film.title,
     year: film.year || null,
     type: 'movie',
@@ -481,7 +481,7 @@ export function addFilm(film, { status = 'queue' } = {}) {
     wikiUrl: film.url || '',
     tags,
     notes: [film.studio, film.gross].filter(Boolean).join(' · '),
-  });
+  }));
   // To the strip at the top of the library, and to the fill-in pass for the
   // artwork, the IMDb id and the rest — this one title, not the library.
   stage([item.id]);

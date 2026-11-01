@@ -101,7 +101,9 @@ export function lookupKind(type) {
 
 /** Other's types, replaced: one added, renamed or taken away. */
 export function setOtherTypes(list) {
+  const before = state.types;
   state.types = list.map(({ id, label, lookup }) => ({ id, label, lookup }));
+  recordList('types', before, state.types);
   state.typesDirty = true;
   state.typesEdits += 1;
   applyTypes();
@@ -387,6 +389,7 @@ let inFlight = null;
 let backoff = 1000;
 
 export function markDirty() {
+  close();
   state.dirty = true;
   state.edits += 1;
   writeLocal();
@@ -694,25 +697,229 @@ export function staged() {
   return out;
 }
 
-/* -------------------------------------------------------------- mutations */
+/* ---------------------------------------------------------------- history */
 
-const undoStack = [];
-const UNDO_MAX = 10;
+/* The way back, and the way forward again.
+ *
+ * One journal and a cursor rather than two stacks: every entry knows both
+ * directions, so Undo walks back along the list and Redo walks forward over
+ * the same entries, and an edit made after an undo simply drops whatever
+ * future was left.
+ *
+ * What an entry holds is which fields of which titles changed, and what they
+ * held on either side — not a copy of the library. The reason is the one
+ * written out at select.js: the server's fill-in pass writes to the very
+ * titles you are editing, so putting a whole snapshot back throws away the
+ * poster it found while you were deciding. An undo goes in through the same
+ * change() as every other edit, so the fields it puts back are this browser's
+ * in the merge and are defended against the pass and against the phone.
+ *
+ * Only replacing the library wholesale keeps a snapshot, because the ids
+ * themselves go and no patch can say that.
+ */
 
-export function checkpoint(label) {
-  undoStack.push({ label, items: state.items.map((i) => ({ ...i })) });
-  if (undoStack.length > UNDO_MAX) undoStack.shift();
+const journal = [];
+const JOURNAL_MAX = 10;
+const COALESCE_MS = 1000;
+
+let cursor = 0;        // how far along the journal we are: what Undo takes
+let txn = null;        // the change being recorded, still open
+let grouped = 0;       // inside edit(), where markDirty must not close it
+let groupLabel = '';   // what edit() called it
+let replaying = false; // an undo or a redo, which is not an edit of its own
+
+const clone = (value) => (value && typeof value === 'object'
+  ? (globalThis.structuredClone ? structuredClone(value) : JSON.parse(JSON.stringify(value)))
+  : value);
+
+/* An entry is opened by the first thing that records into it and closed by
+ * markDirty(), which every mutation here ends with exactly once. Opening is
+ * also what drops the redo future — not markDirty, which is called as well
+ * when a merge leaves this browser ahead of the server (boot, refresh), and a
+ * poll in the background must not throw away what you could still redo. */
+function open(label) {
+  if (replaying) return null;
+  if (txn) {
+    if (!txn.label) txn.label = label || groupLabel || '';
+    return txn;
+  }
+  const name = label || groupLabel || '';
+  const last = journal[cursor - 1];
+  /* Holding the arrow key on a queue row, or tapping along a row of stars:
+   * one step back, not twelve. */
+  if (last && name && last.label === name && !last.snapshot
+      && Date.now() - last.at < COALESCE_MS) {
+    journal.length = cursor - 1;
+    cursor -= 1;
+    txn = last;
+    return txn;
+  }
+  journal.length = cursor;
+  txn = { label: name, before: new Map(), after: new Map(),
+          types: null, sources: null, snapshot: null, at: 0 };
+  return txn;
 }
 
-export function canUndo() { return undoStack.length > 0; }
+function close() {
+  if (grouped || !txn) return;
+  const entry = txn;
+  txn = null;
+  if (!entry.before.size && !entry.types && !entry.sources && !entry.snapshot) return;
+  if (entry.snapshot) {
+    entry.snapshot.after = shot();
+    journal.length = 0;        // one step back past a replacement, no further
+  }
+  entry.at = Date.now();
+  journal.push(entry);
+  if (journal.length > JOURNAL_MAX) journal.splice(0, journal.length - JOURNAL_MAX);
+  cursor = journal.length;
+}
+
+/** One undo step, named: everything `fn` changes is a single entry, however
+ * many mutations it makes. A nested call joins the one already open. */
+export function edit(label, fn) {
+  if (replaying) return fn();
+  if (!grouped && !txn) groupLabel = label;
+  grouped += 1;
+  try {
+    return fn();
+  } finally {
+    grouped -= 1;
+    if (!grouped) { close(); groupLabel = ''; }
+  }
+}
+
+/* What these fields held before this change, and what they hold after.
+ * Kept by id and cloned, both on purpose: a merge hands out fresh item
+ * objects, so a held reference goes stale mid-session, and an import pushes
+ * into tags and links in place, so an uncloned array would quietly follow the
+ * change it is meant to remember. The first value wins and the last change
+ * wins, which is what makes a grouped edit one step. */
+function record(item, changed) {
+  const entry = open();
+  if (!entry) return;
+  let before = entry.before.get(item.id);
+  if (!before) { before = {}; entry.before.set(item.id, before); }
+  let after = entry.after.get(item.id);
+  if (!after) { after = {}; entry.after.set(item.id, after); }
+  for (const key of Object.keys(changed)) {
+    if (!(key in before)) before[key] = clone(item[key] ?? null);
+    after[key] = clone(changed[key]);
+  }
+}
+
+/* Undoing an add puts a tombstone on it rather than taking it out of the
+ * list. By the time Undo is pressed the save may well have landed, and the
+ * merge re-sends anything the server has that this browser does not — so a
+ * title spliced out here would simply come back. A tombstone is how this app
+ * deletes anyway. (The strip of what was just added drops it on the way past,
+ * and a redo does not put it back on the strip; the title itself returns.) */
+function recordAdd(created) {
+  const entry = open();
+  if (!entry) return;
+  const stamp = nowISO();
+  for (const item of created) {
+    entry.before.set(item.id, { deleted: true, deletedAt: stamp });
+    entry.after.set(item.id, { deleted: false, deletedAt: null });
+  }
+}
+
+function recordList(key, before, after) {
+  const entry = open();
+  if (!entry) return;
+  if (!entry[key]) entry[key] = [clone(before), null];
+  entry[key][1] = clone(after);
+}
+
+const shot = () => ({
+  items: clone(state.items), sources: clone(state.sources), types: clone(state.types),
+});
+
+/** The library as it is now, kept whole, for the one change no patch can
+ * describe: every id replaced at once. */
+function snapshot(label) {
+  const entry = open(label);
+  if (!entry || entry.snapshot) return;
+  entry.snapshot = { before: shot(), after: null };
+}
+
+/* A snapshot put back. Everything that has appeared since is tombstoned
+ * rather than dropped, and everything restored is stamped and noted as this
+ * browser's — without both, the merge would hand the replaced library
+ * straight back from the server, which is the bug this had before it could
+ * be undone at all. */
+function restore(snap) {
+  const stamp = nowISO();
+  const was = new Map(snap.items.map((i) => [i.id, i]));
+  const gone = state.items.filter((i) => !was.has(i.id) && !i.deleted);
+  state.items = snap.items.map((i) => clone(i));
+  for (const item of state.items) {
+    item.updatedAt = stamp;
+    note(item, item);                  // every field of it is ours to defend
+  }
+  for (const item of gone) {
+    const dead = { ...clone(item), deleted: true, deletedAt: stamp, updatedAt: stamp };
+    state.items.push(dead);
+    note(dead, { deleted: true, deletedAt: stamp });
+  }
+  state.sources = snap.sources.map((s) => ({ ...s }));
+  if (Array.isArray(snap.types) && snap.types.length) setOtherTypes(snap.types);
+}
+
+function play(entry, back) {
+  replaying = true;
+  try {
+    if (entry.snapshot) {
+      restore(back ? entry.snapshot.before : entry.snapshot.after);
+    } else {
+      const map = back ? entry.before : entry.after;
+      if (map.size) patchMany([...map].map(([id, fields]) => [id, clone(fields)]));
+      if (entry.types) setOtherTypes(back ? entry.types[0] : entry.types[1]);
+      if (entry.sources) state.sources = (back ? entry.sources[0] : entry.sources[1]).map((s) => ({ ...s }));
+    }
+  } finally {
+    replaying = false;
+  }
+}
+
+export const canUndo = () => cursor > 0;
+export const canRedo = () => cursor < journal.length;
+export const undoLabel = () => (cursor > 0 ? journal[cursor - 1].label : '');
+export const redoLabel = () => (cursor < journal.length ? journal[cursor].label : '');
+
+/** The entry an action has just made, for a toast that offers to take that
+ * one change back. */
+export const current = () => (cursor > 0 ? journal[cursor - 1] : null);
 
 export function undo() {
-  const snap = undoStack.pop();
-  if (!snap) return null;
-  state.items = snap.items;
+  if (!canUndo()) return null;
+  const entry = journal[cursor - 1];
+  play(entry, true);
+  cursor -= 1;
   markDirty();
-  return snap.label;
+  return entry.label || 'that change';
 }
+
+export function redo() {
+  if (!canRedo()) return null;
+  const entry = journal[cursor];
+  play(entry, false);
+  cursor += 1;
+  markDirty();
+  return entry.label || 'that change';
+}
+
+/** Take back the one change this entry describes, if it is still the change
+ * Undo would take back. Answers whether it did: a toast that has sat there
+ * while other edits landed falls back to patching it back by hand, and that
+ * patch becomes an entry of its own, which is what it is. */
+export function undoIfCurrent(entry) {
+  if (!entry || current() !== entry) return false;
+  undo();
+  return true;
+}
+
+/* -------------------------------------------------------------- mutations */
 
 function touch(item) {
   item.updatedAt = nowISO();
@@ -722,6 +929,7 @@ function touch(item) {
 export function addItem(partial) {
   const item = newItem(partial);
   state.items.push(item);
+  recordAdd([item]);
   markDirty();
   return item;
 }
@@ -729,6 +937,7 @@ export function addItem(partial) {
 export function addMany(list) {
   const created = list.map((p) => newItem(p));
   state.items.push(...created);
+  recordAdd(created);
   markDirty();
   return created;
 }
@@ -745,6 +954,7 @@ function change(item, fields) {
     if (!same(item[key], value)) changed[key] = value;
   }
   if (!Object.keys(changed).length) return false;
+  record(item, changed);
   Object.assign(item, changed);
   note(item, changed);
   touch(item);
@@ -813,25 +1023,15 @@ export function setRating(id, rating) {
  * Null means "never placed" and sorts to the bottom, so something you just
  * added does not jump the line. */
 
-/** Write positions 0..n-1 in the order the ids are given. */
+/** Write positions 0..n-1 in the order the ids are given. One save for the
+ * whole queue, and one step back: patchMany skips the titles already in
+ * place, so only what moved is remembered. */
 export function reorderQueue(ids) {
-  const wanted = new Map(ids.map((id, index) => [id, index]));
-  const stamp = nowISO();
-  let changed = false;
-  for (const item of state.items) {
-    const next = wanted.get(item.id);
-    if (next === undefined || item.order === next) continue;
-    item.order = next;
-    item.updatedAt = stamp;
-    note(item, { order: next });
-    changed = true;
-  }
-  if (changed) markDirty();
-  return changed;
+  return patchMany(ids.map((id, index) => [id, { order: index }])) > 0;
 }
 
 export function replaceAll(items, sources) {
-  checkpoint('replace library');
+  snapshot('replace the library');
   state.items = items;
   if (sources) state.sources = sources;
   markDirty();
@@ -843,14 +1043,18 @@ export function addSource(url, title = '', tags = []) {
   const clean = String(url || '').trim();
   if (!/^https?:\/\//i.test(clean)) return null;
   if (state.sources.some((s) => s.url === clean)) return null;
+  const before = state.sources.slice();
   const source = { id: uid(), url: clean, title, tags, note: '', addedAt: nowISO() };
   state.sources.push(source);
+  recordList('sources', before, state.sources);
   markDirty();
   return source;
 }
 
 export function removeSource(id) {
+  const before = state.sources.slice();
   state.sources = state.sources.filter((s) => s.id !== id);
+  recordList('sources', before, state.sources);
   markDirty();
 }
 
