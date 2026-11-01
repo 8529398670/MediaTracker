@@ -1110,6 +1110,8 @@ const places = (everything = live()) => [...sections(everything), DISCOVER, RECE
 const WIDE = window.matchMedia('(min-width: 992px)');
 /* Where the navbar stops showing Filters and Select several as icons. */
 const ROOMY = window.matchMedia('(min-width: 768px)');
+/* Where the brand and the + leave the navbar (see app.css). */
+const PHONE = window.matchMedia('(max-width: 575.98px)');
 const SIDEBAR_KEY = 'mt.sidebar.v1';
 
 const panelFor = (make) => (window.bootstrap
@@ -1431,6 +1433,9 @@ function openMenu() {
    * on a platform, and a plain append writes the word "null" into the menu for
    * each one that is not. */
   setChildren(body, [
+    // The + is hidden on a phone to give the search box the room.
+    PHONE.matches ? entry('plus', 'Add something', 'A title, by name or link',
+      () => { handle.close(); addHere(); }) : null,
     // Filters has the funnel in the navbar at every width now; Select and the
     // two arrows do not, so on a phone this is where they are.
     ROOMY.matches || !canUndo() ? null : entry('undo', 'Undo', undoLabel(),

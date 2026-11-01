@@ -288,8 +288,9 @@ a { color: var(--accent-2); }
 /* The mark's colours are inline styles on #i-brand itself: page CSS cannot
  * reach into a <use> copy through an ancestor, and it drew black. */
 .brand-name { white-space: nowrap; }
-/* On a narrow phone the search box is worth more than the word. */
-@media (max-width: 575.98px) { .brand-name { display: none; } }
+/* On a narrow phone the search box is worth more than the brand and the +:
+ * Add moves into the ... menu there. */
+@media (max-width: 575.98px) { .navbar-brand, .add-button { display: none !important; } }
 
 /* A round icon button, the size of a reliable tap target. */
 .app-icon-button {
