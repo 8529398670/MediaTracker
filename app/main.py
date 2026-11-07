@@ -82,6 +82,7 @@ def prepare_media(store: db.Store, cfg: config.Config) -> None:
     catalogue.catalogue()
     types.ensure_builtin(store)
     playlists.migrate_queue_order(store)
+    titles.refold_genres(store)
     scheduler.prepare(store, cfg)
 
 

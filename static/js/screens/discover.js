@@ -67,9 +67,16 @@ const DiscoverScreen = {
     return ( this.params[ name ] || "" ).split( "," ).filter( Boolean );
   },
 
+  // Where a value sits in a list, whatever case it came in: a link saved
+  // before the facets had their capitals says genre=drama.
+  find( values , value ) {
+    const wanted = String( value ).toLowerCase();
+    return values.findIndex( ( entry ) => entry.toLowerCase() === wanted );
+  },
+
   toggle( name , value ) {
     const values = this.list( name );
-    const at = values.indexOf( value );
+    const at = this.find( values , value );
     if ( at >= 0 ) values.splice( at , 1 );
     else values.push( value );
     this.set( { [ name ]: values.join( "," ) } );
@@ -160,8 +167,9 @@ const DiscoverScreen = {
 
   render() {
     Dom.text( Dom.get( "discover-count" ) , I18n.fill( "discover.count" , { n: this.total.toLocaleString() , all: ( this.meta.coverage.films || 0 ).toLocaleString() } ) );
-    this.renderChips();
+    // The facets first: they are where a chip learns how to spell its genre.
     this.renderFacets();
+    this.renderChips();
     Dom.get( "discover-search" ).value = this.params.q || "";
     Dom.get( "discover-from" ).value = this.params.from || "";
     Dom.get( "discover-to" ).value = this.params.to || "";
@@ -214,7 +222,7 @@ const DiscoverScreen = {
     const p = this.params;
     if ( p.q ) box.appendChild( this.chip( I18n.fill( "filters.chip_search" , { text: p.q } ) , () => this.set( { q: "" } ) ) );
     if ( p.from || p.to ) box.appendChild( this.chip( I18n.get( "filters.name_year" ) + ": " + ( p.from || "…" ) + "–" + ( p.to || "…" ) , () => this.set( { from: "" , to: "" } ) ) );
-    if ( p.genre ) box.appendChild( this.chip( I18n.get( "filters.name_genre" ) + ": " + this.list( "genre" ).map( ( g ) => ( this.labels || {} )[ g ] || g ).join( " " + I18n.get( this.value( "genremode" ) === "all" ? "filters.joiner_all" : "filters.joiner_any" ) + " " ) , () => this.set( { genre: "" } ) ) );
+    if ( p.genre ) box.appendChild( this.chip( I18n.get( "filters.name_genre" ) + ": " + this.list( "genre" ).map( ( g ) => ( this.labels || {} )[ g.toLowerCase() ] || g ).join( " " + I18n.get( this.value( "genremode" ) === "all" ? "filters.joiner_all" : "filters.joiner_any" ) + " " ) , () => this.set( { genre: "" } ) ) );
     if ( p.rating ) box.appendChild( this.chip( I18n.get( "filters.name_cert" ) + ": " + this.list( "rating" ).map( ( r ) => this.ratingLabel( r ) ).join( " " + I18n.get( "filters.joiner_any" ) + " " ) , () => this.set( { rating: "" } ) ) );
     if ( p.topic ) box.appendChild( this.chip( I18n.get( "discover.topic" ) + ": " + this.topicLabel( p.topic ) , () => this.set( { topic: "" } ) ) );
     if ( p.only ) box.appendChild( this.chip( I18n.get( "discover.only_" + p.only ) , () => this.set( { only: "" } ) ) );
@@ -241,7 +249,7 @@ const DiscoverScreen = {
     Dom.clear( box );
     const chosen = this.list( name );
     entries.forEach( ( entry ) => {
-      const on = chosen.indexOf( entry.id ) >= 0;
+      const on = this.find( chosen , entry.id ) >= 0;
       box.appendChild( Dom.el( "button" , {
         class: "btn btn-sm " + ( on ? "btn-soft-primary" : "btn-outline-secondary" ) + ( entry.count === 0 && !on ? " opacity-50" : "" ),
         attrs: { type: "button" , "aria-pressed": String( on ) },
@@ -253,9 +261,12 @@ const DiscoverScreen = {
 
   renderFacets() {
     const genres = ( this.facets.genres || [] ).filter( ( g ) => g.id );
-    this.labels = Object.fromEntries( genres.map( ( g ) => [ g.id , g.label || g.id ] ) );
-    this.facetButtons( Dom.get( "discover-genres" ) , genres.slice( 0 , this.showAllGenres ? genres.length : 18 ) , "genre" , ( g ) => g.label || g.id );
-    Dom.show( Dom.get( "discover-genres-more" ) , genres.length > 18 );
+    const short = Filters.defs.genre.short;
+    this.labels = Object.fromEntries( genres.map( ( g ) => [ g.id.toLowerCase() , g.label || g.id ] ) );
+    const chosen = this.list( "genre" );
+    const shown = genres.filter( ( g , at ) => this.showAllGenres || at < short || this.find( chosen , g.id ) >= 0 );
+    this.facetButtons( Dom.get( "discover-genres" ) , shown , "genre" , ( g ) => g.label || g.id );
+    Dom.show( Dom.get( "discover-genres-more" ) , genres.length > short );
     Dom.text( Dom.get( "discover-genres-more" ) , this.showAllGenres ? I18n.get( "filters.show_fewer" ) : I18n.fill( "filters.show_all" , { n: genres.length } ) );
     const mode = Dom.get( "discover-genremode" );
     Dom.show( mode , this.list( "genre" ).length > 1 );

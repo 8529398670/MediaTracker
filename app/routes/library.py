@@ -17,7 +17,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.core.db import Store
-from app.media.genres import GENRE_ALIASES
+from app.media import genres
 from app.media.normalize import LOOKUP_KINDS, STATUSES
 from app.models import library_cache, revision, users
 from app.reference import imdb
@@ -52,6 +52,7 @@ def library_payload(store: Store, subject_id: int, since: int | None) -> dict[st
         "states": states,
         "social": snapshot.social,
         "types": snapshot.types,
+        "genre_rules": genres.rules(),
         "people": [{"id": user.id, "display_name": user.display_name} for user in users.list_users(store) if not user.disabled],
         "scores": imdb.scores_for(title.get("imdb_id") for title in titles),
     }
@@ -69,5 +70,4 @@ async def get_library(request: Request) -> Response:
 async def get_vocab(request: Request) -> Response:
     """The fixed words the client builds menus from: statuses, lookup kinds,
     and the canonical genre names the vocabulary folds onto."""
-    canonical = sorted({name for names in GENRE_ALIASES.values() for name in names})
-    return JSONResponse({"statuses": list(STATUSES), "lookup_kinds": list(LOOKUP_KINDS), "canonical_genres": canonical})
+    return JSONResponse({"statuses": list(STATUSES), "lookup_kinds": list(LOOKUP_KINDS), "canonical_genres": list(genres.GENRES)})

@@ -18,7 +18,7 @@ from pathlib import Path
 from app.discover import certs
 from app.discover import wikitext as wiki
 from app.media import dupes
-from app.media.genres import canon_genre
+from app.media.genres import SPELLING, canon_genre, canon_genres, terms
 from app.media.match import fold
 from app.providers.compat import KEYS, fetch_json, log
 from app.reference import imdb
@@ -217,60 +217,22 @@ def article_facts(titles: list[str]) -> dict[str, dict]:
 # what year it came out. "Books about film" ends in the word too, and is not
 # one — so the year is required, not merely the word.
 YEAR_FILMS = re.compile(r"^(\d{4}) (?:[a-z-]+ )?films$")
-DECADE_FILMS = re.compile(r"^\d{4}s? ")
 SPLIT_GENRE = re.compile(r"\s*[,/;]\s*")
 
-# The app's own genre vocabulary. A category is only worth reading as a genre
-# if it lands on one of these: `1930s crime action films` is Crime and Action,
-# and `American black-and-white films` is not a genre at all.
-FILM_GENRES = {
-    "Action", "Adventure", "Animation", "Biography", "Comedy", "Crime",
-    "Documentary", "Drama", "Family", "Fantasy", "History", "Horror", "Music",
-    "Mystery", "Romance", "Science Fiction", "Sport", "Sports", "Thriller",
-    "War", "Western", "Coming of Age", "Young Adult", "Superhero", "Spy",
-    "Disaster", "Heist", "Martial Arts", "Teen", "Erotic", "Satire",
-}
+# A row the film noir list put here is film noir, whatever its own article's
+# categories managed to say about it.
+TOPIC_GENRES = {"film-noir": "Film Noir"}
 
 
-def _sweep(phrase: str) -> list[str]:
-    """The genres inside a phrase, longest first.
-
-    "crime drama" is Crime and Drama, and one genre called "Crime Drama"
-    would never match either; "science fiction" has to stay whole or it
-    becomes Science; "american black-and-white" is neither.
-    """
-    words = DECADE_FILMS.sub("", phrase).replace("-", " ").split()
-    out: list[str] = []
-    for size in (3, 2, 1):
-        for start in range(len(words) - size + 1):
-            for genre in canon_genre(" ".join(words[start:start + size])):
-                if genre in FILM_GENRES and genre not in out:
-                    out.append(genre)
-    return out
-
-
-def genres_from(text: str, strict: bool = False) -> list[str]:
+def genres_from(text: str) -> list[str]:
     """A page's genre cell, or a category name, as the app's genres.
 
-    The whole phrase first, since "Film noir" and "Romantic comedy" are known
-    compounds that mean something other than their words. Only when that
-    lands on nothing the app knows is the phrase taken apart.
-
-    `strict` is for categories, where an unrecognised phrase is not a genre
-    that happens to be rare — it is "American black-and-white", and dropping
-    it is the point. A genre column says what it means, so there the phrase
-    is kept as it was written.
+    `Comedy, crime drama` is three of them; `American black-and-white` is
+    none, and that is the right answer rather than a rare genre.
     """
     out: list[str] = []
     for piece in SPLIT_GENRE.split(str(text or "")):
-        piece = piece.strip()
-        if not piece:
-            continue
-        whole = canon_genre(piece)
-        found = [g for g in whole if g in FILM_GENRES] or _sweep(piece)
-        if not found and not strict:
-            found = whole
-        for genre in found:
+        for genre in canon_genre(piece):
             if genre not in out:
                 out.append(genre)
     return out[:5]
@@ -287,7 +249,7 @@ def _from_categories(title: str, cats: list[str]) -> dict:
             years.append(int(hit.group(1)))
             continue
         if low.endswith(" films"):
-            for genre in genres_from(low[:-6], strict=True):
+            for genre in genres_from(low[:-6]):
                 if genre not in genres:
                     genres.append(genre)
     return {"article": title, "isFilm": bool(years),
@@ -638,6 +600,21 @@ def key_of(row: dict) -> str:
     return "t:" + fold(row.get("title") or "") + "|" + str(row.get("year") or "")
 
 
+def _row_genres(row: dict, origin: dict) -> list[str]:
+    """A row's genres under today's vocabulary.
+
+    Worked out again rather than read back: the archive keeps what the
+    vocabulary said on the day the page was harvested, and a rebuild is how a
+    change to it reaches a century of films. The page's own words are the
+    better source where it had a genre column.
+    """
+    found = genres_from(row["genreText"]) if row.get("genreText") else canon_genres(row.get("genres"), 5)
+    topic = TOPIC_GENRES.get(origin.get("topic") or "")
+    if topic and topic not in found:
+        found.append(topic)
+    return found
+
+
 def _blend(into: dict, row: dict, origin: dict) -> None:
     """Fold one page's row into the film it is about."""
     for field in ("director", "studio", "genreText", "gross", "award", "notes"):
@@ -647,7 +624,7 @@ def _blend(into: dict, row: dict, origin: dict) -> None:
         into["year"] = row["year"]
     if len(row.get("cast") or []) > len(into.get("cast") or []):
         into["cast"] = row["cast"]
-    for genre in row.get("genres") or []:
+    for genre in _row_genres(row, origin):
         if genre not in into["genres"]:
             into["genres"].append(genre)
     signals = into["signals"]
@@ -712,8 +689,9 @@ BOXOFFICE, AWARDED = 1, 2
 # The shape of a lean row. A catalogue written by an older build is merged
 # again on the next read rather than migrated: the merge takes seconds and
 # reads only what is already on disk, so re-deriving is simpler and safer
-# than patching rows in place.
-LEAN_SHAPE = 2
+# than patching rows in place. Raise it whenever app/media/genres.py changes
+# what a film's genres are.
+LEAN_SHAPE = 3
 
 
 def _lean(film: dict) -> list:
@@ -723,13 +701,16 @@ def _lean(film: dict) -> list:
         flags |= BOXOFFICE
     if signals.get("award"):
         flags |= AWARDED
+    # Everything the film can be found by, so a filter, a count and a search
+    # for Romantic Comedy all mean the same films.
+    found = terms(film.get("genres") or [])
     hay = fold(" ".join([
         film.get("title", ""), film.get("director", ""), film.get("studio", ""),
         film.get("genreText", ""), " ".join(film.get("cast") or []),
-        " ".join(film.get("genres") or []),
+        " ".join(found),
     ]))
     return [film["key"], film.get("year"), film.get("score", 0), hay,
-            [g.lower() for g in film.get("genres") or []],
+            [g.lower() for g in found],
             list(signals.get("topics") or []), flags,
             # Folded, so "Katharine Hepburn" and "katharine hepburn" are the
             # same person however the row that named her was typed. Kept apart
@@ -1229,9 +1210,9 @@ def genre_facet(counts: dict[str, int]) -> list[dict]:
     The lean rows keep them folded so a filter never has to care about case;
     a picker does, so the label is put back here rather than in the browser.
     """
-    return [{"id": name, "label": name.title(), "count": count}
-            for name, count in sorted(counts.items(),
-                                      key=lambda kv: (-kv[1], kv[0]))]
+    named = [SPELLING.get(name, name) for name in counts]
+    return [{"id": name, "label": name, "count": counts[name.lower()]}
+            for name in sorted(named, key=lambda n: (-counts[n.lower()], n))]
 
 
 def rating_facet(counts: dict[str, int]) -> list[dict]:

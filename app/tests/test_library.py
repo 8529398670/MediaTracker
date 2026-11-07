@@ -4,14 +4,19 @@ the in-memory snapshot noticing writes from another process, merging and
 its undo, imports and their undo, and an account taking its state with it."""
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from datetime import timedelta
 from pathlib import Path
+from unittest import mock
 
 from app.core import db
 from app.core.db import BUCKET_TITLES
+from app.discover import catalogue
+from app.media import genres
 from app.models import RestoreExpiredError, credentials, import_batches, library_cache, merges, to_iso, types, user_state, users, utc_now, verdicts
+from app.models import revision
 from app.models import titles as titles_model
 from app.models.revision import ConflictError, NotFoundError
 
@@ -152,6 +157,86 @@ class OtherModelsTest(LibraryTestCase):
         self.assertIsNone(user_state.get_state(self.store, self.mom.id, title["id"]))
         self.assertEqual(verdicts.get_verdicts(self.store, self.mom.id), {})
         self.assertIsNotNone(titles_model.get_title(self.store, title["id"]))
+
+
+
+class GenreRefoldTest(LibraryTestCase):
+    def stored(self, ident: str, genre_list: list[str]) -> None:
+        with self.store.transaction() as tx:
+            record = tx.get(BUCKET_TITLES, ident)
+            record["genres"] = genre_list
+            tx.put(BUCKET_TITLES, ident, record)
+
+    def test_old_words_fold_once_and_only_changed_titles_move(self) -> None:
+        old = self.add("Old")["id"]
+        clean = self.add("Clean")["id"]
+        self.stored(old, ["Animated", "6 Separate Stories", "Romantic Fantasy"])
+        self.stored(clean, ["Romance", "Comedy"])
+        before = self.store.get(BUCKET_TITLES, clean)["rev"]
+        self.assertEqual(titles_model.refold_genres(self.store), 1)
+        record = self.store.get(BUCKET_TITLES, old)
+        self.assertEqual(record["genres"], ["Animation", "Romance", "Fantasy"])
+        self.assertEqual(record["rev"], revision.current(self.store))
+        self.assertEqual(self.store.get(BUCKET_TITLES, clean)["rev"], before)
+        self.stored(old, ["Animated"])
+        self.assertEqual(titles_model.refold_genres(self.store), 0)
+        self.assertEqual(self.store.get(BUCKET_TITLES, old)["genres"], ["Animated"])
+
+    def test_a_new_vocabulary_version_runs_it_again(self) -> None:
+        old = self.add("Old")["id"]
+        titles_model.refold_genres(self.store)
+        self.stored(old, ["Animated"])
+        with mock.patch.object(genres, "VOCABULARY_VERSION", genres.VOCABULARY_VERSION + 1):
+            self.assertEqual(titles_model.refold_genres(self.store), 1)
+
+
+class CatalogueGenreTest(unittest.TestCase):
+    """The archive keeps what the vocabulary said the day a page was harvested;
+    a rebuild has to bring it up to today."""
+
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        before = catalogue.LISTS_DIR
+        self.addCleanup(catalogue.configure, before)
+        self.lists = Path(folder.name)
+        catalogue.configure(self.lists)
+        (self.lists / "raw").mkdir()
+        rows = [
+            {"title": "Bride Talk", "year": 1940, "article": "Bride Talk", "genreText": "Romantic Comedy", "genres": ["Romance", "Comedy"]},
+            {"title": "Night Rain", "year": 1941, "article": "Night Rain", "genreText": "film noir", "genres": ["Crime"]},
+            {"title": "Odd One", "year": 1942, "article": "Odd One", "genreText": "First National", "genres": ["First National"]},
+            {"title": "Cat Tale", "year": 1943, "article": "Cat Tale", "genres": ["Animated Short"]},
+        ]
+        page = {"page": "p", "title": "p", "set": "american", "topic": "", "year": 1940, "rows": rows}
+        (self.lists / "raw" / "american-1940.json").write_text(json.dumps(page), encoding="utf-8")
+        catalogue.rebuild()
+
+    def facets(self, **query: object) -> dict[str, int]:
+        return {entry["id"]: entry["count"] for entry in catalogue.query(**query)["facets"]["genres"]}
+
+    def titles(self, **query: object) -> list[str]:
+        return sorted(film["title"] for film in catalogue.query(**query)["films"])
+
+    def test_a_rebuild_applies_todays_vocabulary(self) -> None:
+        self.assertEqual(self.titles(genres=["Film Noir"]), ["Night Rain"])
+        self.assertEqual(self.titles(genres=["crime"]), ["Night Rain"])
+        self.assertEqual(self.titles(genres=["Animation"]), ["Cat Tale"])
+        self.assertNotIn("First National", self.facets())
+
+    def test_a_compound_is_a_filter_a_count_and_a_search(self) -> None:
+        self.assertEqual(self.titles(genres=["Romantic Comedy"]), ["Bride Talk"])
+        self.assertEqual(self.titles(genres=["Comedy"]), ["Bride Talk"])
+        self.assertEqual(self.facets()["Romantic Comedy"], 1)
+        self.assertEqual(self.titles(text="romantic comedy"), ["Bride Talk"])
+
+    def test_a_film_stores_the_ingredients_not_the_compound(self) -> None:
+        film = catalogue.query(genres=["Romantic Comedy"])["films"][0]
+        self.assertEqual(film["genres"], ["Romance", "Comedy"])
+
+    def test_the_facet_spells_names_properly_and_leads_with_the_most_used(self) -> None:
+        names = [entry["label"] for entry in catalogue.genre_facet({"coming of age": 2, "tv movie": 2, "drama": 9, "romantic comedy": 3})]
+        self.assertEqual(names, ["Drama", "Romantic Comedy", "Coming of Age", "TV Movie"])
 
 
 if __name__ == "__main__":

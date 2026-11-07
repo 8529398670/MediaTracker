@@ -632,6 +632,7 @@ editor:
   certification: "Age rating"
   creator: "Director / creator"
   genres: "Genres"
+  genres_help: "Only genres the app knows are kept. Use tags for anything else."
   tags: "Tags"
   cast: "Cast"
   overview: "Description"

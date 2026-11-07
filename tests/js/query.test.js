@@ -113,3 +113,72 @@ test( "a drop lands on the number of the place it is dropped" , () => {
   ok( OrderDrag.position( ids , "d" , "b" , true ) === 3 , "moving up" );
   ok( OrderDrag.position( ids , "a" , "zz" , false ) === 4 , "an unknown target is the end" );
 } );
+
+// Genres: a slice of the rules app/media/genres.py sends in the library
+// payload, put back at the end so the tests above keep plain genres.
+function withGenreRules( fn ) {
+  Genres.use( {
+    parents: { "Film Noir": "Crime" , "Musical": "Music" },
+    compounds: [
+      [ "Romantic Comedy" , [ "Romance" , "Comedy" ] ],
+      [ "Comedy Drama" , [ "Comedy" , "Drama" ] ],
+      [ "Musical Comedy" , [ "Musical" , "Comedy" ] ],
+      [ "Musical Comedy" , [ "Music" , "Comedy" ] ],
+      [ "Romantic Drama" , [ "Romance" , "Drama" ] ],
+      [ "Crime Drama" , [ "Crime" , "Drama" ] ],
+    ],
+  } );
+  try { fn(); } finally { Genres.use( {} ); }
+}
+
+const genreRows = () => [
+  { t: { id: "a" , title: "Bride Wars" , genres: [ "Romance" , "Comedy" ] , tags: [] , rev: 1 } , s: null },
+  { t: { id: "b" , title: "Airplane" , genres: [ "Comedy" ] , tags: [] , rev: 1 } , s: null },
+  { t: { id: "c" , title: "Casablanca" , genres: [ "Romance" , "Drama" ] , tags: [] , rev: 1 } , s: null },
+];
+
+test( "a card reads each genre once, compounds first, leftovers kept" , () => withGenreRules( () => {
+  const labels = ( list ) => Genres.labels( list ).join( "|" );
+  ok( labels( [ "Romance" , "Comedy" ] ) === "Romantic Comedy" , labels( [ "Romance" , "Comedy" ] ) );
+  ok( labels( [ "Comedy" , "Romance" , "Drama" ] ) === "Romantic Comedy|Drama" , labels( [ "Comedy" , "Romance" , "Drama" ] ) );
+  ok( labels( [ "Horror" ] ) === "Horror" , "a lone genre stands" );
+  ok( labels( [] ) === "" && labels( undefined ) === "" , "nothing is nothing" );
+} ) );
+
+test( "a specific genre hides its parent on a card and keeps its own name" , () => withGenreRules( () => {
+  const labels = ( list ) => Genres.labels( list ).join( "|" );
+  ok( labels( [ "Film Noir" , "Crime" ] ) === "Film Noir" , labels( [ "Film Noir" , "Crime" ] ) );
+  ok( labels( [ "Film Noir" , "Crime" , "Drama" ] ) === "Film Noir|Drama" , labels( [ "Film Noir" , "Crime" , "Drama" ] ) );
+  ok( labels( [ "Musical" , "Music" , "Comedy" ] ) === "Musical Comedy" , labels( [ "Musical" , "Music" , "Comedy" ] ) );
+} ) );
+
+test( "terms hold the ingredients, the parents and every compound" , () => withGenreRules( () => {
+  const terms = Genres.terms( [ "Comedy" , "Romance" , "Drama" ] );
+  [ "Comedy" , "Romance" , "Drama" , "Romantic Comedy" , "Comedy Drama" , "Romantic Drama" ].forEach( ( name ) => ok( terms.indexOf( name ) >= 0 , name ) );
+  ok( Genres.terms( [ "Film Noir" ] ).join( "|" ) === "Film Noir|Crime" , Genres.terms( [ "Film Noir" ] ).join( "|" ) );
+  ok( Genres.terms( [ "Film Noir" , "Drama" ] ).indexOf( "Crime Drama" ) >= 0 , "a parent can complete a compound" );
+} ) );
+
+test( "Romantic Comedy filters and counts, and Comedy still finds it" , () => withGenreRules( () => {
+  const list = genreRows();
+  const keep = ( filters ) => ids( list.filter( Filters.predicate( filters ) ) );
+  ok( keep( { genre: { mode: "any" , values: [ "Romantic Comedy" ] } } ) === "a" , "the compound" );
+  ok( keep( { genre: { mode: "any" , values: [ "Comedy" ] } } ) === "a,b" , "the ingredient" );
+  const counts = Facets.count( list , {} , [ "genre" ] ).genre;
+  ok( counts.get( "Romantic Comedy" ) === 1 && counts.get( "Comedy" ) === 2 && counts.get( "Romance" ) === 2 , JSON.stringify( Array.from( counts ) ) );
+  const ranked = Facets.ranked( counts , [] ).map( ( entry ) => entry[ 0 ] );
+  ok( ranked[ 0 ] === "Comedy" && ranked.indexOf( "Romantic Comedy" ) > 1 , "most used first: " + ranked.join( "," ) );
+} ) );
+
+test( "search finds a compound as words and as genre:" , () => withGenreRules( () => {
+  const list = genreRows();
+  const found = ( text ) => ids( list.filter( Search.matcher( text ) ) );
+  ok( found( "romantic comedy" ) === "a" , found( "romantic comedy" ) );
+  ok( found( 'genre:"romantic comedy"' ) === "a" , found( 'genre:"romantic comedy"' ) );
+  ok( found( "genre:romance" ) === "a,c" , found( "genre:romance" ) );
+} ) );
+
+test( "grouping by first genre uses what the card shows" , () => withGenreRules( () => {
+  const groups = Grouper.group( genreRows() , { by: "genre" , dir: "asc" } , "t" ).map( ( group ) => group.value );
+  ok( groups.indexOf( "Romantic Comedy" ) >= 0 && groups.indexOf( "Romance" ) < 0 , groups.join( "," ) );
+} ) );

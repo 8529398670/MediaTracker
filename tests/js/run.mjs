@@ -9,7 +9,7 @@ import vm from "node:vm";
 
 const here = dirname( fileURLToPath( import.meta.url ) );
 const root = join( here , ".." , ".." , "static" , "js" );
-const files = [ "query/search.js" , "query/filters.js" , "query/sort.js" , "query/group.js" , "query/facets.js" , "query/model.js" , "query/codec.js" , "ui/orderdrag.js" ];
+const files = [ "media/genres.js" , "query/search.js" , "query/filters.js" , "query/sort.js" , "query/group.js" , "query/facets.js" , "query/model.js" , "query/codec.js" , "ui/orderdrag.js" ];
 const results = [];
 const context = vm.createContext( {
   URLSearchParams,

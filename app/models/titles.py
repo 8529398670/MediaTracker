@@ -20,13 +20,15 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from app.core.db import BUCKET_TITLES, BUCKET_USER_STATE, Store, Transaction
-from app.media import normalize
+from app.core.db import BUCKET_META, BUCKET_TITLES, BUCKET_USER_STATE, Store, Transaction
+from app.media import genres, normalize
 from app.models import playlists
 from app.models import RestoreExpiredError, RestoreGoneError, from_iso, to_iso, utc_now
 from app.models.revision import NotFoundError, bump, check_expect, mark_purged
 
 Title = dict[str, Any]
+
+GENRE_REFOLD_KEY = "genre_refold"
 
 
 class TooManyTitlesError(Exception):
@@ -57,6 +59,33 @@ def build(fields: dict[str, Any], actor_id: int | None, ident: str | None = None
         }
     )
     return record
+
+
+def refold_genres(store: Store) -> int:
+    """Put every stored title back through the genre vocabulary.
+
+    Titles are folded on the way in, so this only has work to do when the
+    vocabulary has changed under them. Runs once per
+    genres.VOCABULARY_VERSION; returns how many titles it changed. Only those
+    get a new rev, which is how a tab left open hears about them.
+    """
+    with store.transaction() as tx:
+        done = tx.get(BUCKET_META, GENRE_REFOLD_KEY) or {}
+        if done.get("version") == genres.VOCABULARY_VERSION:
+            return 0
+        changed = 0
+        rev = None
+        for key, record in tx.all(BUCKET_TITLES):
+            folded = genres.canon_genres(record.get("genres"), normalize.MAX_GENRES)
+            if folded == (record.get("genres") or []):
+                continue
+            rev = rev or bump(tx)
+            record["genres"] = folded
+            record["rev"] = rev
+            tx.put(BUCKET_TITLES, key, record)
+            changed += 1
+        tx.put(BUCKET_META, GENRE_REFOLD_KEY, {"version": genres.VOCABULARY_VERSION, "at": to_iso(utc_now()), "changed": changed})
+        return changed
 
 
 def create_title_tx(tx: Transaction, record: Title, rev: int) -> Title:

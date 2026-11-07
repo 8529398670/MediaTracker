@@ -52,7 +52,7 @@ const Search = {
   haystack( row ) {
     if ( row._hay !== undefined && row._hayRev === row.t.rev ) return row._hay;
     const t = row.t;
-    const parts = [ t.title , t.year , t.creator , ( t.cast || [] ).join( " " ) , ( t.genres || [] ).join( " " ) ,
+    const parts = [ t.title , t.year , t.creator , ( t.cast || [] ).join( " " ) , Genres.terms( t.genres ).join( " " ) ,
       ( t.tags || [] ).join( " " ) , t.notes , t.certification ];
     row._hay = " " + this.fold( parts.join( " " ) ) + " ";
     row._hayRev = t.rev;
@@ -66,7 +66,7 @@ const Search = {
       return ( list || [] ).some( ( item ) => Search.fold( item ).indexOf( want ) >= 0 );
     };
     switch ( clause.field ) {
-      case "genre": return has( t.genres );
+      case "genre": return has( Genres.terms( t.genres ) );
       case "tag": return ( t.tags || [] ).some( ( tag ) => Search.fold( tag ) === want || Search.fold( tag ).indexOf( want ) === 0 );
       case "cast": return has( t.cast );
       case "by": return this.fold( t.creator ).indexOf( want ) >= 0;

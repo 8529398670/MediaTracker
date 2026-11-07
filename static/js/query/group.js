@@ -14,7 +14,7 @@ const Grouper = {
     none: null,
     year: { value: ( row ) => row.t.year || null },
     decade: { value: ( row ) => ( row.t.year ? Math.floor( row.t.year / 10 ) * 10 : null ) },
-    genre: { value: ( row ) => ( row.t.genres || [] )[ 0 ] || null , text: true },
+    genre: { value: ( row ) => Genres.labels( row.t.genres )[ 0 ] || null , text: true },
     type: { value: ( row ) => row.t.type || null , text: true },
     status: { value: ( row ) => ( row.s && row.s.status ) || "none" , text: true , order: [ "watching" , "queue" , "watched" , "dropped" , "none" ] },
     rating: { value: ( row ) => ( row.s && row.s.rating ) || null },

@@ -229,7 +229,7 @@ const Card = {
     switch ( field ) {
       case "genres":
         if ( !( t.genres || [] ).length ) return null;
-        return Dom.el( "div" , { class: "media-chips" , children: t.genres.map( ( genre ) => this.chip( genre , "genre" , genre , "genre" ) ) } );
+        return Dom.el( "div" , { class: "media-chips" , children: Genres.labels( t.genres ).map( ( genre ) => this.chip( genre , "genre" , genre , "genre" ) ) } );
       case "tags":
         if ( !( t.tags || [] ).length ) return null;
         return Dom.el( "div" , { class: "media-chips" , children: t.tags.map( ( tag ) => this.chip( "#" + tag , "tag" , tag , "tag" ) ) } );

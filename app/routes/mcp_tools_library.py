@@ -14,7 +14,7 @@ from typing import Any
 
 from app.jobs import runner
 from app.mcp.registry import Call, InvalidArguments, Refusal, Registry, Tool
-from app.media import normalize
+from app.media import genres, normalize
 from app.models import library_cache, playlists, user_state, users, verdicts
 from app.models import titles as titles_model
 from app.models.revision import ConflictError, NotFoundError
@@ -23,7 +23,7 @@ from app.routes import lookup as lookup_route
 from app.routes.library import state_row
 from app.routes.titles import add_title
 
-SEARCHABLE = ("title", "creator", "cast", "genres", "tags", "notes")
+SEARCHABLE = ("title", "creator", "cast", "tags", "notes")
 
 
 def _args(call: Call, required: dict[str, type], optional: dict[str, type]) -> dict[str, Any]:
@@ -79,6 +79,7 @@ def search_library(call: Call) -> dict[str, Any]:
         if status and mine != status:
             continue
         hay = " ".join(str(title.get(field) or "") if not isinstance(title.get(field), list) else " ".join(title[field]) for field in SEARCHABLE).lower()
+        hay += " " + " ".join(genres.terms(title.get("genres") or [])).lower()
         if words and not all(word in hay for word in words):
             continue
         out.append(_row(title, state, snapshot.social.get(title["id"])))

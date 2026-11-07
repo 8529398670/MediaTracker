@@ -21,7 +21,10 @@ const Filters = {
     genre: {
       kind: "multi",
       modes: [ "any" , "all" ],
-      values: ( row ) => row.t.genres || [],
+      values: ( row ) => Genres.terms( row.t.genres ),
+      // Long enough that the specific genres are not all behind Show all;
+      // Discover's picker shows the same number.
+      short: 24,
     },
     tag: {
       kind: "multi",

@@ -170,7 +170,9 @@ const FilterSheet = {
       wrap.appendChild( group );
     }
     const open = this.expanded[ id ];
-    const shown = open ? entries : entries.slice( 0 , this.SHORT );
+    const short = def.short || this.SHORT;
+    // A value that is on stays in sight, however far down the list it ranks.
+    const shown = open ? entries : entries.filter( ( entry , at ) => at < short || chosen.indexOf( entry[ 0 ] ) >= 0 );
     const list = Dom.el( "div" , { class: "facet-list" } );
     shown.forEach( ( entry ) => {
       const facetValue = entry[ 0 ];
@@ -191,7 +193,7 @@ const FilterSheet = {
       } ) );
     } );
     wrap.appendChild( list );
-    if ( entries.length > this.SHORT ) {
+    if ( entries.length > short ) {
       wrap.appendChild( Dom.el( "button" , {
         class: "btn btn-sm btn-link px-0",
         text: open ? I18n.get( "filters.show_fewer" ) : I18n.fill( "filters.show_all" , { n: entries.length } ),

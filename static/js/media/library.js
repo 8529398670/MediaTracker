@@ -65,6 +65,7 @@ const Library = {
   },
 
   apply( payload ) {
+    if ( payload.genre_rules ) Genres.use( payload.genre_rules );
     if ( payload.full ) {
       this.rows = new Map();
     }

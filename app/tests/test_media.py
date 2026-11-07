@@ -17,7 +17,52 @@ class GenreTest(unittest.TestCase):
 
     def test_lists_are_deduplicated_and_capped(self) -> None:
         self.assertEqual(genres.canon_genres(["Drama", "drama", "Romantic comedy"], limit=6), ["Drama", "Romance", "Comedy"])
-        self.assertEqual(len(genres.canon_genres([f"genre {n}" for n in range(20)], limit=6)), 6)
+        self.assertEqual(len(genres.canon_genres(list(genres.GENRES), limit=6)), 6)
+
+    def test_the_vocabulary_is_closed(self) -> None:
+        for word in ("6 Separate Stories", "First National", "Epistolary", "3-D", "American black-and-white", "none"):
+            self.assertEqual(genres.canon_genre(word), [], word)
+        for word in genres.GENRES:
+            self.assertEqual(genres.canon_genre(word), [word], word)
+
+    def test_every_rule_points_at_the_vocabulary(self) -> None:
+        names = set(genres.GENRES)
+        for answer in genres.GENRE_ALIASES.values():
+            self.assertLessEqual(set(answer), names)
+        self.assertLessEqual(set(genres.GENRE_PARENTS) | set(genres.GENRE_PARENTS.values()), names)
+        for _label, parts in genres.GENRE_COMPOUNDS:
+            self.assertLessEqual(set(parts), names)
+
+    def test_near_names_land_on_one_genre(self) -> None:
+        for word in ("Animated", "Animated Short", "Animated feature", "Cartoon", "Animation"):
+            self.assertEqual(genres.canon_genre(word), ["Animation"], word)
+        for word in ("Biopic", "Bio-Pic", "Biography", "biographical film"):
+            self.assertEqual(genres.canon_genre(word), ["Biography"], word)
+        self.assertEqual(genres.canon_genre("Sport"), ["Sports"])
+        self.assertEqual(genres.canon_genre("Dramedy"), ["Comedy", "Drama"])
+        self.assertEqual(genres.canon_genre("Romantic Dramedy"), ["Romance", "Comedy", "Drama"])
+        self.assertEqual(genres.canon_genre("Romantic Fantasy"), ["Romance", "Fantasy"])
+        self.assertEqual(genres.canon_genre("Comedy–Horror"), ["Comedy", "Horror"])
+
+    def test_a_phrase_is_taken_apart_for_any_provider(self) -> None:
+        self.assertEqual(genres.canon_genre("crime drama film"), ["Crime", "Drama"])
+        self.assertEqual(genres.canon_genre("Film-Noir"), ["Film Noir"])
+        self.assertEqual(genres.canon_genre("musical comedy"), ["Musical", "Comedy"])
+
+    def test_terms_keep_the_ingredients_and_add_the_compound(self) -> None:
+        self.assertEqual(genres.terms(["Romance", "Comedy"]), ["Romance", "Comedy", "Romantic Comedy"])
+        self.assertEqual(genres.terms(["Drama"]), ["Drama"])
+        self.assertEqual(genres.terms([]), [])
+
+    def test_terms_count_a_specific_genre_under_its_parent(self) -> None:
+        self.assertEqual(genres.terms(["Film Noir"]), ["Film Noir", "Crime"])
+        self.assertIn("Musical Comedy", genres.terms(["Musical", "Comedy"]))
+        self.assertIn("Crime Drama", genres.terms(["Film Noir", "Drama"]))
+
+    def test_the_browser_gets_the_tables_as_plain_json(self) -> None:
+        rules = json.loads(json.dumps(genres.rules()))
+        self.assertEqual(rules["parents"]["Film Noir"], "Crime")
+        self.assertEqual(rules["compounds"][0], ["Romantic Comedy", ["Romance", "Comedy"]])
 
 
 class NormalizeTest(unittest.TestCase):
