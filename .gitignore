@@ -1,0 +1,72 @@
+# Runtime state -- never commit these. config/config.yaml holds the secret key;
+# the bare name also catches a stray copy anywhere else.
+config.yaml
+data/
+.claude/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Written by the Dockerfile inside the image only (see app/core/layout.py).
+app/core/layout_pinned.py
+app/build_info.py
+
+# Python: bytecode, virtual environments, packaging and tool caches.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# scripts/run.sh's pid file.
+.run/
+
+# Logs and stray temp files.
+*.log
+*.tmp
+*.bak
+
+# Secrets that must never be committed, wherever they turn up. docker/lib.sh
+# writes config.yaml.new before moving it into place.
+config.yaml.new
+.env
+.env.*
+*.pem
+*.key
+
+# OS clutter, in any directory.
+.DS_Store
+._*
+.AppleDouble
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Editors and IDEs.
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.#*
+\#*\#
+*.sublime-workspace

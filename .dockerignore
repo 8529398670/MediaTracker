@@ -1,0 +1,26 @@
+# What the build context leaves out. The context is the project root
+# (docker/lib.sh runs `docker build -f docker/Dockerfile .`). It lives at the
+# root, not beside the Dockerfile as Dockerfile.dockerignore, because only
+# BuildKit reads that name: the legacy builder still in use on some hosts reads
+# only this one, and would otherwise send data/ and config.yaml into the build.
+.git
+.gitignore
+.run/
+data/
+*.db
+*.db-wal
+*.db-shm
+# Holds the secret key: never in an image layer, which is forever.
+config/config.yaml
+*.md
+docker/
+scripts/
+misc/
+app/core/layout_pinned.py
+app/build_info.py
+**/__pycache__
+**/*.pyc
+.venv/
+venv/
+# The JS tests run from the checkout, not in the image.
+tests/

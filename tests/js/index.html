@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Query tests</title>
+  <style>body { font: 14px system-ui; margin: 2rem; } .fail { color: #b00; } .ok { color: #070; }</style>
+</head>
+<body>
+  <h1>Query tests</h1>
+  <p>The pure query layer (static/js/query/). Also runs under node: <code>node tests/js/run.mjs</code>.</p>
+  <ul id="out"></ul>
+  <script>
+    const out = [];
+    function test( name , fn ) { try { fn(); out.push( [ name , null ] ); } catch ( error ) { out.push( [ name , error ] ); } }
+    function ok( value , message ) { if ( !value ) throw new Error( message || "not ok" ); }
+  </script>
+  <script src="../../static/js/query/search.js"></script>
+  <script src="../../static/js/query/filters.js"></script>
+  <script src="../../static/js/query/sort.js"></script>
+  <script src="../../static/js/query/group.js"></script>
+  <script src="../../static/js/query/facets.js"></script>
+  <script src="../../static/js/query/model.js"></script>
+  <script src="../../static/js/query/codec.js"></script>
+  <script src="query.test.js"></script>
+  <script>
+    const list = document.getElementById( "out" );
+    out.forEach( ( [ name , error ] ) => {
+      const item = document.createElement( "li" );
+      item.className = error ? "fail" : "ok";
+      item.textContent = ( error ? "FAIL " : "ok " ) + name + ( error ? " -- " + error.message : "" );
+      list.appendChild( item );
+    } );
+  </script>
+</body>
+</html>

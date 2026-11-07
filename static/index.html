@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title data-i18n="app.title">&nbsp;</title>
+  <!-- Before the stylesheets paint, so a saved dark theme never flashes light. -->
+  <script src="/js/theme.js"></script>
+  <!-- Bootstrap 5 and its icon font, vendored (see /vendor/README.md), then
+       this app's overrides on top. -->
+  <link rel="stylesheet" href="/vendor/bootstrap.min.css" />
+  <link rel="stylesheet" href="/vendor/bootstrap-icons.min.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!--
+    No text is hardcoded here. Every visible string carries a data-i18n key
+    that server/language resolves from language.yaml at runtime, so the copy
+    can change (or be removed entirely) without editing this file.
+
+    data-i18n replaces an element's text, so wherever an icon sits next to a
+    label the key goes on an inner <span>, never on the element holding both.
+  -->
+  <nav class="navbar app-navbar border-bottom sticky-top">
+    <div class="container-fluid gap-2">
+      <!-- The menu button, left, beside the sidebar it controls: on a phone it
+           slides the sidebar in, on a wide screen it collapses and expands it
+           (remembered in this browser). See Nav.toggleSidebar. -->
+      <button id="sidebar-toggle" class="btn btn-link app-icon-button" type="button"
+              aria-controls="sidebar" data-i18n-attr="aria-label:nav.menu,title:nav.menu" hidden>
+        <i class="bi bi-list" aria-hidden="true"></i>
+      </button>
+      <!-- The app's name is the way home, from any screen. -->
+      <a href="/" class="navbar-brand fw-semibold me-auto" data-i18n="app.title"></a>
+      <span class="navbar-text small d-none d-md-inline" data-i18n="app.tagline"></span>
+      <div id="app-nav" class="d-flex align-items-center gap-2" hidden>
+        <!-- Only while an admin is showing someone else's lists (the picker
+             is on the Account screen); a reminder that leads back to it. -->
+        <a id="acting-badge" href="#account" class="acting-badge small" hidden></a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="app-shell">
+    <!--
+      Every signed-in screen is one entry here and one data-view section in
+      <main>. nav.js shows the one the URL hash names, and hides an entry
+      whose section the app left hidden (admin-only, switched off, ...).
+      offcanvas-lg: a slide-in panel on a phone, a fixed column from lg up.
+    -->
+    <aside id="sidebar" class="offcanvas-lg offcanvas-start app-sidebar" tabindex="-1" aria-labelledby="sidebar-title" hidden>
+      <div class="offcanvas-header border-bottom">
+        <h2 class="offcanvas-title h5" id="sidebar-title" data-i18n="app.title"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebar"
+                data-i18n-attr="aria-label:nav.close"></button>
+      </div>
+      <div class="offcanvas-body">
+        <nav id="sidebar-nav" class="nav nav-pills flex-column w-100 gap-1">
+          <!-- The library, one entry per type with how many are on your Up
+               next list; filled in by LibraryNav (screens/library.js). -->
+          <a class="nav-link nav-link-add" href="#add" data-nav="add"><i class="bi bi-plus-circle-fill" aria-hidden="true"></i><span data-i18n="nav.add"></span></a>
+          <a class="nav-link" href="#discover" data-nav="discover"><i class="bi bi-compass" aria-hidden="true"></i><span data-i18n="nav.discover"></span></a>
+          <a class="nav-link" href="#playlists" data-nav="playlists"><i class="bi bi-collection-play" aria-hidden="true"></i><span data-i18n="nav.playlists"></span></a>
+          <a id="sidebar-watched" class="nav-link" href="#library/all/watched"><i class="bi bi-check-circle" aria-hidden="true"></i><span class="nav-link-text flex-grow-1" data-i18n="nav.watched"></span><span id="sidebar-watched-count" class="nav-count"></span></a>
+          <h3 class="sidebar-heading" data-i18n="nav.library_heading"></h3>
+          <div id="sidebar-library" class="sidebar-library d-flex flex-column gap-1"></div>
+          <div class="sidebar-group">
+            <h3 class="sidebar-heading" data-i18n="nav.tools_heading"></h3>
+            <a class="nav-link" href="#dupes" data-nav="dupes"><i class="bi bi-intersect" aria-hidden="true"></i><span data-i18n="nav.dupes"></span></a>
+            <a class="nav-link" href="#porting" data-nav="porting"><i class="bi bi-arrow-down-up" aria-hidden="true"></i><span data-i18n="nav.porting"></span></a>
+            <a class="nav-link" href="#types" data-nav="types"><i class="bi bi-collection" aria-hidden="true"></i><span data-i18n="nav.types"></span></a>
+            <a class="nav-link" href="#jobs" data-nav="jobs"><i class="bi bi-cpu" aria-hidden="true"></i><span data-i18n="nav.jobs"></span></a>
+          </div>
+          <h3 class="sidebar-heading" data-i18n="nav.you_heading"></h3>
+          <!-- Account: its second line names who is signed in (App.labelAccount). -->
+          <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="nav-link-text"><span data-i18n="nav.account"></span><span id="sidebar-user" class="nav-link-sub"></span></span></a>
+          <a class="nav-link" href="#appearance" data-nav="appearance"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.appearance"></span></a>
+          <a class="nav-link" href="#pin" data-nav="pin"><i class="bi bi-key" aria-hidden="true"></i><span data-i18n="nav.pin"></span></a>
+          <a class="nav-link" href="#api-keys" data-nav="api-keys"><i class="bi bi-code-square" aria-hidden="true"></i><span data-i18n="nav.api_keys"></span></a>
+
+          <div id="sidebar-admin" class="sidebar-group" hidden>
+            <h3 class="sidebar-heading" data-i18n="nav.admin_heading"></h3>
+            <a class="nav-link" href="#users" data-nav="users"><i class="bi bi-people" aria-hidden="true"></i><span data-i18n="nav.users"></span></a>
+            <a class="nav-link" href="#invite-links" data-nav="invite-links"><i class="bi bi-link-45deg" aria-hidden="true"></i><span data-i18n="nav.invite_links"></span></a>
+            <a class="nav-link" href="#all-keys" data-nav="all-keys"><i class="bi bi-shield-lock" aria-hidden="true"></i><span data-i18n="nav.all_keys"></span></a>
+          </div>
+        </nav>
+      </div>
+    </aside>
+
+    <main hidden id="main" class="app-main">
+      <p id="error-banner" class="alert alert-danger" role="alert" hidden></p>
+
+      <section id="signed-out" class="card" hidden>
+        <div class="card-body">
+          <h2 class="h4 card-title" data-i18n="signed_out.heading"></h2>
+          <p data-i18n="signed_out.body"></p>
+          <p id="invalid-link" class="alert alert-warning mb-0" data-i18n="signed_out.invalid_link" hidden></p>
+        </div>
+      </section>
+
+      <!-- What a login link opens. Nothing is redeemed until the button is
+           pressed -- see renderLoginConfirm in app.js. -->
+      <section id="login-confirm" class="card" hidden>
+        <div class="card-body">
+          <h2 class="h4 card-title" data-i18n="login_confirm.heading"></h2>
+          <p data-i18n="login_confirm.body"></p>
+          <p id="login-switch-warning" class="alert alert-warning" hidden></p>
+          <button id="login-confirm-button" class="btn btn-primary" data-i18n="login_confirm.button"></button>
+        </div>
+      </section>
+
+      <!-- What an invite link opens: type a name, then either pick yourself
+           from "did you mean" or join as someone new. See join.js. -->
+      <section id="join" class="card" hidden>
+        <div class="card-body">
+          <h2 id="join-heading" class="h4 card-title"></h2>
+          <p id="join-invalid" class="alert alert-warning" data-i18n="join.invalid" hidden></p>
+          <p id="join-switch-warning" class="alert alert-warning" hidden></p>
+
+          <div id="join-name-step" hidden>
+            <p data-i18n="join.body"></p>
+            <form id="join-name-form" class="row g-3 align-items-end" autocomplete="off">
+              <div class="col-md">
+                <label for="join-name" class="form-label" data-i18n="join.name_label"></label>
+                <input id="join-name" class="form-control" name="display_name" maxlength="80" required
+                       data-i18n-attr="placeholder:join.name_placeholder" />
+              </div>
+              <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary" data-i18n="join.continue_button"></button>
+              </div>
+            </form>
+          </div>
+
+          <div id="join-choose" hidden>
+            <p id="join-choose-heading"></p>
+            <div id="join-matches" class="list-group mb-3"></div>
+            <p id="join-full" class="text-body-secondary" data-i18n="join.full" hidden></p>
+            <div class="row-actions">
+              <button id="join-create-button" class="btn btn-primary"></button>
+              <button id="join-back-button" class="btn btn-outline-secondary" data-i18n="join.back_button"></button>
+            </div>
+          </div>
+
+          <div id="join-pin-step" hidden>
+            <p id="join-pin-prompt"></p>
+            <form id="join-pin-form" autocomplete="off">
+              <div class="mb-3">
+                <label for="join-pin" class="form-label" data-i18n="join.pin_label"></label>
+                <input id="join-pin" class="form-control" name="pin" type="password" inputmode="numeric" maxlength="8" required />
+              </div>
+              <div class="row-actions">
+                <button type="submit" class="btn btn-primary" data-i18n="join.pin_button"></button>
+                <button type="button" id="join-pin-back-button" class="btn btn-outline-secondary" data-i18n="join.back_button"></button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="signed-in" hidden>
+        <!--
+          The library: one scope and list at a time, with a query that lives in
+          the URL (#library/movie/all?genre=Drama). Not a .card: the cards
+          are inside it. See static/js/screens/library.js.
+        -->
+        <section class="view library-view" data-view="library" id="library-panel" hidden>
+          <div id="views-bar" class="views-bar" data-i18n-attr="aria-label:views.label"></div>
+
+          <div class="library-toolbar">
+            <div class="input-group library-search">
+              <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+              <input id="library-search" class="form-control" type="search" autocomplete="off" spellcheck="false"
+                     data-i18n-attr="placeholder:library.search_placeholder,aria-label:library.search_label" />
+            </div>
+            <div class="library-tools">
+              <button class="btn btn-outline-secondary position-relative" type="button" data-bs-toggle="offcanvas" data-bs-target="#filter-sheet" aria-controls="filter-sheet">
+                <i class="bi bi-funnel" aria-hidden="true"></i>
+                <span class="btn-label" data-i18n="filters.button"></span>
+                <span id="filters-badge" class="badge rounded-pill text-bg-primary" hidden></span>
+              </button>
+              <div class="dropdown">
+                <button id="sort-button" class="btn btn-outline-secondary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"></button>
+                <div id="sort-menu" class="dropdown-menu dropdown-menu-end sort-menu p-3"></div>
+              </div>
+              <div class="btn-group" role="group" data-i18n-attr="aria-label:customize.layout">
+                <button class="btn btn-outline-secondary" type="button" data-layout="grid" data-i18n-attr="title:customize.layout_grid,aria-label:customize.layout_grid"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-layout="list" data-i18n-attr="title:customize.layout_list,aria-label:customize.layout_list"><i class="bi bi-view-list" aria-hidden="true"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-layout="compact" data-i18n-attr="title:customize.layout_compact,aria-label:customize.layout_compact"><i class="bi bi-list-ul" aria-hidden="true"></i></button>
+              </div>
+              <button id="customize-button" class="btn btn-outline-secondary" type="button">
+                <i class="bi bi-sliders" aria-hidden="true"></i>
+                <span class="btn-label" data-i18n="customize.button"></span>
+              </button>
+              <button id="select-button" class="btn btn-outline-secondary" type="button" aria-pressed="false">
+                <i class="bi bi-check2-square" aria-hidden="true"></i>
+                <span class="btn-label" data-i18n="bulk.select"></span>
+              </button>
+              <button id="views-save" class="btn btn-outline-secondary" type="button">
+                <i class="bi bi-bookmark-plus" aria-hidden="true"></i>
+                <span class="btn-label" data-i18n="views.save"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span id="library-count" class="small text-body-secondary"></span>
+            <div id="library-chips" class="filter-chips" hidden></div>
+          </div>
+
+          <div id="bulk-bar" class="bulk-bar card" hidden>
+            <div class="card-body d-flex flex-wrap align-items-center gap-2 py-2">
+              <strong id="bulk-count"></strong>
+              <button id="bulk-all" class="btn btn-sm btn-link" type="button" data-i18n="bulk.all"></button>
+              <button id="bulk-none" class="btn btn-sm btn-link" type="button" data-i18n="bulk.none"></button>
+              <span class="vr"></span>
+              <button class="btn btn-sm btn-outline-success" type="button" data-bulk="watched"><i class="bi bi-check-circle" aria-hidden="true"></i> <span data-i18n="bulk.watched"></span></button>
+              <button class="btn btn-sm btn-outline-danger" type="button" data-bulk="love"><i class="bi bi-heart" aria-hidden="true"></i> <span data-i18n="bulk.love"></span></button>
+              <button class="btn btn-sm btn-outline-secondary" type="button" data-bulk="dropped"><i class="bi bi-x-circle" aria-hidden="true"></i> <span data-i18n="bulk.dropped"></span></button>
+              <button class="btn btn-sm btn-outline-secondary" type="button" data-bulk="unlist"><i class="bi bi-bookmark-dash" aria-hidden="true"></i> <span data-i18n="bulk.unlist"></span></button>
+              <button class="btn btn-sm btn-outline-secondary" type="button" data-bulk="tag"><i class="bi bi-hash" aria-hidden="true"></i> <span data-i18n="bulk.tag"></span></button>
+              <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-collection" aria-hidden="true"></i> <span data-i18n="bulk.type"></span></button>
+                <ul id="bulk-types" class="dropdown-menu"></ul>
+              </div>
+              <div class="dropdown">
+                <button id="bulk-playlist-toggle" class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-collection-play" aria-hidden="true"></i> <span data-i18n="bulk.playlist"></span></button>
+                <ul id="bulk-playlists" class="dropdown-menu"></ul>
+              </div>
+              <button class="btn btn-sm btn-outline-danger" type="button" data-bulk="delete"><i class="bi bi-trash3" aria-hidden="true"></i> <span data-i18n="bulk.delete"></span></button>
+              <button id="bulk-done" class="btn btn-sm btn-secondary ms-auto" type="button" data-i18n="bulk.done"></button>
+            </div>
+          </div>
+
+          <div id="library-grid" class="library-grid"></div>
+
+          <div id="library-empty" class="card library-empty" hidden>
+            <div class="card-body text-center">
+              <i class="bi bi-inboxes display-6 text-body-secondary" aria-hidden="true"></i>
+              <p id="library-empty-text" class="mt-2"></p>
+              <button id="library-empty-clear" class="btn btn-outline-primary" type="button" data-i18n="filters.clear_all"></button>
+            </div>
+          </div>
+
+          <!-- What a search found outside this list; see ui/searchextras.js. -->
+          <div id="library-extras" class="library-extras" hidden></div>
+        </section>
+
+        <!-- Discover: the Wikipedia film catalogue; see screens/discover.js. -->
+        <section class="view library-view" data-view="discover" id="discover-panel" hidden>
+          <div class="library-head">
+            <h2 class="h4 mb-0" data-i18n="discover.heading"></h2>
+            <span id="discover-count" class="text-body-secondary small"></span>
+          </div>
+          <p class="text-body-secondary mb-0" data-i18n="discover.description"></p>
+          <div class="library-toolbar">
+            <div class="input-group library-search">
+              <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+              <input id="discover-search" class="form-control" type="search" autocomplete="off" data-i18n-attr="placeholder:discover.search_placeholder,aria-label:discover.search_placeholder" />
+            </div>
+            <div class="library-tools">
+              <div class="input-group discover-years">
+                <span class="input-group-text" data-i18n="filters.name_year"></span>
+                <input id="discover-from" class="form-control" type="number" min="1900" max="2100" inputmode="numeric" data-i18n-attr="placeholder:filters.from,aria-label:filters.from" />
+                <input id="discover-to" class="form-control" type="number" min="1900" max="2100" inputmode="numeric" data-i18n-attr="placeholder:filters.to,aria-label:filters.to" />
+              </div>
+              <select id="discover-sort" class="form-select w-auto" data-i18n-attr="aria-label:sort.heading">
+                <option value="notable" data-i18n="discover.sort_notable"></option>
+                <option value="imdb" data-i18n="discover.sort_imdb"></option>
+                <option value="year" data-i18n="discover.sort_year"></option>
+                <option value="year-asc" data-i18n="discover.sort_year_asc"></option>
+                <option value="title" data-i18n="discover.sort_title"></option>
+              </select>
+              <select id="discover-topic" class="form-select w-auto" data-i18n-attr="aria-label:discover.topic"><option value="" data-i18n="discover.topic_any"></option></select>
+              <select id="discover-only" class="form-select w-auto" data-i18n-attr="aria-label:discover.only">
+                <option value="" data-i18n="discover.only_any"></option>
+                <option value="boxoffice" data-i18n="discover.only_boxoffice"></option>
+                <option value="awarded" data-i18n="discover.only_awarded"></option>
+              </select>
+              <select id="discover-watched" class="form-select w-auto" data-i18n-attr="aria-label:discover.watched">
+                <option value="hide" data-i18n="discover.watched_hide"></option>
+                <option value="only" data-i18n="discover.watched_only"></option>
+                <option value="all" data-i18n="discover.watched_all"></option>
+              </select>
+              <select id="discover-skipped" class="form-select w-auto" data-i18n-attr="aria-label:discover.skipped">
+                <option value="hide" data-i18n="discover.skipped_hide"></option>
+                <option value="only" data-i18n="discover.skipped_only"></option>
+                <option value="all" data-i18n="discover.skipped_all"></option>
+              </select>
+              <div class="btn-group" role="group" data-i18n-attr="aria-label:customize.layout">
+                <button class="btn btn-outline-secondary" type="button" data-discover-layout="grid" data-i18n-attr="title:customize.layout_grid,aria-label:customize.layout_grid"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-discover-layout="list" data-i18n-attr="title:customize.layout_list,aria-label:customize.layout_list"><i class="bi bi-view-list" aria-hidden="true"></i></button>
+                <button class="btn btn-outline-secondary" type="button" data-discover-layout="compact" data-i18n-attr="title:customize.layout_compact,aria-label:customize.layout_compact"><i class="bi bi-list-ul" aria-hidden="true"></i></button>
+              </div>
+              <button id="discover-customize" class="btn btn-outline-secondary" type="button"><i class="bi bi-sliders" aria-hidden="true"></i> <span class="btn-label" data-i18n="customize.button"></span></button>
+            </div>
+          </div>
+          <details class="discover-facets" open>
+            <summary class="small fw-semibold" data-i18n="discover.facets"></summary>
+            <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
+              <span class="small text-body-secondary" data-i18n="filters.name_genre"></span>
+              <div id="discover-genremode" class="btn-group btn-group-sm" role="group" hidden>
+                <button type="button" data-mode="any" data-i18n="filters.mode_any"></button>
+                <button type="button" data-mode="all" data-i18n="filters.mode_all"></button>
+              </div>
+            </div>
+            <div id="discover-genres" class="facet-chips"></div>
+            <button id="discover-genres-more" class="btn btn-sm btn-link px-0" type="button" hidden></button>
+            <div class="small text-body-secondary mt-2" data-i18n="filters.name_cert"></div>
+            <div id="discover-ratings" class="facet-chips"></div>
+            <div id="discover-skipped-count" class="small text-body-secondary mt-2"></div>
+          </details>
+          <div id="discover-chips" class="filter-chips" hidden></div>
+          <div id="discover-grid" class="library-grid"></div>
+          <p id="discover-empty" class="text-center text-body-secondary my-4" data-i18n="discover.empty" hidden></p>
+          <button id="discover-more" class="btn btn-outline-primary align-self-center" type="button" data-i18n="discover.more" hidden></button>
+        </section>
+
+        <!-- Adding titles: paste, look up, check, add. See screens/add.js. -->
+        <section class="card view" data-view="add" id="add-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="add.heading"></h2>
+            <p class="text-body-secondary" data-i18n="add.description"></p>
+            <form id="add-form" autocomplete="off">
+              <label for="add-text" class="visually-hidden" data-i18n="add.heading"></label>
+              <textarea id="add-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:add.placeholder"></textarea>
+              <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-3">
+                  <label for="add-type" class="form-label small" data-i18n="add.type"></label>
+                  <select id="add-type" class="form-select"></select>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label for="add-status" class="form-label small" data-i18n="add.status"></label>
+                  <select id="add-status" class="form-select">
+                    <option value="" data-i18n="add.status_none"></option>
+                    <option value="watched" data-i18n="status.watched"></option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-6 d-flex gap-2 flex-wrap">
+                  <button id="add-lookup" class="btn btn-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> <span data-i18n="add.lookup"></span></button>
+                  <button id="add-plain" class="btn btn-outline-secondary" type="button" data-i18n="add.plain"></button>
+                </div>
+              </div>
+            </form>
+            <p id="add-progress" class="small text-body-secondary mt-2 mb-0"></p>
+            <div id="add-results" class="list-group mt-3"></div>
+            <div id="add-actions" class="d-flex gap-2 mt-3" hidden>
+              <button id="add-confirm" class="btn btn-success" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span id="add-confirm-label"></span></button>
+              <button id="add-clear" class="btn btn-outline-secondary" type="button" data-i18n="add.clear"></button>
+            </div>
+          </div>
+        </section>
+
+        <!--
+          Playlists: the index (#playlists) and one playlist (#playlists/12),
+          numbered and in your order. See static/js/screens/playlists.js.
+        -->
+        <section class="view playlists-view" data-view="playlists" id="playlists-panel" hidden>
+          <div id="playlists-index">
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+              <h2 class="h4 mb-0 me-auto" data-i18n="playlist.heading"></h2>
+              <button id="playlists-new" class="btn btn-primary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span data-i18n="playlist.new"></span></button>
+            </div>
+            <p class="text-body-secondary" data-i18n="playlist.description"></p>
+            <div id="playlists-list" class="list-group playlists-list"></div>
+            <div id="playlists-empty" class="card library-empty" hidden>
+              <div class="card-body text-body-secondary" data-i18n="playlist.empty_index"></div>
+            </div>
+          </div>
+
+          <div id="playlist-detail" hidden>
+            <a class="btn btn-sm btn-link px-0" href="#playlists"><i class="bi bi-chevron-left" aria-hidden="true"></i> <span data-i18n="playlist.back"></span></a>
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-3">
+              <h2 id="playlist-heading" class="h4 mb-0"></h2>
+              <span id="playlist-count" class="text-body-secondary me-auto"></span>
+              <div id="playlist-tools" class="d-flex gap-2">
+                <button id="playlist-rename" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-pencil" aria-hidden="true"></i> <span data-i18n="playlist.rename"></span></button>
+                <button id="playlist-delete" class="btn btn-sm btn-outline-danger" type="button"><i class="bi bi-trash3" aria-hidden="true"></i> <span data-i18n="playlist.delete"></span></button>
+              </div>
+            </div>
+            <div id="playlist-items" class="playlist-items"></div>
+            <div id="playlist-empty" class="card library-empty" hidden>
+              <div class="card-body text-body-secondary" data-i18n="playlist.empty"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- The same work added twice; see screens/dupes.js. -->
+        <section class="card view" data-view="dupes" id="dupes-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="dupes.heading"></h2>
+            <p class="text-body-secondary" data-i18n="dupes.description"></p>
+            <p id="dupes-summary" class="fw-semibold"></p>
+            <div id="dupes-list" class="list-group"></div>
+          </div>
+        </section>
+
+        <!-- Import and export; see screens/porting.js. -->
+        <section class="card view" data-view="porting" id="porting-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="porting.import_heading"></h2>
+            <p class="text-body-secondary" data-i18n="porting.import_description"></p>
+            <div class="row g-2 align-items-end mb-2">
+              <div class="col-md"><label for="import-file" class="form-label small" data-i18n="porting.file"></label><input id="import-file" class="form-control" type="file" accept=".md,.txt,.csv,.json,text/plain,text/markdown,text/csv,application/json" /></div>
+              <div class="col-md-3"><label for="import-format" class="form-label small" data-i18n="porting.format"></label>
+                <select id="import-format" class="form-select">
+                  <option value="auto" data-i18n="porting.format_auto"></option>
+                  <option value="outline" data-i18n="porting.format_outline"></option>
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
+            </div>
+            <label for="import-text" class="form-label small" data-i18n="porting.paste"></label>
+            <textarea id="import-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:porting.placeholder"></textarea>
+            <button id="import-read" class="btn btn-outline-primary" type="button" data-i18n="porting.read"></button>
+            <div id="import-preview" class="mt-3" hidden>
+              <p id="import-summary" class="fw-semibold"></p>
+              <div class="form-check mb-2"><input id="import-skip" class="form-check-input" type="checkbox" checked /><label for="import-skip" class="form-check-label" data-i18n="porting.skip_dupes"></label></div>
+              <button id="import-go" class="btn btn-success mb-3" type="button" data-i18n="porting.import"></button>
+              <div class="table-responsive import-table-wrap">
+                <table id="import-table" class="table table-sm">
+                  <thead><tr><th data-i18n="editor.title"></th><th data-i18n="editor.year"></th><th data-i18n="editor.type"></th><th data-i18n="editor.status"></th><th data-i18n="editor.tags"></th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <hr />
+            <h2 class="h4" data-i18n="porting.export_heading"></h2>
+            <p class="text-body-secondary" data-i18n="porting.export_description"></p>
+            <div class="d-flex gap-2 flex-wrap">
+              <a class="btn btn-outline-secondary" href="#" data-export="json"><i class="bi bi-filetype-json" aria-hidden="true"></i> JSON</a>
+              <a class="btn btn-outline-secondary" href="#" data-export="csv"><i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV</a>
+              <a class="btn btn-outline-secondary" href="#" data-export="md"><i class="bi bi-markdown" aria-hidden="true"></i> Markdown</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- The library's types; see screens/types.js. -->
+        <section class="card view" data-view="types" id="types-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="types.heading"></h2>
+            <p class="text-body-secondary" data-i18n="types.description"></p>
+            <div class="table-responsive">
+              <table id="types-table" class="table align-middle">
+                <thead><tr><th></th><th data-i18n="types.label"></th><th data-i18n="types.icon"></th><th data-i18n="types.lookup"></th><th data-i18n="types.count"></th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <form id="type-form" class="row g-2 align-items-end" autocomplete="off">
+              <div class="col-md"><label for="type-label" class="form-label small" data-i18n="types.new_label"></label><input id="type-label" class="form-control" maxlength="40" required /></div>
+              <div class="col-md"><label for="type-icon" class="form-label small" data-i18n="types.icon"></label><input id="type-icon" class="form-control" maxlength="40" placeholder="collection" /></div>
+              <div class="col-md"><label for="type-lookup" class="form-label small" data-i18n="types.lookup"></label><select id="type-lookup" class="form-select"></select></div>
+              <div class="col-md-auto"><button class="btn btn-primary" type="submit" data-i18n="types.add"></button></div>
+            </form>
+            <p class="small text-body-secondary mt-2 mb-0" data-i18n="types.icon_help"></p>
+          </div>
+        </section>
+
+        <!-- Background work; see screens/jobs.js. -->
+        <section class="card view" data-view="jobs" id="jobs-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="jobs.heading"></h2>
+            <p class="text-body-secondary" data-i18n="jobs.description"></p>
+            <p id="jobs-offline" class="alert alert-warning" data-i18n="jobs.offline" hidden></p>
+            <ul id="jobs-list" class="list-group mb-3"></ul>
+            <p id="jobs-images" class="small text-body-secondary mb-0"></p>
+          </div>
+        </section>
+
+        <section class="card view" data-view="account" id="account-panel">
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="account.heading"></h2>
+            <form id="rename-form" class="row g-3 align-items-end" autocomplete="off">
+              <div class="col-md">
+                <label for="display-name" class="form-label" data-i18n="account.display_name_label"></label>
+                <input id="display-name" class="form-control" name="display_name" maxlength="80" required
+                       data-i18n-attr="placeholder:account.display_name_placeholder" />
+              </div>
+              <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary" data-i18n="account.save_button"></button>
+              </div>
+            </form>
+
+            <hr />
+
+            <!-- Admins only: whose queue, ratings and hearts the library shows
+                 and changes. See static/js/media/acting.js. -->
+            <div id="acting" class="acting" hidden>
+              <h3 class="h6"><label for="acting-select" data-i18n="acting.label"></label></h3>
+              <select id="acting-select" class="form-select"></select>
+              <p class="small text-body-secondary mt-2" data-i18n="acting.description"></p>
+              <hr />
+            </div>
+
+            <!-- Where Apple TV links open; saved on the account (Prefs ui.appletv_app). -->
+            <h3 class="h6" data-i18n="account.appletv_heading"></h3>
+            <div class="form-check form-switch">
+              <input id="appletv-app" class="form-check-input" type="checkbox" role="switch" />
+              <label for="appletv-app" class="form-check-label" data-i18n="account.appletv_label"></label>
+            </div>
+            <p class="small text-body-secondary" data-i18n="account.appletv_description"></p>
+
+            <hr />
+
+            <!-- A login link for your own account, to sign in on another device.
+                 Any signed-in user may mint one; see Api.createMyLoginLink. -->
+            <h3 class="h6" data-i18n="account.device_heading"></h3>
+            <p class="text-body-secondary" data-i18n="account.device_description"></p>
+            <button id="my-link-button" class="btn btn-outline-secondary" data-i18n="account.device_button"></button>
+            <div id="my-link-box" class="alert alert-info mt-3" hidden>
+              <p class="mb-2" data-i18n="account.device_link_notice"></p>
+              <div class="link-box">
+                <code id="my-link-value"></code>
+                <button id="my-link-copy-button" class="btn btn-sm btn-outline-secondary" data-i18n="account.copy_button"></button>
+              </div>
+            </div>
+
+            <hr />
+
+            <button id="logout-button" class="btn btn-outline-danger" data-i18n="account.logout_button"></button>
+          </div>
+        </section>
+
+        <!-- Light, dark, or a ready-made theme; kept in this browser. See
+             theme.js. -->
+        <section class="card view" data-view="appearance" id="appearance">
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="theme.heading"></h2>
+            <p class="text-body-secondary" data-i18n="theme.description"></p>
+            <div id="theme-picker" class="theme-picker"></div>
+          </div>
+        </section>
+
+        <!-- Only for non-admin accounts; see pin.js. -->
+        <section class="card view" data-view="pin" id="pin-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="pin.heading"></h2>
+            <p class="text-body-secondary" data-i18n="pin.description"></p>
+            <p><span id="pin-status" class="badge text-bg-secondary"></span></p>
+            <form id="pin-form" autocomplete="off">
+              <div class="mb-3">
+                <label for="pin-value" class="form-label" data-i18n="pin.label"></label>
+                <input id="pin-value" class="form-control" name="pin" type="password" inputmode="numeric" minlength="4" maxlength="8"
+                       pattern="[0-9]{4,8}" required data-i18n-attr="placeholder:pin.placeholder" />
+              </div>
+              <div class="row-actions">
+                <button type="submit" class="btn btn-primary" data-i18n="pin.save_button"></button>
+                <button type="button" id="pin-clear-button" class="btn btn-outline-danger" data-i18n="pin.clear_button" hidden></button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!--
+          API keys: the non-browser way in, for every signed-in user. The role
+          select is revealed only for an admin (see keys.js) because a key can
+          never carry more permission than the account that owns it.
+        -->
+        <section class="card view" data-view="api-keys" id="api-keys-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="api_keys.heading"></h2>
+            <p class="text-body-secondary" data-i18n="api_keys.description"></p>
+
+            <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
+              <div class="col-md">
+                <label for="key-name" class="form-label" data-i18n="api_keys.name_label"></label>
+                <input id="key-name" class="form-control" name="name" maxlength="80" required
+                       data-i18n-attr="placeholder:api_keys.name_placeholder" />
+              </div>
+              <div class="col-md" id="key-role-field" hidden>
+                <label for="key-role" class="form-label" data-i18n="api_keys.role_label"></label>
+                <select id="key-role" class="form-select" name="role">
+                  <option value="user" data-i18n="api_keys.role_user"></option>
+                  <option value="admin" data-i18n="api_keys.role_admin"></option>
+                </select>
+              </div>
+              <div class="col-md">
+                <label for="key-days" class="form-label" data-i18n="api_keys.days_label"></label>
+                <input id="key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
+                       data-i18n-attr="placeholder:api_keys.days_placeholder" />
+              </div>
+              <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary" data-i18n="api_keys.create_button"></button>
+              </div>
+            </form>
+
+            <div id="key-secret-box" class="alert alert-info mt-3" hidden>
+              <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
+              <div class="link-box">
+                <code id="key-secret-value"></code>
+                <button id="copy-key-button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+              </div>
+            </div>
+
+            <div class="table-responsive mt-4">
+              <table id="keys-table" class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th data-i18n="api_keys.table_name"></th>
+                    <th data-i18n="api_keys.table_role"></th>
+                    <th data-i18n="api_keys.table_status"></th>
+                    <th data-i18n="api_keys.table_last_used"></th>
+                    <th data-i18n="api_keys.table_expires"></th>
+                    <th data-i18n="api_keys.table_actions"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="card view" data-view="users" id="admin-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="admin.heading"></h2>
+            <p class="text-body-secondary" data-i18n="admin.description"></p>
+
+            <form id="create-user-form" class="row g-3 align-items-end" autocomplete="off">
+              <div class="col-md">
+                <label for="new-name" class="form-label" data-i18n="admin.new_name_label"></label>
+                <input id="new-name" class="form-control" name="display_name" maxlength="80" required
+                       data-i18n-attr="placeholder:admin.new_name_placeholder" />
+              </div>
+              <div class="col-md">
+                <label for="new-role" class="form-label" data-i18n="admin.new_role_label"></label>
+                <select id="new-role" class="form-select" name="role">
+                  <option value="user" data-i18n="admin.role_user"></option>
+                  <option value="admin" data-i18n="admin.role_admin"></option>
+                </select>
+              </div>
+              <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary" data-i18n="admin.create_button"></button>
+              </div>
+            </form>
+
+            <div id="login-link-box" class="alert alert-info mt-3" hidden>
+              <p class="mb-2" data-i18n="admin.link_notice"></p>
+              <div class="link-box">
+                <code id="login-link-value"></code>
+                <button id="copy-link-button" class="btn btn-sm btn-outline-secondary" data-i18n="admin.copy_button"></button>
+              </div>
+            </div>
+
+            <div class="table-responsive mt-4">
+              <table id="users-table" class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th data-i18n="admin.table_name"></th>
+                    <th data-i18n="admin.table_role"></th>
+                    <th data-i18n="admin.table_status"></th>
+                    <th data-i18n="admin.table_actions"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- One link a whole group can join through; see invites.js. -->
+        <section class="card view" data-view="invite-links" id="invite-links-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="invite_links.heading"></h2>
+            <p class="text-body-secondary" data-i18n="invite_links.description"></p>
+
+            <form id="create-invite-form" class="row g-3 align-items-end" autocomplete="off">
+              <div class="col-md">
+                <label for="invite-label" class="form-label" data-i18n="invite_links.label_label"></label>
+                <input id="invite-label" class="form-control" name="label" maxlength="80" required
+                       data-i18n-attr="placeholder:invite_links.label_placeholder" />
+              </div>
+              <div class="col-6 col-md">
+                <label for="invite-uses" class="form-label" data-i18n="invite_links.uses_label"></label>
+                <input id="invite-uses" class="form-control" name="max_uses" type="number" min="1" max="1000" value="10" required inputmode="numeric" />
+              </div>
+              <div class="col-6 col-md">
+                <label for="invite-days" class="form-label" data-i18n="invite_links.days_label"></label>
+                <input id="invite-days" class="form-control" name="days" type="number" min="1" max="365" value="30" required inputmode="numeric" />
+              </div>
+              <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary" data-i18n="invite_links.create_button"></button>
+              </div>
+            </form>
+
+            <div id="invite-link-box" class="alert alert-info mt-3" hidden>
+              <p class="mb-2" data-i18n="invite_links.link_notice"></p>
+              <div class="link-box">
+                <code id="invite-link-value"></code>
+                <button id="copy-invite-button" class="btn btn-sm btn-outline-secondary" data-i18n="invite_links.copy_button"></button>
+              </div>
+            </div>
+
+            <div class="table-responsive mt-4">
+              <table id="invite-links-table" class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th data-i18n="invite_links.table_label"></th>
+                    <th data-i18n="invite_links.table_joined"></th>
+                    <th data-i18n="invite_links.table_status"></th>
+                    <th data-i18n="invite_links.table_expires"></th>
+                    <th data-i18n="invite_links.table_actions"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Every key in the app, whoever owns it: the admin answer to "what
+             has standing access", and where a lost laptop's key gets killed. -->
+        <section class="card view" data-view="all-keys" id="admin-keys-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="admin_keys.heading"></h2>
+            <p class="text-body-secondary" data-i18n="admin_keys.description"></p>
+
+            <div class="table-responsive">
+              <table id="admin-keys-table" class="table table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th data-i18n="admin_keys.table_owner"></th>
+                    <th data-i18n="api_keys.table_name"></th>
+                    <th data-i18n="api_keys.table_role"></th>
+                    <th data-i18n="api_keys.table_status"></th>
+                    <th data-i18n="api_keys.table_last_used"></th>
+                    <th data-i18n="api_keys.table_actions"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <!-- Every filter that applies to the screen, with counts; changes apply
+       at once (static/js/ui/filterbar.js). -->
+  <div id="filter-sheet" class="offcanvas offcanvas-end filter-sheet" tabindex="-1" aria-labelledby="filter-sheet-title">
+    <div class="offcanvas-header border-bottom">
+      <h2 id="filter-sheet-title" class="offcanvas-title h5" data-i18n="filters.heading"></h2>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-i18n-attr="aria-label:nav.close"></button>
+    </div>
+    <div id="filter-sheet-body" class="offcanvas-body"></div>
+    <div class="offcanvas-footer border-top p-3 d-flex gap-2">
+      <button id="filter-sheet-clear" class="btn btn-outline-secondary" type="button" data-i18n="filters.clear_filters"></button>
+      <button id="filter-sheet-show" class="btn btn-primary flex-grow-1" type="button" data-bs-dismiss="offcanvas"></button>
+    </div>
+  </div>
+
+  <!-- What each card shows; see static/js/ui/customizer.js. -->
+  <div id="customize-modal" class="modal fade" tabindex="-1" aria-labelledby="customize-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="customize-title" class="modal-title h5" data-i18n="customize.heading"></h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-attr="aria-label:nav.close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-body-secondary" data-i18n="customize.description"></p>
+          <div class="row g-4">
+            <div class="col-lg-4">
+              <h3 class="h6" data-i18n="customize.fields_heading"></h3>
+              <ul id="customize-fields" class="list-group choice-list"></ul>
+            </div>
+            <div class="col-lg-4">
+              <h3 class="h6" data-i18n="customize.buttons_heading"></h3>
+              <ul id="customize-buttons" class="list-group choice-list"></ul>
+            </div>
+            <div class="col-lg-4">
+              <h3 class="h6" data-i18n="customize.layout"></h3>
+              <div id="customize-layout" class="btn-group mb-3" role="group"></div>
+              <h3 class="h6" data-i18n="customize.size"></h3>
+              <div id="customize-size" class="btn-group mb-3" role="group"></div>
+              <h3 class="h6" data-i18n="customize.preview"></h3>
+              <div id="customize-preview" class="customize-preview"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="customize-reset" class="btn btn-outline-secondary" type="button" data-i18n="customize.reset"></button>
+          <button class="btn btn-primary" type="button" data-bs-dismiss="modal" data-i18n="customize.done"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- One title in full; see static/js/screens/editor.js. -->
+  <div id="editor-modal" class="modal fade" tabindex="-1" aria-labelledby="editor-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-fullscreen-md-down modal-dialog-scrollable">
+      <form id="editor-form" class="modal-content" autocomplete="off">
+        <div class="modal-header">
+          <h2 id="editor-title" class="modal-title h6 text-body-secondary" data-i18n="editor.heading"></h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-attr="aria-label:nav.close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="editor-head" class="editor-head"></div>
+
+          <section class="editor-section">
+            <h3 id="editor-mine-heading" class="h6"></h3>
+            <div class="row g-2">
+              <div class="col-6 col-md-4">
+                <label for="edit-status" class="form-label small" data-i18n="editor.status"></label>
+                <select id="edit-status" class="form-select">
+                  <option value="" data-i18n="status.none"></option>
+                  <option value="queue" data-i18n="status.queue"></option>
+                  <option value="watching" data-i18n="status.watching"></option>
+                  <option value="watched" data-i18n="status.watched"></option>
+                  <option value="dropped" data-i18n="status.dropped"></option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3">
+                <label for="edit-rating" class="form-label small" data-i18n="editor.rating"></label>
+                <select id="edit-rating" class="form-select">
+                  <option value="" data-i18n="editor.no_rating"></option>
+                  <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                  <option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3">
+                <label for="edit-watched-at" class="form-label small" data-i18n="editor.watched_at"></label>
+                <input id="edit-watched-at" class="form-control" type="date" />
+              </div>
+              <div class="col-6 col-md-2 d-flex align-items-end">
+                <div class="form-check form-switch mb-2">
+                  <input id="edit-heart" class="form-check-input" type="checkbox" role="switch" />
+                  <label for="edit-heart" class="form-check-label" data-i18n="editor.heart"></label>
+                </div>
+              </div>
+              <div class="col-12">
+                <label for="edit-note" class="form-label small" data-i18n="editor.note"></label>
+                <textarea id="edit-note" class="form-control" rows="2" maxlength="4000" data-i18n-attr="placeholder:editor.note_placeholder"></textarea>
+              </div>
+            </div>
+          </section>
+
+          <section id="editor-family-section" class="editor-section" hidden>
+            <h3 class="h6" data-i18n="editor.family_heading"></h3>
+            <ul id="editor-family" class="list-group list-group-flush small"></ul>
+          </section>
+
+          <section class="editor-section">
+            <h3 class="h6" data-i18n="editor.shared_heading"></h3>
+            <p class="small text-body-secondary" data-i18n="editor.shared_help"></p>
+            <div class="row g-2">
+              <div class="col-12 col-md-8"><label for="edit-title" class="form-label small" data-i18n="editor.title"></label><input id="edit-title" class="form-control" maxlength="400" required /></div>
+              <div class="col-6 col-md-2"><label for="edit-year" class="form-label small" data-i18n="editor.year"></label><input id="edit-year" class="form-control" type="number" min="1870" max="2200" inputmode="numeric" /></div>
+              <div class="col-6 col-md-2"><label for="edit-type" class="form-label small" data-i18n="editor.type"></label><select id="edit-type" class="form-select"></select></div>
+              <div class="col-6 col-md-3"><label for="edit-runtime" class="form-label small" data-i18n="editor.runtime"></label><input id="edit-runtime" class="form-control" type="number" min="1" inputmode="numeric" /></div>
+              <div class="col-6 col-md-3"><label for="edit-certification" class="form-label small" data-i18n="editor.certification"></label><input id="edit-certification" class="form-control" maxlength="32" /></div>
+              <div class="col-12 col-md-6"><label for="edit-creator" class="form-label small" data-i18n="editor.creator"></label><input id="edit-creator" class="form-control" maxlength="300" /></div>
+              <div class="col-12"><label for="edit-genres" class="form-label small" data-i18n="editor.genres"></label><input id="edit-genres" class="form-control" data-i18n-attr="placeholder:editor.comma_help" /></div>
+              <div class="col-12"><label for="edit-tags" class="form-label small" data-i18n="editor.tags"></label><input id="edit-tags" class="form-control" data-i18n-attr="placeholder:editor.comma_help" /></div>
+              <div class="col-12"><label for="edit-cast" class="form-label small" data-i18n="editor.cast"></label><input id="edit-cast" class="form-control" data-i18n-attr="placeholder:editor.comma_help" /></div>
+              <div class="col-12"><label for="edit-overview" class="form-label small" data-i18n="editor.overview"></label><textarea id="edit-overview" class="form-control" rows="3" maxlength="4000"></textarea></div>
+              <div class="col-12"><label for="edit-notes" class="form-label small" data-i18n="editor.notes"></label><textarea id="edit-notes" class="form-control" rows="2" maxlength="20000"></textarea></div>
+              <div class="col-12"><label for="edit-links" class="form-label small" data-i18n="editor.links"></label><textarea id="edit-links" class="form-control" rows="2" data-i18n-attr="placeholder:editor.links_help"></textarea></div>
+              <div class="col-12 col-md-6"><label for="edit-imdb-id" class="form-label small" data-i18n="editor.imdb_id"></label><input id="edit-imdb-id" class="form-control" maxlength="16" placeholder="tt0000000" /></div>
+              <div class="col-12 col-md-6"><label for="edit-wiki-url" class="form-label small" data-i18n="editor.wiki_url"></label><input id="edit-wiki-url" class="form-control" type="url" /></div>
+              <div class="col-12"><label for="edit-poster-url" class="form-label small" data-i18n="editor.poster_url"></label><input id="edit-poster-url" class="form-control" type="url" /></div>
+            </div>
+          </section>
+        </div>
+        <div class="modal-footer justify-content-between">
+          <div class="d-flex gap-2">
+            <button id="editor-delete" class="btn btn-outline-danger" type="button"><i class="bi bi-trash3" aria-hidden="true"></i> <span data-i18n="editor.delete"></span></button>
+            <button id="editor-enrich" class="btn btn-outline-secondary" type="button"><i class="bi bi-magic" aria-hidden="true"></i> <span data-i18n="editor.enrich"></span></button>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal" data-i18n="editor.cancel"></button>
+            <button class="btn btn-primary" type="submit" data-i18n="editor.save"></button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- "Saved.", "Copied.", "API key deleted · Undo": see Dom.toast. -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast border-0" role="status" aria-live="polite" aria-atomic="true">
+      <div id="toast-body" class="toast-body d-flex align-items-center gap-2">
+        <span id="toast-text" class="me-auto"></span>
+        <button id="toast-action" type="button" class="btn btn-sm btn-light" hidden></button>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    Plain scripts in dependency order. No bundler, no modules that need a
+    build step: each file adds one global and the browser runs them as-is.
+    Third-party libraries go in /vendor/ (downloaded once, served by us) so
+    the Content-Security-Policy can stay locked to 'self'.
+  -->
+  <script src="/vendor/bootstrap.bundle.min.js"></script>
+  <script src="/js/dom.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/undo.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script src="/js/query/search.js"></script>
+  <script src="/js/query/filters.js"></script>
+  <script src="/js/query/sort.js"></script>
+  <script src="/js/query/group.js"></script>
+  <script src="/js/query/facets.js"></script>
+  <script src="/js/query/model.js"></script>
+  <script src="/js/query/codec.js"></script>
+  <script src="/js/media/vocab.js"></script>
+  <script src="/js/media/library.js"></script>
+  <script src="/js/media/prefs.js"></script>
+  <script src="/js/media/acting.js"></script>
+  <script src="/js/media/playlists.js"></script>
+  <script src="/js/ui/card.js"></script>
+  <script src="/js/ui/cardactions.js"></script>
+  <script src="/js/ui/cardmenu.js"></script>
+  <script src="/js/ui/filterbar.js"></script>
+  <script src="/js/ui/sortcontrol.js"></script>
+  <script src="/js/ui/customizer.js"></script>
+  <script src="/js/ui/viewsbar.js"></script>
+  <script src="/js/ui/orderdrag.js"></script>
+  <script src="/js/ui/bulkbar.js"></script>
+  <script src="/js/ui/searchextras.js"></script>
+  <script src="/js/screens/editor.js"></script>
+  <script src="/js/screens/library.js"></script>
+  <script src="/js/screens/add.js"></script>
+  <script src="/js/screens/types.js"></script>
+  <script src="/js/screens/dupes.js"></script>
+  <script src="/js/screens/porting.js"></script>
+  <script src="/js/screens/discover.js"></script>
+  <script src="/js/screens/jobs.js"></script>
+  <script src="/js/screens/playlists.js"></script>
+  <script src="/js/keys.js"></script>
+  <script src="/js/join.js"></script>
+  <script src="/js/pin.js"></script>
+  <script src="/js/invites.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

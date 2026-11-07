@@ -1,0 +1,563 @@
+/*
+  Bootstrap 5 (/vendor/bootstrap.min.css) does the layout, components and
+  utilities. This file is only what Bootstrap does not: this app's colours,
+  the sidebar shell, and a few touch-friendliness rules. Reach for a utility
+  class in the markup before adding a rule here.
+
+  Light is the default and stays the default. Dark is Bootstrap's opt-in
+  <html data-bs-theme="dark">, set only by theme.js when someone picks it --
+  never prefers-color-scheme, so the app looks the same for everyone unless
+  they deliberately switch.
+
+  Colours: the --app-* tokens below are the only place to change them. A
+  theme preset overrides them as inline variables on <html> (theme.js), and
+  the block after them hands them on to Bootstrap's own variables. Bootstrap
+  compiles some colours straight into components (.btn-primary, focus rings),
+  so those are re-pointed explicitly further down.
+*/
+
+:root {
+  --app-accent: #1f5fd6;
+  --app-accent-fg: #ffffff;
+  /* The second colour: hover and "open" on cards, so the accent is not the
+     only colour a theme has. */
+  --app-accent-2: #d9480f;
+  --app-bg: #f7f8fa;
+  --app-surface: #ffffff;
+  --app-border: #dfe3e8;
+  --app-sidebar-width: 15rem;
+  --app-navbar-height: 4rem;
+}
+
+:root[data-bs-theme="dark"] {
+  --app-accent: #6ea0ff;
+  --app-accent-fg: #0b0d10;
+  --app-accent-2: #ffa94d;
+  --app-bg: #101215;
+  --app-surface: #191c21;
+  --app-border: #2c3138;
+}
+
+/* Derived, so a preset only has to set the colours above. A preset may set
+   --app-card itself when its surface is too strong to sit behind every card
+   (WSU Dark's green panels). Both selectors, so they re-derive under dark. */
+:root, :root[data-bs-theme="dark"] {
+  --app-card: color-mix(in srgb, var(--app-accent) 3%, var(--app-surface));
+  --app-accent-soft: color-mix(in srgb, var(--app-accent) 14%, var(--app-card));
+  --app-accent-strong: color-mix(in srgb, var(--app-accent) 70%, var(--bs-body-color));
+  --app-neutral-soft: color-mix(in srgb, var(--bs-body-color) 5%, var(--app-card));
+}
+
+/* Both selectors, because Bootstrap sets these on [data-bs-theme=dark] too. */
+:root, :root[data-bs-theme="dark"] {
+  --bs-primary: var(--app-accent);
+  --bs-link-color: var(--app-accent);
+  --bs-link-hover-color: color-mix(in srgb, var(--app-accent) 80%, var(--bs-body-color));
+  --bs-body-bg: var(--app-bg);
+  --bs-border-color: var(--app-border);
+  --bs-border-color-translucent: var(--app-border);
+}
+
+/* Bootstrap draws links from an -rgb triple, which a hex token cannot fill. */
+a:not([class]) { color: var(--app-accent); }
+a:not([class]):hover { color: var(--bs-link-hover-color); }
+
+.btn-primary {
+  --bs-btn-color: var(--app-accent-fg);
+  --bs-btn-bg: var(--app-accent);
+  --bs-btn-border-color: var(--app-accent);
+  --bs-btn-hover-color: var(--app-accent-fg);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--app-accent) 85%, #000);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--app-accent) 85%, #000);
+  --bs-btn-active-color: var(--app-accent-fg);
+  --bs-btn-active-bg: color-mix(in srgb, var(--app-accent) 75%, #000);
+  --bs-btn-active-border-color: color-mix(in srgb, var(--app-accent) 75%, #000);
+  --bs-btn-disabled-color: var(--app-accent-fg);
+  --bs-btn-disabled-bg: var(--app-accent);
+  --bs-btn-disabled-border-color: var(--app-accent);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--app-accent);
+  --bs-btn-border-color: var(--app-accent);
+  --bs-btn-hover-color: var(--app-accent-fg);
+  --bs-btn-hover-bg: var(--app-accent);
+  --bs-btn-hover-border-color: var(--app-accent);
+  --bs-btn-active-color: var(--app-accent-fg);
+  --bs-btn-active-bg: var(--app-accent);
+  --bs-btn-active-border-color: var(--app-accent);
+}
+/* Soft: an "on" state that is a tint of its tone, not a solid fill. Card
+   state buttons and filter toggles use it; the solid .btn-primary is kept
+   for the one thing on a screen you are meant to press. --tone is the only
+   thing each tone sets. */
+.btn-soft-primary { --tone: var(--app-accent); }
+.btn-soft-success { --tone: var(--bs-success); }
+.btn-soft-warning { --tone: #e8a200; }
+.btn-soft-danger { --tone: var(--bs-danger); }
+.btn-soft-secondary { --tone: var(--bs-secondary-color); }
+[class*="btn-soft-"] {
+  --tone-soft: color-mix(in srgb, var(--tone) 15%, var(--app-card));
+  --tone-text: color-mix(in srgb, var(--tone) 72%, var(--bs-body-color));
+  --bs-btn-color: var(--tone-text);
+  --bs-btn-bg: var(--tone-soft);
+  --bs-btn-border-color: color-mix(in srgb, var(--tone) 40%, var(--app-border));
+  --bs-btn-hover-color: var(--tone-text);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--tone) 24%, var(--app-card));
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--tone) 55%, var(--app-border));
+  --bs-btn-active-color: var(--tone-text);
+  --bs-btn-active-bg: color-mix(in srgb, var(--tone) 30%, var(--app-card));
+  --bs-btn-active-border-color: var(--tone);
+  font-weight: 600;
+}
+/* Dark tints are darker, so the text leans further toward the body colour to stay readable. */
+:root[data-bs-theme="dark"] [class*="btn-soft-"] { --tone-text: color-mix(in srgb, var(--tone) 42%, var(--bs-body-color)); }
+/* Neutral outlines: a quiet border and body-coloured text, so a row of
+   them does not read as a row of colour. */
+.btn-outline-secondary {
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-border-color: var(--app-border);
+  --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-hover-bg: var(--app-neutral-soft);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--bs-body-color) 30%, var(--app-border));
+  --bs-btn-active-color: var(--bs-body-color);
+  --bs-btn-active-bg: color-mix(in srgb, var(--bs-body-color) 10%, var(--app-card));
+  --bs-btn-active-border-color: color-mix(in srgb, var(--bs-body-color) 30%, var(--app-border));
+}
+.btn { --bs-btn-focus-box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--app-accent) 40%, transparent); }
+.form-control:focus, .form-select:focus {
+  border-color: color-mix(in srgb, var(--app-accent) 50%, var(--app-border));
+  box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--app-accent) 25%, transparent);
+}
+.nav-pills {
+  --bs-nav-pills-link-active-bg: var(--app-accent);
+  --bs-nav-pills-link-active-color: var(--app-accent-fg);
+}
+.card { --bs-card-bg: var(--app-card); --bs-card-border-color: var(--app-border); }
+.offcanvas-lg { --bs-offcanvas-bg: var(--app-surface); }
+.app-navbar { background: var(--app-surface); }
+
+/* The hidden attribute loses to Bootstrap's display utilities (.d-flex and
+   friends are !important and come later), so make it win again: app code
+   shows and hides whole sections with it. */
+[hidden] { display: none !important; }
+
+/* Touch: 44px is the usual floor for a reliable tap target, and a 16px input
+   font stops iOS Safari zooming in on focus. Small buttons in table rows are
+   the one exception, or every row would be twice as tall. */
+.btn:not(.btn-sm) { min-height: 44px; }
+.form-control, .form-select { font-size: 1rem; min-height: 44px; background-color: var(--app-card); }
+.app-icon-button { font-size: 1.5rem; line-height: 1; padding: 0.25rem 0.5rem; color: var(--bs-body-color); }
+.app-icon-button:hover, .app-icon-button:focus-visible { color: var(--app-accent); }
+
+/* The shell: navbar on top, then sidebar + content. The content column is
+   centred in whatever space is left -- beside the sidebar when signed in, the
+   whole width when signed out. On a phone the sidebar is an offcanvas panel
+   and the content is the whole width. */
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  width: 100%;
+  max-width: 60rem;
+  margin: 0 auto;
+  min-width: 0;
+}
+.app-sidebar .nav-link { display: flex; align-items: center; gap: 0.6rem; }
+.app-sidebar .nav-link .bi { font-size: 1.1rem; }
+.nav-link-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.nav-link-sub { font-size: 0.8rem; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-link-sub:empty { display: none; }
+.sidebar-heading {
+  margin: 1rem 0 0.25rem;
+  padding: 0 var(--bs-nav-link-padding-x);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color);
+}
+.sidebar-group { display: flex; flex-direction: column; gap: 0.25rem; }
+
+/* A fixed height, so the sticky sidebar below knows where to start. */
+.app-navbar { height: var(--app-navbar-height); flex-wrap: nowrap; }
+
+@media (min-width: 992px) {
+  .app-shell { display: flex; align-items: flex-start; }
+  .app-sidebar {
+    flex: 0 0 var(--app-sidebar-width);
+    position: sticky;
+    top: var(--app-navbar-height);
+    height: calc(100vh - var(--app-navbar-height));
+    overflow-y: auto;
+    padding: 1rem 0.75rem;
+    border-right: 1px solid var(--app-border);
+  }
+  .app-main { padding: 1.5rem; }
+  /* The menu button folds the sidebar away; the content re-centres in the
+     full width. nav.js sets the class on <html>. */
+  .sidebar-collapsed .app-sidebar { display: none; }
+}
+
+/* One signed-in screen at a time; nav.js marks the one the hash names. */
+.view:not(.view-active) { display: none; }
+
+/* Tables sit on a card, so they take its colour, not the page's. */
+.table { --bs-table-bg: transparent; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+td .row-actions { flex-wrap: nowrap; }
+th { color: var(--bs-secondary-color); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
+
+/* A login link or API key, with its copy button. The value wraps rather
+   than widening the page. */
+.link-box { display: flex; align-items: flex-start; gap: 0.5rem; }
+.link-box code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: inherit; font-size: 0.85rem; }
+
+/* The Appearance screen's presets, each drawn in its own colours. */
+.theme-picker { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.theme-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  --bs-btn-active-bg: transparent;
+  --bs-btn-active-color: var(--app-accent);
+  --bs-btn-active-border-color: var(--app-accent);
+}
+.theme-choice.active { border-width: 2px; }
+.theme-swatch {
+  --swatch-bg: #f7f8fa;
+  --swatch-accent: #1f5fd6;
+  --swatch-accent-2: #d9480f;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 1px solid var(--app-border);
+  background: conic-gradient(var(--swatch-bg) 0 50%, var(--swatch-accent) 0 80%, var(--swatch-accent-2) 0);
+}
+.theme-swatch-dark { --swatch-bg: #101215; --swatch-accent: #6ea0ff; --swatch-accent-2: #ffa94d; }
+
+/* ==========================================================================
+   The library
+   ========================================================================== */
+
+/* The library wants the width; the account screens stay a readable column. */
+.app-main:has(.library-view.view-active) { max-width: none; }
+
+.library-view { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.library-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.library-search { flex: 1 1 16rem; min-width: 12rem; }
+.library-search .input-group-text { background: var(--app-card); }
+.library-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.library-tools .btn { display: inline-flex; align-items: center; gap: 0.4rem; }
+#sort-button { max-width: 22rem; }
+#sort-button .btn-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 575.98px) {
+  .library-tools .btn-label { display: none; }
+}
+
+.sort-menu { width: min(26rem, calc(100vw - 2rem)); }
+.sort-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+.sort-row .form-select { flex: 1 1 auto; min-height: 36px; font-size: 0.9rem; }
+.sort-row-label { flex: 0 0 3.5rem; }
+
+/* Saved views: one-tap pills. */
+.views-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.views-bar:empty { display: none; }
+
+/* Active filters, each removable. Nothing narrows the list without a chip here. */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.65rem; border-radius: 999px;
+  font-size: 0.85rem; background: color-mix(in srgb, var(--app-accent) 9%, var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--app-accent) 30%, var(--app-border));
+}
+.filter-chip-search { background: var(--app-surface); }
+.filter-chip-group { background: color-mix(in srgb, #6c757d 10%, var(--app-surface)); border-color: var(--app-border); }
+.filter-chip .btn-close { width: 0.6rem; height: 0.6rem; padding: 0.3rem; }
+.filter-clear { font-size: 0.85rem; }
+
+/* The filter sheet. */
+.filter-sheet { --bs-offcanvas-width: 24rem; --bs-offcanvas-bg: var(--app-surface); }
+.filter-section { padding: 0.75rem 0; border-bottom: 1px solid var(--app-border); }
+.filter-section:last-child { border-bottom: 0; }
+.filter-heading { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+.facet-list { display: flex; flex-direction: column; gap: 0.15rem; }
+.facet {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  padding: 0.35rem 0.5rem; border: 0; border-radius: 0.375rem; background: transparent; text-align: left;
+  color: var(--bs-body-color); min-height: 36px;
+}
+.facet:hover { background: color-mix(in srgb, var(--app-accent) 8%, transparent); }
+.facet.is-on { background: color-mix(in srgb, var(--app-accent) 14%, transparent); font-weight: 600; }
+.facet.is-on .bi { color: var(--app-accent); }
+.facet.is-empty { opacity: 0.5; }
+.facet-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.facet-count { font-size: 0.8rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+
+/* Groups. */
+.group-header {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  margin: 1rem 0 0.5rem; padding: 0.25rem 0; border: 0; border-bottom: 1px solid var(--app-border);
+  background: transparent; color: var(--bs-body-color); font-weight: 600; text-align: left;
+}
+.group-header:first-child { margin-top: 0; }
+
+/* Sidebar library entries: a count on the right. */
+.nav-count { font-size: 0.8rem; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+.acting .form-select { width: auto; max-width: 20rem; }
+.acting-for-other .acting .form-select { border-color: var(--bs-warning); background-color: color-mix(in srgb, var(--bs-warning) 15%, var(--app-surface)); }
+.acting-badge {
+  padding: 0.2rem 0.6rem; border: 1px solid var(--bs-warning); border-radius: 999px; white-space: nowrap;
+  background-color: color-mix(in srgb, var(--bs-warning) 15%, var(--app-surface)); color: var(--bs-body-color); text-decoration: none;
+}
+
+/* ==========================================================================
+   Cards
+   ========================================================================== */
+
+.media-grid {
+  --card-min: 13rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min), 100%), 1fr));
+  gap: 0.85rem;
+}
+.media-grid.size-s { --card-min: 10.5rem; }
+.media-grid.size-l { --card-min: 17rem; }
+.media-grid.layout-list { --card-min: 26rem; }
+.media-grid.layout-list.size-s { --card-min: 21rem; }
+.media-grid.layout-list.size-l { --card-min: 34rem; }
+.media-grid.layout-compact { grid-template-columns: 1fr; gap: 0.35rem; }
+
+.media-card {
+  container: card / inline-size;
+  position: relative;
+  display: grid;
+  grid-template-areas: "poster" "body" "actions" "more";
+  grid-template-rows: auto 1fr auto auto;
+  cursor: pointer;
+  overflow: visible;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 26rem;
+  transition: opacity 0.4s ease, box-shadow 0.15s ease;
+}
+.media-card:hover { box-shadow: 0 0.25rem 0.9rem rgba(0, 0, 0, 0.08); }
+.media-card.is-loved { border-color: color-mix(in srgb, var(--bs-danger) 45%, var(--app-border)); }
+.media-card.is-selected { outline: 3px solid var(--app-accent); outline-offset: 1px; }
+.media-card.is-leaving { opacity: 0.45; }
+.media-card.is-deleted { opacity: 0.75; border-style: dashed; }
+.media-card.is-open { border-color: var(--app-accent-2); }
+
+.media-select { position: absolute; top: 0.5rem; left: 0.5rem; z-index: 2; width: 1.4rem; height: 1.4rem; margin: 0; }
+
+.media-poster {
+  grid-area: poster;
+  position: relative;
+  display: block; width: 100%; aspect-ratio: 2 / 3;
+  padding: 0; border: 0; background: var(--app-neutral-soft);
+  border-radius: calc(var(--bs-card-border-radius) - 1px) calc(var(--bs-card-border-radius) - 1px) 0 0;
+  overflow: hidden; cursor: pointer;
+}
+.media-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-poster.is-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; padding: 1rem; color: var(--bs-secondary-color); }
+.media-poster.is-empty .bi { font-size: 2.25rem; }
+.media-poster-name { font-weight: 600; text-align: center; font-size: 0.9rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+/* Watched: on the poster's top-right corner in the grid, the first face
+   button everywhere else (card.js builds both; one is shown). */
+.media-card > .media-watch { display: none; }
+.layout-grid .media-card:has(> .media-poster) > .media-watch {
+  position: absolute; top: 0.25rem; right: 0.3rem; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.2rem; height: 2.2rem; min-width: 0; padding: 0;
+  border: 0; background: none; box-shadow: none;
+  font-size: 1.6rem; color: #c4c8cc; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}
+.layout-grid .media-card:has(> .media-poster) > .media-watch:hover { color: #9be7b4; background: none; }
+.layout-grid .media-card:has(> .media-poster) > .media-watch.btn-soft-success { color: var(--bs-success); background: none; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+.layout-grid .media-card:has(> .media-poster) > .media-watch .bi { font-size: 1.6rem; -webkit-text-stroke: 1px currentColor; }
+.media-watch .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.layout-grid .media-card:has(> .media-poster) .media-watch-face { display: none; }
+
+.library-extras { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem; }
+.search-extra-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.6rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--app-border); }
+.search-extra-title { font-size: 1.05rem; font-weight: 600; margin: 0; }
+
+.media-body { grid-area: body; display: flex; flex-direction: column; gap: 0.4rem; padding: 0.65rem 0.75rem; min-width: 0; }
+.media-title { font-size: 1rem; font-weight: 600; margin: 0; line-height: 1.3; }
+.media-title-link { all: unset; cursor: pointer; overflow-wrap: anywhere; }
+.media-title-link:hover, .media-title-link:focus-visible { color: var(--app-accent-strong); text-decoration: underline; }
+.media-year { margin-left: 0.35rem; font-weight: 400; color: var(--bs-secondary-color); }
+
+.media-meta, .media-chips, .media-family { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+.media-badge {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.1rem 0.45rem; border-radius: 0.375rem; font-size: 0.8rem;
+  background: color-mix(in srgb, var(--bs-body-color) 6%, transparent); color: var(--bs-body-color);
+}
+.media-badge-imdb { background: #f5c518; color: #000; font-weight: 600; }
+.media-badge-mine { background: color-mix(in srgb, var(--bs-warning) 25%, transparent); font-weight: 600; }
+.media-badge-family { background: transparent; border: 1px solid var(--app-border); color: var(--bs-secondary-color); }
+.media-badge-loved .bi { color: var(--bs-danger); }
+.media-badge-success { background: color-mix(in srgb, var(--bs-success) 18%, transparent); }
+.media-badge-primary { background: var(--app-accent-soft); color: var(--app-accent-strong); }
+.media-badge-warning { background: color-mix(in srgb, var(--bs-warning) 25%, transparent); }
+.media-chip {
+  border: 1px solid var(--app-border); background: var(--app-card); color: var(--bs-body-color);
+  border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.78rem; cursor: pointer; line-height: 1.5;
+}
+.media-chip:hover, .media-chip:focus-visible { border-color: var(--app-accent-2); color: color-mix(in srgb, var(--app-accent-2) 75%, var(--bs-body-color)); }
+.media-chip-cert { border-radius: 0.3rem; font-weight: 600; }
+.media-chip-tag { color: var(--bs-secondary-color); }
+.media-line { display: flex; gap: 0.35rem; margin: 0; font-size: 0.85rem; color: var(--bs-secondary-color); }
+.media-line span { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.media-overview { margin: 0; font-size: 0.85rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+.media-note { margin: 0; font-size: 0.82rem; display: flex; gap: 0.35rem; color: var(--bs-secondary-color); white-space: pre-line; }
+.media-note-mine { color: var(--bs-body-color); font-style: italic; }
+
+/* The buttons: words, not bare glyphs. They share the card's width in a
+   grid of at least ~6rem each, so "Watched" and "Up next" keep their labels
+   on an ordinary card; below that width (a small card, a phone in list
+   view) the labels fold away and each button stays a 44px square. */
+.media-actions {
+  grid-area: actions;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr)); gap: 0.35rem;
+  padding: 0.5rem 0.6rem 0.6rem; background: transparent;
+}
+.media-actions .dropdown, .media-actions .media-rate { display: contents; }
+.media-actions .dropdown > .btn { width: 100%; }
+/* The details: everything that is not one of the three links, opened by a
+   click on the card. Sits under the face buttons, set off by a rule. */
+.media-more { grid-area: more; border-top: 1px solid var(--app-border); padding-top: 0.6rem; }
+.media-more[hidden] { display: none; }
+.media-toggle[aria-expanded="true"] { background: var(--app-neutral-soft); }
+.media-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+  min-height: 44px; padding: 0.25rem 0.4rem; font-size: 0.85rem; white-space: nowrap;
+}
+.media-btn .bi { font-size: 1.05rem; flex: 0 0 auto; }
+/* An off button is neutral; its icon alone says what kind of button it is. */
+.media-btn.btn-outline-secondary[data-tone="primary"] .bi { color: var(--app-accent); }
+.media-btn.btn-outline-secondary[data-tone="success"] .bi { color: var(--bs-success); }
+.media-btn.btn-outline-secondary[data-tone="warning"] .bi { color: #e8a200; }
+.media-btn.btn-outline-secondary[data-tone="danger"] .bi { color: var(--bs-danger); }
+.media-btn .btn-label { overflow: hidden; text-overflow: ellipsis; }
+.media-btn.is-search .btn-label::after { content: " \2197"; opacity: 0.55; }
+@container card (max-width: 13rem) {
+  .media-actions { grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr)); }
+  .media-btn .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .media-btn .bi { font-size: 1.2rem; }
+}
+.rate-menu { min-width: 14rem; }
+.rate-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.25rem; }
+.rate-grid .btn { min-height: 40px; }
+
+/* List layout: poster on the left, everything else beside it. */
+.layout-list .media-card { grid-template-areas: "poster body" "poster actions" "poster more"; grid-template-columns: 7rem 1fr; grid-template-rows: 1fr auto auto; contain-intrinsic-size: auto 12rem; }
+.layout-list.size-s .media-card { grid-template-columns: 5rem 1fr; }
+.layout-list.size-l .media-card { grid-template-columns: 9.5rem 1fr; }
+.layout-list .media-poster { height: 100%; border-radius: calc(var(--bs-card-border-radius) - 1px) 0 0 calc(var(--bs-card-border-radius) - 1px); }
+.layout-list .media-card:not(:has(.media-poster)) { grid-template-areas: "body" "actions" "more"; grid-template-columns: 1fr; }
+.layout-list .media-actions { grid-template-columns: repeat(auto-fill, minmax(6.5rem, max-content)); }
+
+/* Compact: one line per title, for long lists. */
+.layout-compact .media-card { grid-template-areas: "poster body actions" "more more more"; grid-template-columns: 2.75rem 1fr auto; grid-template-rows: auto auto; align-items: center; contain-intrinsic-size: auto 4rem; }
+.layout-compact .media-card:not(:has(.media-poster)) { grid-template-areas: "body actions" "more more"; grid-template-columns: 1fr auto; }
+.layout-compact .media-poster { width: 2.75rem; height: 4.1rem; aspect-ratio: auto; border-radius: calc(var(--bs-card-border-radius) - 1px) 0 0 calc(var(--bs-card-border-radius) - 1px); }
+.layout-compact .media-poster.is-empty .media-poster-name { display: none; }
+.layout-compact .media-poster.is-empty .bi { font-size: 1.25rem; }
+.layout-compact .media-body { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 0.35rem 0.6rem; gap: 0.25rem 0.6rem; }
+.layout-compact .media-overview, .layout-compact .media-line, .layout-compact .media-note { display: none; }
+.layout-compact .media-actions { display: flex; flex-wrap: nowrap; padding: 0.35rem 0.5rem; }
+.layout-compact .media-btn .btn-label { display: none; }
+.layout-compact .media-btn { min-width: 44px; }
+/* The details row keeps its words: it has the whole width to itself. */
+.layout-compact .media-more { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, max-content)); padding: 0.5rem; }
+.layout-compact .media-more[hidden] { display: none; }
+.layout-compact .media-more .btn-label { display: inline; }
+@media (max-width: 575.98px) {
+  .layout-compact .media-card { grid-template-areas: "poster body" "actions actions" "more more"; grid-template-columns: 2.75rem 1fr; }
+  .layout-compact .media-actions { flex-wrap: wrap; }
+}
+
+.library-empty { max-width: 32rem; margin: 2rem auto; }
+
+/* The bulk bar sits above the grid while choosing. */
+.bulk-bar { position: sticky; top: calc(var(--app-navbar-height) + 0.5rem); z-index: 5; box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.1); }
+
+/* The customizer. */
+.choice-list .choice { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; }
+.choice-list .choice.is-off { opacity: 0.7; }
+.choice-list .choice .bi { margin-right: 0.15rem; }
+.customize-preview { max-width: 20rem; pointer-events: none; }
+.customize-preview .media-grid { grid-template-columns: 1fr; }
+
+/* The editor. */
+.editor-head { display: flex; gap: 1rem; margin-bottom: 1rem; }
+.editor-poster { width: 6.5rem; height: auto; border-radius: 0.375rem; align-self: flex-start; }
+.editor-overview { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; }
+.editor-head .media-actions { grid-template-columns: repeat(auto-fill, minmax(7rem, max-content)); }
+.editor-section { padding: 0.75rem 0; border-top: 1px solid var(--app-border); }
+.min-w-0 { min-width: 0; }
+
+/* Adding titles. */
+.nav-link-add { font-weight: 600; }
+.add-row { display: flex; gap: 0.75rem; align-items: flex-start; }
+.add-row.is-off { opacity: 0.6; }
+.add-row .form-check-input { margin-top: 0.4rem !important; flex: 0 0 auto; }
+.add-poster { width: 3.25rem; height: 4.9rem; object-fit: cover; border-radius: 0.3rem; flex: 0 0 auto; background: var(--app-bg); }
+.add-poster.is-empty { display: flex; align-items: center; justify-content: center; color: var(--bs-secondary-color); }
+.add-dupe { color: var(--bs-warning-text-emphasis); margin-top: 0.25rem; }
+
+/* Duplicates. */
+.dupe-titles { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.75rem; }
+.dupe-title { display: flex; gap: 0.6rem; align-items: flex-start; }
+
+/* Discover. */
+.app-main:has(#discover-panel.view-active) { max-width: none; }
+.discover-years { width: auto; flex-wrap: nowrap; }
+.discover-years .form-control { width: 6rem; }
+.discover-facets { background: var(--app-card); border: 1px solid var(--app-border); border-radius: var(--bs-border-radius); padding: 0.6rem 0.8rem; }
+.facet-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+
+/* Playlists: a numbered column, each title with its number box, grip,
+   Move and Remove on the left. Dropping shows a bar where it will land. */
+.playlists-list .playlist-entry { display: flex; align-items: center; gap: 0.6rem; }
+.playlist-open { display: flex; align-items: center; gap: 0.75rem; flex: 1 1 auto; min-width: 0; color: inherit; text-decoration: none; }
+.playlist-open:hover .playlist-name { text-decoration: underline; }
+.playlist-thumbs { display: flex; gap: 0.2rem; flex: 0 0 auto; }
+.playlist-thumb { width: 2.2rem; height: 3.3rem; object-fit: cover; border-radius: 0.25rem; background: var(--app-bg); display: flex; align-items: center; justify-content: center; color: var(--bs-secondary-color); }
+.playlist-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-count { color: var(--bs-secondary-color); white-space: nowrap; margin-left: auto; }
+.playlist-grip { color: var(--bs-secondary-color); cursor: grab; font-size: 1.1rem; flex: 0 0 auto; }
+.playlist-items { display: flex; flex-direction: column; gap: 0.75rem; }
+.playlist-items.layout-compact { gap: 0.35rem; }
+.playlist-item { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: start; }
+.playlist-item > .media-card { min-width: 0; }
+.playlist-handle { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; width: 4rem; }
+.layout-compact .playlist-handle { flex-direction: row; width: auto; }
+.playlist-number { width: 4rem; text-align: center; font-weight: 700; font-size: 1.05rem; }
+.layout-compact .playlist-number { width: 3.5rem; font-size: 0.95rem; }
+.playlist-item.is-dragging, .playlist-entry.is-dragging { opacity: 0.4; }
+.playlist-item.drop-before, .playlist-entry.drop-before { box-shadow: 0 -4px 0 var(--app-accent); }
+.playlist-item.drop-after, .playlist-entry.drop-after { box-shadow: 0 4px 0 var(--app-accent); }
+.playlist-gone { border-style: dashed; }
+.playlist-menu { max-height: 20rem; overflow-y: auto; }
+
+/* A phone gets two posters across in the grid rather than one screen-high
+   poster; the buttons fold to icons on cards that narrow (container query
+   above). List and compact stay one column. */
+@media (max-width: 575.98px) {
+  .media-grid.layout-grid { --card-min: 9.25rem; gap: 0.6rem; }
+  .media-grid.layout-grid.size-l { --card-min: 100%; }
+  .media-grid.layout-list { --card-min: 100%; }
+  .media-grid.layout-list .media-card { grid-template-columns: 5.5rem 1fr; }
+}
+.import-table-wrap { max-height: 24rem; }
+
+/* The right-click menu on a card (static/js/ui/cardmenu.js). */
+.card-menu { position: fixed; z-index: 1080; min-width: 13rem; max-width: 18rem; margin: 0; }
+.card-menu .dropdown-item { display: flex; align-items: center; gap: 0.6rem; }
+.card-menu .dropdown-item .bi-heart-fill { color: var(--bs-danger); }
+.card-menu .dropdown-item .bi-check-circle-fill { color: var(--bs-success); }

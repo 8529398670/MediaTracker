@@ -1,0 +1,189 @@
+# Media Tracker -- the one configuration file.
+#
+# Everything is configured here: the server and the Docker container. Nothing
+# reads environment variables. Every key is optional; a key you leave out
+# takes the value shown in this file.
+#
+# This file holds the secret key, so treat it like one: mode 0600, never
+# committed (it is in .gitignore), never baked into an image (.dockerignore).
+#
+# Where it is read from, first match wins:
+#
+#   ./config/config.yaml               a source checkout; also what every
+#                                      script in scripts/ and docker/ reads
+#   ~/.config/media-tracker/config.yaml   the app run from anywhere else
+#
+# If neither exists the server writes the second one, with a fresh secret key,
+# on first run. `python -m app config init` writes ./config/config.yaml the
+# same way, and `python -m app config check` validates whichever file is in use.
+#
+# Relative paths resolve against the project directory: the folder that holds
+# config/ (in a checkout, and /app in the container), or the folder holding
+# this file when it is not in a config/ folder (~/.config/media-tracker/).
+#
+# An unknown key is an error, not a silently ignored typo.
+
+app:
+  # Shown in the startup log.
+  name: "Media Tracker"
+
+server:
+  # 127.0.0.1 answers only this machine, which is what a development run and
+  # a server behind a reverse proxy on the same host both want. Use 0.0.0.0
+  # to listen on every interface -- and then put TLS in front, because login
+  # links, cookies, and API keys all cross the wire. Ignored inside the
+  # container, which always listens on 0.0.0.0 (what is reachable from
+  # outside is docker.bind_address).
+  host: 127.0.0.1
+  # scaffold.py replaces 8000 with a random free port, different per project,
+  # so several projects can run on this machine at once.
+  port: 30330
+
+  # The address people open this at, e.g. https://app.example.com -- just the
+  # origin, no path. Login, invite and API-key links are printed with it.
+  # Empty means the links use http://host:port above (inside the container,
+  # docker.bind_address:docker.host_port), which is right on this machine
+  # and wrong behind a reverse proxy: the server cannot see what is in front.
+  public_url: ""
+
+  # Where the database and app storage live. Empty means
+  # ~/.config/media-tracker/. Ignored inside the container, which always
+  # uses /app/data (mounted from docker.data_dir).
+  app_dir: ""
+
+  # Used when they exist; otherwise the copies that ship with the code. Empty
+  # language_file means <app_dir>/language.yaml if it exists, else
+  # language.yaml beside this file (config/language.yaml in a checkout).
+  static_dir: ./static
+  language_file: ""
+
+  # Encrypts session cookies and, with encrypt_at_rest, every database record.
+  # 64 hex characters. Generated when this file is created. It must never
+  # change: a different key cannot read anything written with this one, so
+  # back this file up together with the app directory.
+  secret_key: ""
+  encrypt_at_rest: true
+
+  # false ONLY for plain http://localhost. A Secure cookie is silently dropped
+  # over http, so login appears to succeed and then does nothing.
+  secure_cookies: true
+  # Named per project: browsers share cookies across every port on a host,
+  # so two local projects both using "session" would log each other out.
+  cookie_name: media-tracker_session
+
+  # Turn on when a reverse proxy you control is in front (the Docker setup
+  # assumes one), so the rate limiter sees each visitor's address instead of
+  # the proxy's. proxy_header is then believed only on connections from an
+  # address in trusted_proxies -- the address your proxy connects *from*, as
+  # this server sees it -- and read right to left, skipping trusted hops, so
+  # whatever a client wrote further left is ignored. trust_proxy without
+  # trusted_proxies is refused.
+  #
+  #   proxy on the same host, no Docker:    [127.0.0.1, "::1"]
+  #   proxy on the host, app in Docker:     [172.16.0.0/12] (the bridge
+  #                                         gateway; check with
+  #                                         `docker network inspect bridge`)
+  #
+  # This only holds if clients cannot reach this server except through the
+  # proxy. With a single-value header (X-Real-IP, CF-Connecting-IP) the proxy
+  # must also overwrite whatever the client sent rather than pass it on.
+  trust_proxy: false
+  trusted_proxies: []
+  proxy_header: X-Forwarded-For
+
+  body_limit_bytes: 1048576        # 1 MiB
+  rate_limit_max: 120
+  rate_limit_window_seconds: 60
+
+  # POST /mcp: the Model Context Protocol, so an agent (Claude Code, any MCP
+  # client that can send a header) can use this app with an API key, at that
+  # key's role. Only keys are accepted there, never a browser session. Needs
+  # auth.api_keys; false removes /mcp.
+  mcp: true
+
+auth:
+  session_ttl_seconds: 1209600     # 14 days
+  login_token_ttl_seconds: 1800    # 30 minutes
+
+  # API keys let a script, a cron job, or another service call the API at the
+  # role of the account that owns them, never higher. false closes the surface
+  # completely: the Authorization header stops being believed, existing keys
+  # stop working (the rows survive), and the endpoints that mint keys 404.
+  api_keys: true
+
+  # Lifetime of a new key when the request does not say. A key that never
+  # expires has to be asked for (expires_in_days: 0, or `--days 0`).
+  api_key_ttl_seconds: 7776000     # 90 days
+
+providers:
+  # Outbound lookups: adding a title, filling in posters/cast/genres, the
+  # IMDb ratings download, the Wikipedia catalogue and Apple TV ids. false
+  # keeps the app entirely offline (cached data still shows).
+  network: true
+  # Optional keys. TMDB gives the best film/TV matches and posters; without
+  # it lookups fall back to Wikipedia, TVmaze, OpenLibrary and iTunes.
+  tmdb_api_key: ""
+  omdb_api_key: ""
+  # Wikimedia asks every client to name itself and a way to reach its owner.
+  user_agent: "MediaTracker/2.0 (family media tracker; self-hosted)"
+  timeout_seconds: 12
+  # Lookups one person may start per minute (adding, resolving pasted lists).
+  lookups_per_minute: 180
+
+images:
+  # Posters are fetched once from the hosts below and kept on disk under
+  # <app dir>/storage/cache/img, so the page only ever loads them from here.
+  cache_mb: 256
+  # Poster requests get their own budget: a library page loads hundreds at
+  # once, which would trip server.rate_limit_max on its own.
+  rate_limit_max: 4000
+  allow_hosts:
+    - image.tmdb.org
+    - "*.wikimedia.org"
+    - static.tvmaze.com
+    - covers.openlibrary.org
+    - "*.mzstatic.com"
+    - m.media-amazon.com
+    - ia.media-imdb.com
+    - images.justwatch.com
+
+library:
+  # How long a deleted title can still be restored from Trash. Longer than
+  # the 10-minute undo window elsewhere, because a deleted title disappears
+  # for the whole family.
+  restore_days: 30
+  # Refuse to grow past this many titles (a runaway import guard).
+  max_titles: 20000
+
+jobs:
+  # The IMDb ratings dataset is re-checked this often (a conditional
+  # download, so an unchanged file costs one small request).
+  imdb_refresh_hours: 24
+  # Apple TV ids are looked up on Wikidata for titles that have an IMDb id.
+  appletv_hours: 24
+  # Fill in posters, cast and genres in the background right after a title
+  # is added.
+  enrich_on_add: true
+
+docker:
+  image: media-tracker
+  container: media-tracker
+
+  # The host side of the published port. 127.0.0.1 keeps it reachable only
+  # from this machine -- put nginx/Caddy/Traefik in front for TLS. The
+  # container side is server.port.
+  bind_address: 127.0.0.1
+  host_port: 30330
+
+  # Host directory mounted at /app/data: the database and app storage. This
+  # file is mounted separately (read-only), so a backup of data_dir alone does
+  # not carry the key.
+  data_dir: ./data
+
+  restart: unless-stopped          # no | always | unless-stopped | on-failure[:N]
+
+  # Blast-radius limits. Raise them deliberately for real load.
+  memory: 384m
+  cpus: "1"
+  pids_limit: 128
+  tmpfs_size: 16m                  # the only writable path besides data_dir

@@ -1,0 +1,19 @@
+# ===========================================================================
+# config.example.yaml -- every setting with its default. Safe to commit: it
+# has no secret key. config.yaml itself is gitignored, so a fresh clone starts
+# from this file.
+#
+# To use it:
+#
+#   cp config/config.example.yaml config/config.yaml
+#   chmod 600 config/config.yaml
+#   openssl rand -hex 32        # paste the output into server.secret_key
+#
+# Or skip the copy: `python -m app config init` writes config/config.yaml
+# with a fresh key already in it. scripts/run.sh and docker/run.sh do that
+# for you on their first run.
+#
+# This file is generated from config/defaults.yaml. After changing a default
+# there, regenerate it with `python -m app config example`.
+# ===========================================================================
+
