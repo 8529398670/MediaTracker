@@ -46,7 +46,7 @@ def test_config(directory: Path) -> Config:
         providers=ProvidersSection(False, "", "", "test", 5, 1000),
         images=ImagesSection(16, 10_000, ["image.tmdb.org"]),
         library=LibrarySection(30, 1000),
-        jobs=JobsSection(24, 24, False),
+        jobs=JobsSection(24, 720, 24, False),
     )
 
 

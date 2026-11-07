@@ -21,7 +21,7 @@ from app.media import dupes
 from app.media.genres import SPELLING, canon_genre, canon_genres, terms
 from app.media.match import fold
 from app.providers.compat import KEYS, fetch_json, log
-from app.reference import imdb
+from app.reference import imdb, imdb_genres
 
 
 def now_iso() -> str:
@@ -821,9 +821,18 @@ def _merge_year(path: Path, year: object) -> list[dict]:
 
     films = list(bucket.values())
     for film in films:
+        _add_imdb_genres(film)
         film["score"] = score(film)
     films.sort(key=lambda f: (-f["score"], fold(f["title"])))
     return films
+
+
+def _add_imdb_genres(film: dict) -> None:
+    """What IMDb says on top of what the pages said, by the id the age-rating
+    pass found. Half the catalogue has no genre column at all."""
+    for genre in imdb_genres.STORE.get(certs.STORE.get(film["key"])[certs.E_IMDB]):
+        if genre not in film["genres"]:
+            film["genres"].append(genre)
 
 
 def _clear_dir(path: Path) -> None:
@@ -1202,6 +1211,25 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
 def _cast_of(row: list) -> list:
     """A row's billed cast, tolerating one written before there was a field."""
     return row[R_CAST] if len(row) > R_CAST else []
+
+
+def genre_index() -> tuple[dict, dict, dict]:
+    """Every film's genres by catalogue key, Wikipedia article, and name and
+    year: the ways a library title is found here (routes/discover.py). Read
+    from the shards, so for a whole pass rather than a single lookup."""
+    by_key: dict[str, list[str]] = {}
+    by_wiki: dict[str, list[str]] = {}
+    by_name: dict[str, list[str]] = {}
+    for path in sorted(FILMS_DIR.glob("*.json")):
+        for film in (_read_json(path, {}) or {}).get("films") or []:
+            found = film.get("genres") or []
+            if not found:
+                continue
+            by_key.setdefault(film["key"], found)
+            if film.get("url"):
+                by_wiki.setdefault(dupes.wiki_key(film["url"]), found)
+            by_name.setdefault(f"{dupes.norm_key(film.get('title'))}|{film.get('year') or ''}", found)
+    return by_key, by_wiki, by_name
 
 
 def genre_facet(counts: dict[str, int]) -> list[dict]:

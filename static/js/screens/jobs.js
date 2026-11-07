@@ -45,6 +45,7 @@ const JobsScreen = {
       const facts = [];
       if ( job.finished_at && !job.running ) facts.push( I18n.fill( "jobs.finished" , { when: Vocab.date( job.finished_at ) } ) );
       if ( job.titles ) facts.push( I18n.fill( "jobs.imdb_titles" , { n: job.titles.toLocaleString() , date: job.file_date || "?" } ) );
+      if ( job.genre_titles ) facts.push( I18n.fill( "jobs.imdb_genre_titles" , { n: job.genre_titles.toLocaleString() , date: job.file_date || "?" } ) );
       if ( job.queued ) facts.push( I18n.fill( "jobs.queued" , { n: job.queued } ) );
       if ( job.last_error ) facts.push( I18n.fill( "jobs.error" , { error: job.last_error } ) );
       if ( facts.length ) lines.push( Dom.el( "div" , { class: "small mt-1" + ( job.last_error ? " text-danger" : " text-body-secondary" ) , text: facts.join( " · " ) } ) );

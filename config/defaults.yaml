@@ -159,6 +159,9 @@ jobs:
   # The IMDb ratings dataset is re-checked this often (a conditional
   # download, so an unchanged file costs one small request).
   imdb_refresh_hours: 24
+  # IMDb's genres come from a 230 MB file, fetched this often (720 = 30 days)
+  # and thrown away once the genres are read out of it.
+  imdb_genres_refresh_hours: 720
   # Apple TV ids are looked up on Wikidata for titles that have an IMDb id.
   appletv_hours: 24
   # Fill in posters, cast and genres in the background right after a title

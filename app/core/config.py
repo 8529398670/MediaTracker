@@ -133,6 +133,7 @@ class LibrarySection:
 @dataclass
 class JobsSection:
     imdb_refresh_hours: int
+    imdb_genres_refresh_hours: int
     appletv_hours: int
     enrich_on_add: bool
 
@@ -593,6 +594,7 @@ def validate(file: File) -> list[str]:
     check(file.library.restore_days > 0, "library.restore_days must be positive")
     check(file.library.max_titles > 0, "library.max_titles must be positive")
     check(file.jobs.imdb_refresh_hours > 0, "jobs.imdb_refresh_hours must be positive")
+    check(file.jobs.imdb_genres_refresh_hours > 0, "jobs.imdb_genres_refresh_hours must be positive")
     check(file.jobs.appletv_hours > 0, "jobs.appletv_hours must be positive")
 
     auth = file.auth

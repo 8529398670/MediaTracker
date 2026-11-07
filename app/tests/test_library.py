@@ -4,6 +4,7 @@ the in-memory snapshot noticing writes from another process, merging and
 its undo, imports and their undo, and an account taking its state with it."""
 from __future__ import annotations
 
+import gzip
 import json
 import tempfile
 import unittest
@@ -14,11 +15,13 @@ from unittest import mock
 from app.core import db
 from app.core.db import BUCKET_TITLES
 from app.discover import catalogue
+from app.jobs import imdb_genres_job
 from app.media import genres
 from app.models import RestoreExpiredError, credentials, import_batches, library_cache, merges, to_iso, types, user_state, users, utc_now, verdicts
 from app.models import revision
 from app.models import titles as titles_model
 from app.models.revision import ConflictError, NotFoundError
+from app.reference import imdb_genres
 
 
 class LibraryTestCase(unittest.TestCase):
@@ -281,3 +284,98 @@ class DiscoverHidingTest(LibraryTestCase):
         self.assertEqual(result["films"], [])
         result, _query = self.search([film], watched="all")
         self.assertEqual([f["title_id"] for f in result["films"]], [heat["id"]])
+
+
+class ReferenceGenreTest(LibraryTestCase):
+    def test_a_title_gains_genres_once_and_a_removal_sticks(self) -> None:
+        film = self.add("Gilda", genres=["Romance", "Drama"])["id"]
+        self.assertEqual(titles_model.add_reference_genres(self.store, {film: ["Film Noir", "Drama"]}), 1)
+        record = self.store.get(BUCKET_TITLES, film)
+        self.assertEqual(record["genres"], ["Romance", "Drama", "Film Noir"])
+        self.assertEqual(record["rev"], revision.current(self.store))
+        titles_model.update_title(self.store, film, {"genres": ["Romance", "Drama"]}, None, self.admin.id)
+        self.assertEqual(titles_model.add_reference_genres(self.store, {film: ["Film Noir"]}), 0)
+        self.assertEqual(self.store.get(BUCKET_TITLES, film)["genres"], ["Romance", "Drama"])
+
+    def test_nothing_new_moves_nothing(self) -> None:
+        film = self.add("Heat", genres=["Crime"])
+        self.assertEqual(titles_model.add_reference_genres(self.store, {film["id"]: ["Crime"]}), 0)
+        self.assertEqual(self.store.get(BUCKET_TITLES, film["id"])["rev"], film["rev"])
+
+    def test_a_title_is_found_by_article_and_a_name_only_for_a_film(self) -> None:
+        index = ({}, {"gilda": ["Film Noir"]}, {"heat|1995": ["Crime"]})
+        with mock.patch.object(imdb_genres_job.dupes, "wiki_key", lambda url: "gilda" if url else ""):
+            self.assertEqual(imdb_genres_job.film_for({"wiki_url": "x", "type": "tv"}, index), ["Film Noir"])
+        film = {"title": "Heat", "year": 1995, "type": "movie"}
+        self.assertEqual(imdb_genres_job.film_for(film, index), ["Crime"])
+        self.assertEqual(imdb_genres_job.film_for({**film, "type": "tv"}, index), [])
+
+
+class ImdbGenreTableTest(unittest.TestCase):
+    HEADER = "tconst\ttitleType\tprimaryTitle\toriginalTitle\tisAdult\tstartYear\tendYear\truntimeMinutes\tgenres\n"
+
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.folder = Path(folder.name)
+        self.table = imdb_genres.GenreTable(self.folder)
+
+    def write(self, dest: Path, extra_rows: int = 0) -> None:
+        body = self.HEADER
+        body += "tt0038559\tmovie\tGilda\tGilda\t0\t1946\t\\N\t110\tDrama,Film-Noir,Romance\n"
+        body += "tt0000002\tmovie\tOdd\tOdd\t0\t1900\t\\N\t1\t\\N\n"
+        body += "tt0000003\tshort\tShort\tShort\t0\t1900\t\\N\t1\tShort\n"
+        body += "tt0000004\tmovie\tOther\tOther\t0\t1900\t\\N\t1\tWestern\n"
+        body += "tt9\tmovie\tx\tx\t0\t1\t\\N\t1\tWar\n" * extra_rows
+        with gzip.open(dest, "wt", encoding="utf-8") as handle:
+            handle.write(body)
+
+    def test_only_wanted_ids_are_kept_in_our_vocabulary(self) -> None:
+        path = self.folder / "basics.gz"
+        self.write(path)
+        table, rows = imdb_genres.parse(path, {"tt0038559", "tt0000002", "tt0000003"})
+        self.assertEqual(table, {"tt0038559": ["Drama", "Film Noir", "Romance"]})
+        self.assertEqual(rows, 5)
+
+    def fetch(self, rows: int):
+        def fake(_url: str, dest: Path, **_options: object) -> dict:
+            self.write(dest, rows)
+            return {"etag": "x"}
+        return fake
+
+    def test_a_short_file_is_refused_and_the_old_table_stays(self) -> None:
+        self.table.table = {"tt1": ["War"]}
+        with self.assertRaises(ValueError):
+            self.table.refresh(self.fetch(0), {"tt0038559"})
+        self.assertEqual(self.table.get("tt1"), ["War"])
+        self.assertFalse((self.folder / "title.basics.tsv.gz").exists())
+
+    def test_a_refresh_survives_a_restart_and_drops_the_download(self) -> None:
+        with mock.patch.object(imdb_genres, "MIN_ROWS", 3):
+            self.assertEqual(self.table.refresh(self.fetch(0), {"tt0038559"}), 1)
+        self.assertFalse((self.folder / "title.basics.tsv.gz").exists())
+        again = imdb_genres.GenreTable(self.folder)
+        again.load()
+        self.assertEqual(again.get("tt0038559"), ["Drama", "Film Noir", "Romance"])
+        self.assertFalse(again.due(720))
+        self.assertTrue(imdb_genres.GenreTable(self.folder).due(720))
+
+
+class CatalogueImdbGenreTest(unittest.TestCase):
+    def test_a_rebuild_adds_imdbs_genres_to_a_film_the_pages_said_nothing_about(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.addCleanup(catalogue.configure, catalogue.LISTS_DIR)
+        lists = Path(folder.name)
+        catalogue.configure(lists)
+        (lists / "raw").mkdir()
+        rows = [{"title": "Quiet One", "year": 1940, "article": "Quiet One"}]
+        page = {"page": "p", "title": "p", "set": "american", "topic": "", "year": 1940, "rows": rows}
+        (lists / "raw" / "american-1940.json").write_text(json.dumps(page), encoding="utf-8")
+        key = catalogue.key_of(rows[0])
+        with mock.patch.object(catalogue.certs.STORE, "get", lambda wanted: ["tt1", []] if wanted == key else ["", []]), \
+                mock.patch.dict(imdb_genres.STORE.table, {"tt1": ["Musical"]}, clear=True):
+            catalogue.rebuild()
+        self.assertEqual(catalogue.query(genres=["Music"])["films"][0]["genres"], ["Musical"])
+        self.assertEqual(catalogue.genre_index()[0][key], ["Musical"])
+

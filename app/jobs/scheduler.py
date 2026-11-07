@@ -23,7 +23,7 @@ FIRST_DELAY_SECONDS = 60
 def prepare(store: Store, cfg: Config) -> None:
     """Hand every job the store and config, once, at startup. Importing the
     job modules is what registers them."""
-    from app.jobs import appletv_job, enrich_job, harvest_job, imdb_job  # noqa: F401
+    from app.jobs import appletv_job, enrich_job, harvest_job, imdb_genres_job, imdb_job  # noqa: F401
 
     for job in runner.REGISTRY.values():
         job.store = store  # type: ignore[attr-defined]

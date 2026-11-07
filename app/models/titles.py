@@ -29,6 +29,7 @@ from app.models.revision import NotFoundError, bump, check_expect, mark_purged
 Title = dict[str, Any]
 
 GENRE_REFOLD_KEY = "genre_refold"
+GENRE_OFFERED_KEY = "genre_offered"
 
 
 class TooManyTitlesError(Exception):
@@ -85,6 +86,37 @@ def refold_genres(store: Store) -> int:
             tx.put(BUCKET_TITLES, key, record)
             changed += 1
         tx.put(BUCKET_META, GENRE_REFOLD_KEY, {"version": genres.VOCABULARY_VERSION, "at": to_iso(utc_now()), "changed": changed})
+        return changed
+
+
+def add_reference_genres(store: Store, extras: dict[str, list[str]]) -> int:
+    """Add what other sources know to the titles that have not been offered it.
+
+    Only ever adds, and only once per title: the list of titles already
+    offered is kept, so a genre someone removed by hand is not put back by
+    the next refresh. Returns how many titles gained something.
+    """
+    with store.transaction() as tx:
+        offered = set((tx.get(BUCKET_META, GENRE_OFFERED_KEY) or {}).get("ids") or [])
+        changed = 0
+        rev = None
+        for ident, found in extras.items():
+            if ident in offered:
+                continue
+            offered.add(ident)
+            record = tx.get(BUCKET_TITLES, ident)
+            if record is None:
+                continue
+            have = record.get("genres") or []
+            merged = genres.canon_genres(have + found, normalize.MAX_GENRES)
+            if merged == have:
+                continue
+            rev = rev or bump(tx)
+            record["genres"] = merged
+            record["rev"] = rev
+            tx.put(BUCKET_TITLES, ident, record)
+            changed += 1
+        tx.put(BUCKET_META, GENRE_OFFERED_KEY, {"ids": sorted(offered)})
         return changed
 
 

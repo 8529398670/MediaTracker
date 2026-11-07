@@ -30,7 +30,7 @@ from app.jobs import runner as jobs
 from app.jobs import scheduler
 from app.models import api_keys, invite_links, login_tokens, playlists, sessions, sources, titles, types, views
 from app.providers import compat, net
-from app.reference import images, imdb
+from app.reference import images, imdb, imdb_genres
 from app.reference import paths as reference_paths
 from app.routes import build_routes
 
@@ -75,6 +75,7 @@ def prepare_media(store: db.Store, cfg: config.Config) -> None:
     compat.configure(cfg.providers.tmdb_api_key, cfg.providers.omdb_api_key, cfg.providers.network)
     where = reference_paths.configure(cfg.storage_dir)
     imdb.configure(where.imdb)
+    imdb_genres.configure(where.imdb)
     images.CACHE.configure(where.images, cfg.images.cache_mb, cfg.images.allow_hosts)
     catalogue.configure(where.lists)
     certs.configure(where.certs)
