@@ -270,9 +270,13 @@ account:
   appletv_on: "Apple TV links open the TV app"
   appletv_off: "Apple TV links open tv.apple.com"
   card_links_heading: "Card links"
-  card_links_description: "The links on the front of every card, in this order. Tick the ones you want and move them up or down; the rest stay in Details. Saved on your account."
+  card_links_description: "The links on the front of every card, in this order. Tick the ones you want and move them up or down; untick them all for a clean card. Every link is still in Details, and the right-click menu has its own list below. Saved on your account."
   card_links_reset: "Back to Apple TV, Trailer, IMDb"
   card_links_saved: "Card links changed"
+  menu_links_heading: "Right-click links"
+  menu_links_description: "The links in a card's right-click menu (a long press on a phone), after Watched, Love and Skip, in this order. Tick the ones you want and move them up or down. Saved on your account."
+  menu_links_reset: "Back to Parents guide, Plot, Just Watch, Wikipedia, IMDb"
+  menu_links_saved: "Right-click links changed"
 
 # Where this account is signed in, on the Account screen (static/js/sessions.js).
 sessions:

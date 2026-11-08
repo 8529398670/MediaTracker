@@ -198,6 +198,7 @@ const App = {
     }
     this.initAppleTv();
     this.initCardLinks();
+    this.initMenuLinks();
     Acting.init( me );
     await Playlists.init();
     await LibraryScreen.init( me );
@@ -270,22 +271,50 @@ const App = {
     } );
   },
 
-  // Which links sit on every card's face, and in what order: chosen ones
-  // first with up/down buttons (a phone can't drag), then the rest.
+  // Which links sit on every card's face, and in what order.
   initCardLinks() {
-    const box = Dom.get( "card-links" );
+    this.initLinkList( {
+      prefix: "card-links",
+      pref: "card_links",
+      get: () => Vocab.mainButtons(),
+      defaults: Vocab.MAIN_BUTTONS,
+      saved: "account.card_links_saved",
+      // The links are part of what a card draws, so the cards are redrawn.
+      redraw: () => {
+        LibraryScreen.render();
+        if ( DiscoverScreen.meta ) DiscoverScreen.render();
+        PlaylistsScreen.render();
+      },
+    } );
+  },
+
+  // Which links a card's right-click menu lists after its state buttons.
+  // The menu is built on every open, so nothing needs redrawing.
+  initMenuLinks() {
+    this.initLinkList( {
+      prefix: "menu-links",
+      pref: "menu_links",
+      get: () => Vocab.menuLinks(),
+      defaults: Vocab.MENU_LINKS,
+      saved: "account.menu_links_saved",
+      redraw: () => {},
+    } );
+  },
+
+  // A tickable, orderable list of links saved in one Prefs ui key: chosen
+  // ones first with up/down buttons (a phone can't drag), then the rest.
+  initLinkList( options ) {
+    const box = Dom.get( options.prefix );
     const apply = ( list ) => {
-      Prefs.setUi( "card_links" , list );
+      Prefs.setUi( options.pref , list );
       render();
-      LibraryScreen.render();
-      if ( DiscoverScreen.meta ) DiscoverScreen.render();
-      PlaylistsScreen.render();
+      options.redraw();
     };
     const change = ( list ) => {
-      const before = Vocab.mainButtons();
+      const before = options.get();
       apply( list );
       Undo.record( {
-        label: I18n.get( "account.card_links_saved" ),
+        label: I18n.get( options.saved ),
         toast: true,
         undo: () => apply( before ),
         redo: () => apply( list ),
@@ -293,12 +322,13 @@ const App = {
     };
     const render = () => {
       Dom.clear( box );
-      const chosen = Vocab.mainButtons();
+      const chosen = options.get();
       const rest = Vocab.LINK_BUTTONS.filter( ( id ) => chosen.indexOf( id ) < 0 );
       chosen.concat( rest ).forEach( ( id ) => {
         const at = chosen.indexOf( id );
         const on = at >= 0;
-        const check = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , id: "card-link-" + id } } );
+        const boxId = options.prefix + "-" + id;
+        const check = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , id: boxId } } );
         check.checked = on;
         check.addEventListener( "change" , () => {
           change( check.checked ? chosen.concat( [ id ] ) : chosen.filter( ( each ) => each !== id ) );
@@ -318,7 +348,7 @@ const App = {
         box.appendChild( Dom.el( "li" , { class: "list-group-item choice" + ( on ? "" : " is-off" ) , children: [
           Dom.el( "div" , { class: "form-check mb-0 flex-grow-1" , children: [
             check,
-            Dom.el( "label" , { class: "form-check-label" , attrs: { for: "card-link-" + id } , children: [
+            Dom.el( "label" , { class: "form-check-label" , attrs: { for: boxId } , children: [
               Card.icon( Vocab.BUTTONS[ id ].icon ),
               Dom.el( "span" , { text: " " + I18n.get( "card.button_" + id ) } ),
             ] } ),
@@ -327,7 +357,7 @@ const App = {
         ] } ) );
       } );
     };
-    Dom.get( "card-links-reset" ).addEventListener( "click" , () => change( Vocab.MAIN_BUTTONS.slice() ) );
+    Dom.get( options.prefix + "-reset" ).addEventListener( "click" , () => change( options.defaults.slice() ) );
     render();
   },
 

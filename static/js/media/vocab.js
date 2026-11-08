@@ -74,6 +74,18 @@ const Vocab = {
     return list.filter( ( id , at ) => this.LINK_BUTTONS.indexOf( id ) >= 0 && list.indexOf( id ) === at );
   },
 
+  // The links in a card's right-click (or long-press) menu, after its
+  // state buttons, unless the person chose others (Account, Prefs
+  // ui.menu_links). Separate from the face's links, so a card can carry
+  // none and still have every link one right-click away.
+  MENU_LINKS: [ "parents" , "plot" , "justwatch" , "wiki" , "imdb" ],
+
+  menuLinks() {
+    const saved = Prefs.ui( "menu_links" , null );
+    const list = Array.isArray( saved ) ? saved : this.MENU_LINKS;
+    return list.filter( ( id , at ) => this.LINK_BUTTONS.indexOf( id ) >= 0 && list.indexOf( id ) === at );
+  },
+
   // The buttons at the top of a title's Details (which More opens), in this
   // order: the face's links, then the rest of them, then my state.
   detailsButtons() {

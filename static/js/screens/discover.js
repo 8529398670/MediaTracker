@@ -323,7 +323,7 @@ const DiscoverScreen = {
     } );
     CardMenu.wire( this.grid , {
       row: ( id ) => ( this.result.rows || [] ).find( ( r ) => r.t.id === id ),
-      ids: () => CardMenu.DISCOVER,
+      ids: () => CardMenu.discover(),
       run: ( id , row ) => this.act( id , row ),
     } );
   },

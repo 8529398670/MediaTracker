@@ -5,23 +5,92 @@
 //
 // On a library card Skip means "not for me" (status dropped); on a Discover
 // film it is Discover's own Skip, which hides the film just for you.
+//
+// The state buttons stay first; the links after them are each person's
+// choice, in their order (Account, Vocab.menuLinks), read on every open.
 const CardMenu = {
-  LIBRARY: [ "watched" , "love" , "skip" , "-" , "parents" , "plot" , "justwatch" , "wiki" , "imdb" , "-" , "edit" ],
-  DISCOVER: [ "add" , "seen" , "skip" , "-" , "parents" , "plot" , "justwatch" , "wiki" , "imdb" ],
+  library() {
+    return [ "watched" , "love" , "skip" , "-" ].concat( Vocab.menuLinks() , [ "-" , "edit" ] );
+  },
+
+  discover() {
+    return [ "add" , "seen" , "skip" , "-" ].concat( Vocab.menuLinks() );
+  },
 
   node: null,
+
+  // How long a finger rests on a card before its menu opens, and how far it
+  // may drift (px) before that counts as a scroll instead.
+  PRESS_MS: 500,
+  PRESS_SLOP: 10,
 
   // options: { row( id ) , ids( row ) , run( id , row ) , skip() } -- skip()
   // true leaves the browser's own menu alone (while selecting, say).
   wire( container , options ) {
-    container.addEventListener( "contextmenu" , ( event ) => {
-      const article = event.target.closest( ".media-card" );
-      if ( !article || ( options.skip && options.skip() ) ) return;
+    // The card's row, or null when this card has no menu right now.
+    const target = ( node ) => {
+      const article = node.closest( ".media-card" );
+      if ( !article || ( options.skip && options.skip() ) ) return null;
       const row = options.row( article.getAttribute( "data-id" ) );
-      if ( !row || row.t.deleted_at ) return;
+      return row && !row.t.deleted_at ? row : null;
+    };
+    let pressedAt = 0;
+    container.addEventListener( "contextmenu" , ( event ) => {
+      // Android fires this too at the end of a long press: already open.
+      if ( Date.now() - pressedAt < 1500 ) { event.preventDefault(); return; }
+      const row = target( event.target );
+      if ( !row ) return;
       event.preventDefault();
       this.open( event.clientX , event.clientY , options.ids( row ) , row , options.run );
     } );
+    // A long press opens the same menu on a phone, where iOS never sends
+    // contextmenu. The tap that ends it must not also press what was under
+    // the finger, so the next click is swallowed.
+    let timer = null;
+    let start = null;
+    const cancel = () => {
+      clearTimeout( timer );
+      timer = null;
+      start = null;
+    };
+    container.addEventListener( "pointerdown" , ( event ) => {
+      cancel();
+      if ( event.pointerType !== "touch" || !event.isPrimary ) return;
+      if ( event.target.closest( "input, textarea, select, [contenteditable]" ) ) return;
+      if ( !target( event.target ) ) return;
+      start = { x: event.clientX , y: event.clientY , node: event.target };
+      timer = setTimeout( () => {
+        const at = start;
+        cancel();
+        const row = at && target( at.node );
+        if ( !row ) return;
+        pressedAt = Date.now();
+        this.swallowClick();
+        if ( navigator.vibrate ) navigator.vibrate( 10 );
+        this.open( at.x , at.y , options.ids( row ) , row , options.run );
+      } , this.PRESS_MS );
+    } );
+    container.addEventListener( "pointermove" , ( event ) => {
+      if ( !start ) return;
+      if ( Math.abs( event.clientX - start.x ) > this.PRESS_SLOP || Math.abs( event.clientY - start.y ) > this.PRESS_SLOP ) cancel();
+    } );
+    [ "pointerup" , "pointercancel" , "pointerleave" ].forEach( ( type ) => container.addEventListener( type , cancel ) );
+    window.addEventListener( "scroll" , cancel , { capture: true , passive: true } );
+  },
+
+  // Eats the one click that follows a long press, before any card handler.
+  swallowClick() {
+    const eat = ( event ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    document.addEventListener( "click" , eat , { capture: true , once: true } );
+    // The click (if any) comes just after the finger lifts; none comes when
+    // it lifts somewhere else, so the trap is taken down soon after.
+    const lift = () => setTimeout( () => document.removeEventListener( "click" , eat , { capture: true } ) , 400 );
+    document.addEventListener( "pointerup" , lift , { capture: true , once: true } );
+    document.addEventListener( "pointercancel" , lift , { capture: true , once: true } );
   },
 
   // Library Skip shows as on when the title is "not for me".

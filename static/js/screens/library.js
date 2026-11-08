@@ -31,7 +31,7 @@ const LibraryScreen = {
     } );
     CardMenu.wire( this.grid , {
       row: ( id ) => Library.get( id ),
-      ids: () => CardMenu.LIBRARY,
+      ids: () => CardMenu.library(),
       skip: () => this.selecting,
       // Skip on a library title is "not for me".
       run: ( id , row ) => {

@@ -580,6 +580,16 @@
 
             <hr />
 
+            <!-- Which links a card's right-click (or long-press) menu lists
+                 after Watched, Love and Skip, in order; saved on the account
+                 (Prefs ui.menu_links). See App.initMenuLinks. -->
+            <h3 class="h6" data-i18n="account.menu_links_heading"></h3>
+            <p class="small text-body-secondary" data-i18n="account.menu_links_description"></p>
+            <ul id="menu-links" class="list-group mb-2"></ul>
+            <button id="menu-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.menu_links_reset"></button>
+
+            <hr />
+
             <!-- A login link for your own account, to sign in on another device.
                  Any signed-in user may mint one; see Api.createMyLoginLink. -->
             <h3 class="h6" data-i18n="account.device_heading"></h3>
