@@ -138,14 +138,18 @@ class NoSuchSubjectError(Exception):
 
 def set_showing(store: Store, user_id: int, allowed: bool, default_subject: int | None) -> User | None:
     """Grant or take away the Showing picker, and say whose lists the account
-    starts on; None if there is no such account. Taking the picker away also
-    forgets the starting person, and starting on yourself is stored as None."""
+    starts on; None if there is no such account. Starting on someone else
+    needs the picker (the server would refuse ?user= otherwise), so choosing
+    someone grants it. Taking the picker away with no one chosen forgets the
+    starting person, and starting on yourself is stored as None."""
     with store.transaction() as tx:
         record = tx.get(BUCKET_USERS, user_id)
         if record is None:
             return None
-        if not allowed or default_subject == user_id:
+        if default_subject == user_id:
             default_subject = None
+        if default_subject is not None:
+            allowed = True
         if default_subject is not None and tx.get(BUCKET_USERS, default_subject) is None:
             raise NoSuchSubjectError()
         record["can_show_others"] = bool(allowed)

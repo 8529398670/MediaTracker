@@ -54,8 +54,8 @@ class RouteTest(unittest.TestCase):
         status, body = self.client.request("GET", "/api/me", self.mom_key)
         self.assertEqual((body["can_show_others"], body["default_subject"]), (True, self.admin.id))
 
-        # Taking it away forgets whose lists they started on, and refuses again.
-        users.set_showing(store, self.mom.id, False, self.admin.id)
+        # Taking it away (with no one to start on) refuses again.
+        users.set_showing(store, self.mom.id, False, None)
         self.assertIsNone(users.get_user(store, self.mom.id).default_subject)
         self.assertEqual(self.client.request("GET", f"/api/library?user={self.admin.id}", self.mom_key)[0], 403)
         status, body = self.client.request("GET", "/api/me", self.mom_key)

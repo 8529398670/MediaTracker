@@ -587,7 +587,9 @@ const App = {
                 options: [ { value: "" , label: I18n.get( "admin.starts_on_own" ) } ].concat( people.map( ( person ) => ( { value: String( person.id ) , label: person.display_name } ) ) ) },
             ],
             save: async ( values ) => {
-              const wanted = { allowed: values.allowed , subject: values.allowed && values.subject !== "" ? Number( values.subject ) : null };
+              // Starting on someone else needs Showing, so choosing someone grants it.
+              const subject = values.subject !== "" ? Number( values.subject ) : null;
+              const wanted = { allowed: values.allowed || subject !== null , subject: subject };
               await Api.setUserShowing( user.id , wanted.allowed , wanted.subject );
               return wanted;
             },

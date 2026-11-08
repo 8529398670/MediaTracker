@@ -69,6 +69,13 @@ class EditUsersTest(RoutesTestCase):
         status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=True, default_subject=self.user.id)
         self.assertEqual((status, reply["default_subject"]), (200, None))
 
+        # Choosing someone to start on grants Showing, since it needs it.
+        status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=False, default_subject=self.owner.id)
+        self.assertEqual((status, reply["can_show_others"], reply["default_subject"]), (200, True, self.owner.id))
+        # No one chosen and the box cleared takes it away again.
+        status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=False, default_subject=None)
+        self.assertEqual((status, reply["can_show_others"], reply["default_subject"]), (200, False, None))
+
     def test_asking_for_the_role_they_have_changes_nothing(self) -> None:
         self.assertEqual(self.post(self.owner_cookie, self.user.id, "role", role="user")[0], 200)
         self.assertEqual(self.call("GET", "/api/me", cookie=self.user_cookie)[0], 200)

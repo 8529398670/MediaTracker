@@ -380,7 +380,7 @@ admin:
   showing_label: "Can use Showing"
   showing_help: "Lets them switch to anyone's lists on their Account screen and change their watched, queue, ratings, hearts and playlists, as an admin can."
   starts_on_label: "Starts on"
-  starts_on_help: "Whose lists they see when they sign in. They can still switch."
+  starts_on_help: "Whose lists they see when they sign in. Choosing someone also turns on Showing. They can still switch."
   starts_on_own: "Their own"
   showing_badge: "Showing"
   showing_badge_on: "Showing: {name}"
