@@ -373,6 +373,19 @@ admin:
   make_admin_confirm: "Make {name} an admin? They can then manage accounts. This signs them out everywhere and stops their login link, so send them a new link. They can no longer sign in through an invite link."
   make_user_confirm: "Take admin rights from {name}? It applies at once. Their admin API keys drop to user level, and invite links they made stop working until they are an admin again."
   role_changed_toast: "{name} is now: {role}"
+  # The per-user Showing grant: the same picker admins have on the Account
+  # screen, so a user can add to someone else's watched, queue and ratings.
+  showing_button: "Showing…"
+  showing_heading: "Showing for {name}"
+  showing_label: "Can use Showing"
+  showing_help: "Lets them switch to anyone's lists on their Account screen and change their watched, queue, ratings, hearts and playlists, as an admin can."
+  starts_on_label: "Starts on"
+  starts_on_help: "Whose lists they see when they sign in. They can still switch."
+  starts_on_own: "Their own"
+  showing_badge: "Showing"
+  showing_badge_on: "Showing: {name}"
+  showing_changed_toast: "Showing updated for {name}"
+  showing_undo: "Showing change"
   disable_button: "Disable"
   # {name} is replaced with the account's display name. Empty this string to
   # stop asking for confirmation before disabling.
@@ -657,7 +670,7 @@ errors:
 acting:
   label: "Showing"
   me: "{name} (me)"
-  description: "Whose queue, ratings and hearts the library shows and changes. Card layout, filters and saved views stay your own."
+  description: "Whose queue, ratings and hearts the library shows and changes. Card layout, filters and saved views stay your own. An admin decides who has this and whose lists you start on."
   badge: "Showing {name}'s lists"
   now: "Now showing {name}'s lists. Changes go to their queue, ratings and hearts."
 
@@ -998,7 +1011,7 @@ editor:
 add:
   heading: "Add titles"
   description: "Paste one title per line — a name, a name and a year, or a link to IMDb, Wikipedia, TMDB, TVmaze and others. Look them up, check what came back, then add."
-  placeholder: "The Third Man 1949\nhttps://www.imdb.com/title/tt0047478/\nFleabag"
+  placeholder: "The Little Mermaid 1989\nhttps://www.imdb.com/title/tt0047478/\nYellow Submarine"
   type: "Type"
   type_auto: "Work it out"
   status: "Put it on"
@@ -1098,7 +1111,7 @@ porting:
   format_auto: "Work it out"
   format_outline: "List / outline"
   paste: "Or paste it here"
-  placeholder: "# Watched\n- The Third Man (1949)\n# TV shows\n- Fleabag"
+  placeholder: "# Watched\n- The Little Mermaid (1989)\n# TV shows\n- Fleabag"
   read: "Read it"
   summary: "{n} titles read; {dupes} are already in the library."
   already: "Already here: {title}"

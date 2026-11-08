@@ -47,6 +47,11 @@ def me_row(store: Store, cfg: Config, actor: Actor, version: str) -> dict[str, A
         "display_name": actor.user.display_name,
         "role": actor.role,
         "account_role": actor.user.role,
+        # The Showing picker: whether this caller may use it, and whose lists
+        # it starts on (None for their own). A user-scoped key of an admin
+        # reports what it may actually do, like "role".
+        "can_show_others": actor.is_admin or actor.user.can_show_others,
+        "default_subject": actor.user.default_subject,
         "is_owner": actor.user.id == owner_id,
         "login_link": login_tokens.live_login_link(store, actor.user.id),
         "maintenance": cfg.maintenance,

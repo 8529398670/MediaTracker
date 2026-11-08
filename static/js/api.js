@@ -140,6 +140,9 @@ const Api = {
   createUser( name , role , options ) { return this.post( "/api/admin/users" , Object.assign( { display_name: name , role: role } , options ) ); },
   renameUser( userId , name , expect ) { return this.post( "/api/admin/users/" + userId + "/rename" , { display_name: name , expect: expect } ); },
   setUserRole( userId , role ) { return this.post( "/api/admin/users/" + userId + "/role" , { role: role } ); },
+  setUserShowing( userId , allowed , defaultSubject ) {
+    return this.post( "/api/admin/users/" + userId + "/showing" , { can_show_others: allowed , default_subject: defaultSubject } );
+  },
   reissueLogin( userId , options ) { return this.post( "/api/admin/users/" + userId + "/reissue-login" , options ); },
   cancelLoginLink( userId )    { return this.post( "/api/admin/users/" + userId + "/cancel-login-link" ); },
   setDisabled( userId , flag ) { return this.post( "/api/admin/users/" + userId + "/disabled" , { disabled: flag } ); },

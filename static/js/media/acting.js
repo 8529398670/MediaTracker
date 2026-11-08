@@ -1,7 +1,9 @@
-// "Acting for": an admin can look at and change someone else's queue,
+// "Acting for": an admin -- or a user an admin gave "Can use Showing" -- can look at and change someone else's queue,
 // ratings and hearts -- one person keeping the household's lists tidy. The
 // picker on the Account screen sets whose state every personal call is about (Api.subject,
-// sent as ?user=<id>); the server refuses anyone but an admin. While it is
+// sent as ?user=<id>); the server refuses anyone without the grant. An admin
+// can also say whose lists a user starts on (me.default_subject), which
+// start() sets before the first library load. While it is
 // set to someone else, a badge in the navbar says whose lists are showing.
 //
 // Card layout, filters and saved views stay the admin's own: only the state
@@ -10,9 +12,14 @@
 const Acting = {
   me: null,
 
+  start( me ) {
+    this.me = me;
+    if ( me.can_show_others && me.default_subject != null && me.default_subject !== me.id ) Api.subject = me.default_subject;
+  },
+
   init( me ) {
     this.me = me;
-    if ( me.role !== "admin" ) return;
+    if ( !me.can_show_others ) return;
     const select = Dom.get( "acting-select" );
     Dom.show( Dom.get( "acting" ) , true );
     this.fill( select );

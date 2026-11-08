@@ -202,6 +202,7 @@ def build_routes(static_server: StaticServer, cfg: Config) -> list[BaseRoute]:
         admins("/api/admin/users/{user_id}/revoke-access", admin.revoke_access, ["POST"]),
         admin_sessions("/api/admin/users/{user_id}/rename", admin.rename_user, ["POST"]),
         admin_sessions("/api/admin/users/{user_id}/role", admin.set_user_role, ["POST"]),
+        admin_sessions("/api/admin/users/{user_id}/showing", admin.set_user_showing, ["POST"]),
         admin_sessions("/api/admin/users/{user_id}/delete", admin.delete_user, ["POST"]),
         admin_sessions("/api/admin/users/{user_id}/reset-two-factor", admin.reset_two_factor, ["POST"]),
         # A session only, like your own devices list: a key that could end

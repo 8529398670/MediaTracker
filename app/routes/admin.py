@@ -55,6 +55,8 @@ def user_rows(store: Store, query: str = "") -> list[dict[str, Any]]:
             "password_blocked": u.password_blocked,
             "two_factor": two_factor.is_on(u),
             "login_link": links.get(u.id),
+            "can_show_others": u.can_show_others,
+            "default_subject": u.default_subject,
         }
         for u in users.list_users(store)
         if wanted in u.display_name.lower() or wanted in (u.username or "").lower()
@@ -268,6 +270,35 @@ async def set_user_role(request: Request) -> Response:
     if changed:
         audit(request, KIND_ADMIN, "user role changed", {"user_id": user_id, "role": role})
     return JSONResponse({"ok": True, "role": role})
+
+
+async def set_user_showing(request: Request) -> Response:
+    """Give an ordinary account the Showing picker (or take it away) and say
+    whose lists it starts on. Admins always have the picker, so this only
+    matters for users; it still accepts any account so the flag survives a
+    role change either way. Needs a browser session, like changing a role."""
+    body = await read_json(request)
+    if body is None:
+        return bad_request("malformed request body")
+    if not check_csrf(request, body.get("csrf_token")):
+        return forbidden("invalid csrf token")
+    user_id = parse_id(request.path_params["user_id"])
+    if user_id is None:
+        return bad_request("invalid user id")
+    allowed = body.get("can_show_others")
+    if not isinstance(allowed, bool):
+        return bad_request("can_show_others must be true or false")
+    raw = body.get("default_subject")
+    if raw is not None and (not isinstance(raw, int) or isinstance(raw, bool)):
+        return bad_request("default_subject must be a user id or null")
+    try:
+        user = await run(users.set_showing, get_store(request), user_id, allowed, raw)
+    except users.NoSuchSubjectError:
+        return not_found("no such user to start on")
+    if user is None:
+        return not_found("no such user")
+    audit(request, KIND_ADMIN, "user showing changed", {"user_id": user_id, "can_show_others": user.can_show_others, "default_subject": user.default_subject})
+    return JSONResponse({"ok": True, "can_show_others": user.can_show_others, "default_subject": user.default_subject})
 
 
 async def delete_user(request: Request) -> Response:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.models import api_keys, users
+from app.models import api_keys, user_state, users
 from app.tests.asgi import Client
 
 
@@ -40,6 +40,26 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(body["previous"]["status"], "queue")
         status, body = self.client.request("GET", "/api/library", self.mom_key)
         self.assertEqual(body["states"][self.title_id]["status"], "watched")
+
+    def test_a_user_given_showing_acts_for_someone_else(self) -> None:
+        store = self.client.store
+        path = f"/api/state/{self.title_id}?user={self.admin.id}"
+        self.assertEqual(self.client.request("POST", path, self.mom_key, {"set": {"status": "watched"}})[0], 403)
+        users.set_showing(store, self.mom.id, True, self.admin.id)
+        status, body = self.client.request("POST", path, self.mom_key, {"set": {"status": "watched"}})
+        self.assertEqual(status, 200, body)
+        status, body = self.client.request("GET", "/api/library", self.admin_key)
+        self.assertEqual(body["states"][self.title_id]["status"], "watched")
+        self.assertEqual(user_state.get_state(store, self.admin.id, self.title_id)["updated_by"], self.mom.id)
+        status, body = self.client.request("GET", "/api/me", self.mom_key)
+        self.assertEqual((body["can_show_others"], body["default_subject"]), (True, self.admin.id))
+
+        # Taking it away forgets whose lists they started on, and refuses again.
+        users.set_showing(store, self.mom.id, False, self.admin.id)
+        self.assertIsNone(users.get_user(store, self.mom.id).default_subject)
+        self.assertEqual(self.client.request("GET", f"/api/library?user={self.admin.id}", self.mom_key)[0], 403)
+        status, body = self.client.request("GET", "/api/me", self.mom_key)
+        self.assertEqual((body["can_show_others"], body["default_subject"]), (False, None))
 
     def test_undo_with_a_stale_expect_is_a_409(self) -> None:
         self.client.request("POST", f"/api/state/{self.title_id}", self.mom_key, {"set": {"rating": 8}})

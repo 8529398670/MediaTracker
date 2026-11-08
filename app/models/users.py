@@ -72,6 +72,12 @@ class User:
     totp_pending: str = ""
     totp_last_step: int = 0
     recovery_hashes: list[str] = field(default_factory=list)
+    # The "Showing" picker for someone who is not an admin: an admin grants
+    # it, and may say whose lists the account starts on (default_subject,
+    # None for its own). Admins always have the picker. See
+    # app/routes/subject.py.
+    can_show_others: bool = False
+    default_subject: int | None = None
 
     @property
     def disabled(self) -> bool:
@@ -96,6 +102,8 @@ class User:
             "totp_pending": self.totp_pending,
             "totp_last_step": self.totp_last_step,
             "recovery_hashes": self.recovery_hashes,
+            "can_show_others": self.can_show_others,
+            "default_subject": self.default_subject,
         }
 
     @classmethod
@@ -114,7 +122,36 @@ class User:
             totp_pending=record.get("totp_pending", ""),
             totp_last_step=record.get("totp_last_step", 0),
             recovery_hashes=record.get("recovery_hashes", []),
+            can_show_others=record.get("can_show_others", False),
+            default_subject=record.get("default_subject"),
         )
+
+
+def may_act_for_others(user: User) -> bool:
+    """Whether the account may use the Showing picker (?user=<id>)."""
+    return user.is_admin or user.can_show_others
+
+
+class NoSuchSubjectError(Exception):
+    """set_showing was asked to start an account on someone who is not there."""
+
+
+def set_showing(store: Store, user_id: int, allowed: bool, default_subject: int | None) -> User | None:
+    """Grant or take away the Showing picker, and say whose lists the account
+    starts on; None if there is no such account. Taking the picker away also
+    forgets the starting person, and starting on yourself is stored as None."""
+    with store.transaction() as tx:
+        record = tx.get(BUCKET_USERS, user_id)
+        if record is None:
+            return None
+        if not allowed or default_subject == user_id:
+            default_subject = None
+        if default_subject is not None and tx.get(BUCKET_USERS, default_subject) is None:
+            raise NoSuchSubjectError()
+        record["can_show_others"] = bool(allowed)
+        record["default_subject"] = default_subject
+        tx.put(BUCKET_USERS, user_id, record)
+        return User.from_record(record)
 
 
 def valid_role(role: str) -> bool:

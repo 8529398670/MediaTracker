@@ -52,6 +52,23 @@ class EditUsersTest(RoutesTestCase):
         status, reply = self.call("GET", "/api/me", cookie=self.session(self.user.id))
         self.assertEqual((status, reply["role"]), (200, "admin"))
 
+    def test_granting_showing(self) -> None:
+        self.assertEqual(self.post(self.user_cookie, self.user.id, "showing", can_show_others=True, default_subject=None)[0], 403)
+        status, reply = self.call("POST", f"/api/admin/users/{self.user.id}/showing", cookie=self.owner_cookie, body={"can_show_others": True})
+        self.assertEqual(status, 403)  # no csrf token
+        self.assertEqual(self.post(self.owner_cookie, 9999, "showing", can_show_others=True, default_subject=None)[0], 404)
+        self.assertEqual(self.post(self.owner_cookie, self.user.id, "showing", can_show_others=True, default_subject=9999)[0], 404)
+        self.assertEqual(self.post(self.owner_cookie, self.user.id, "showing", can_show_others="yes", default_subject=None)[0], 400)
+
+        status, reply = self.post(self.admin_cookie, self.user.id, "showing", can_show_others=True, default_subject=self.owner.id)
+        self.assertEqual((status, reply["can_show_others"], reply["default_subject"]), (200, True, self.owner.id))
+        row = next(row for row in self.call("GET", "/api/admin/users?q=", cookie=self.owner_cookie)[1]["users"] if row["id"] == self.user.id)
+        self.assertEqual((row["can_show_others"], row["default_subject"]), (True, self.owner.id))
+
+        # Starting on yourself is the same as your own lists.
+        status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=True, default_subject=self.user.id)
+        self.assertEqual((status, reply["default_subject"]), (200, None))
+
     def test_asking_for_the_role_they_have_changes_nothing(self) -> None:
         self.assertEqual(self.post(self.owner_cookie, self.user.id, "role", role="user")[0], 200)
         self.assertEqual(self.call("GET", "/api/me", cookie=self.user_cookie)[0], 200)

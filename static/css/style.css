@@ -527,7 +527,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .media-btn.btn-outline-secondary[data-tone="warning"] .bi { color: #e8a200; }
 .media-btn.btn-outline-secondary[data-tone="danger"] .bi { color: var(--bs-danger); }
 .media-btn .btn-label { overflow: hidden; text-overflow: ellipsis; }
-.media-btn.is-search .btn-label::after { content: " \2197"; opacity: 0.55; }
 @container card (max-width: 13rem) {
   .media-actions { grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr)); }
   .media-btn .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

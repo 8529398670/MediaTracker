@@ -2907,6 +2907,110 @@
         "description": "Only the owner can take an admin's rights away. Becoming an admin ends the account's sessions and live login link."
       }
     },
+    "/api/admin/users/{user_id}/showing": {
+      "post": {
+        "summary": "Grant or take away the Showing picker",
+        "operationId": "post_api_admin_users_user_id_showing",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-required-role": "admin",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "can_show_others": {
+                    "type": "boolean"
+                  },
+                  "default_subject": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "Whose lists the account starts on; null for its own."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "can_show_others"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "can_show_others": {
+                      "type": "boolean"
+                    },
+                    "default_subject": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "can_show_others",
+                    "default_subject"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "description": "Lets an ordinary account use ?user=<id> to read and change anyone's watched, queue, ratings, hearts and playlists, as an admin can, and sets whose lists it starts on. Taking it away clears default_subject."
+      }
+    },
     "/api/admin/users/{user_id}/disabled": {
       "post": {
         "summary": "Disable or enable an account",

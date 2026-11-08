@@ -47,8 +47,8 @@ def _args(call: Call, required: dict[str, type], optional: dict[str, type]) -> d
 def _subject(call: Call, given: int | None) -> int:
     if given is None or given == call.actor.user.id:
         return call.actor.user.id
-    if not call.actor.is_admin:
-        raise Refusal("only an admin can act for someone else")
+    if not (call.actor.is_admin or call.actor.user.can_show_others):
+        raise Refusal("only an admin, or someone given Showing, can act for someone else")
     if users.get_user(call.store, given) is None:
         raise Refusal("no such user")
     return given

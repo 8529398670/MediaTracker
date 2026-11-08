@@ -187,7 +187,9 @@ const App = {
     loading.push( Keys.init( me ) );
     loading.push( Sessions.init() );
 
-    // The library first: everything below draws from it.
+    // The library first: everything below draws from it. Someone who starts
+    // on another person's lists has to be on them before the first load.
+    Acting.start( me );
     try {
       await Promise.all( [ Library.load() , Prefs.load() ] );
     } catch ( error ) {
@@ -568,6 +570,40 @@ const App = {
         } },
       } );
 
+      // The Showing picker for an ordinary user: an admin grants it, and says
+      // whose lists they start on. Admins always have it, so it is not offered.
+      const showingButton = user.role === "admin" ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-secondary",
+        text: I18n.get( "admin.showing_button" ),
+        on: { click: async function () {
+          const before = { allowed: Boolean( user.can_show_others ) , subject: user.default_subject == null ? null : user.default_subject };
+          const people = ( Library.people || [] ).filter( ( person ) => person.id !== user.id );
+          const after = await Dom.form( {
+            title: I18n.fill( "admin.showing_heading" , { name: user.display_name } ),
+            fields: [
+              { name: "allowed" , type: "checkbox" , label: I18n.get( "admin.showing_label" ) , value: before.allowed , help: I18n.get( "admin.showing_help" ) },
+              { name: "subject" , type: "select" , label: I18n.get( "admin.starts_on_label" ) , value: before.subject == null ? "" : String( before.subject ) ,
+                help: I18n.get( "admin.starts_on_help" ) ,
+                options: [ { value: "" , label: I18n.get( "admin.starts_on_own" ) } ].concat( people.map( ( person ) => ( { value: String( person.id ) , label: person.display_name } ) ) ) },
+            ],
+            save: async ( values ) => {
+              const wanted = { allowed: values.allowed , subject: values.allowed && values.subject !== "" ? Number( values.subject ) : null };
+              await Api.setUserShowing( user.id , wanted.allowed , wanted.subject );
+              return wanted;
+            },
+          } );
+          if ( !after ) return;
+          const apply = async ( state ) => { await Api.setUserShowing( user.id , state.allowed , state.subject ); await App.refreshUsers(); };
+          await App.refreshUsers();
+          Undo.record( {
+            label: I18n.get( "admin.showing_undo" ),
+            undo: () => apply( before ),
+            redo: () => apply( after ),
+          } );
+          Dom.toast( I18n.fill( "admin.showing_changed_toast" , { name: user.display_name } ) , "ok" );
+        } },
+      } );
+
       // Your own name is on the Account screen. It edits in place, and is
       // built with textContent: a display name is user-controlled input.
       const nameCell = isSelf || !mayManage ? Dom.el( "span" , { text: user.display_name } ) : Dom.editable( user.display_name , {
@@ -652,6 +688,11 @@ const App = {
       const username = user.username ? Dom.el( "div" , { class: "small text-body-secondary" , text: user.username } ) : null;
       const status = [ Dom.badge( I18n.get( statusKey ) , statusTone ) ];
       if ( user.two_factor ) status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( I18n.get( "admin.two_factor_badge" ) , "secondary" ) ] } ) );
+      if ( user.role !== "admin" && user.can_show_others ) {
+        const start = ( Library.people || [] ).find( ( person ) => person.id === user.default_subject );
+        const words = start ? I18n.fill( "admin.showing_badge_on" , { name: start.display_name } ) : I18n.get( "admin.showing_badge" );
+        status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( words , "info" ) ] } ) );
+      }
       if ( user.login_link ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , text: LoginLinks.live( user.login_link , "live" ) } ) );
 
       body.appendChild( Dom.el( "tr" , { children: [
@@ -666,6 +707,7 @@ const App = {
             sessionsButton,
             passwordButton,
             roleButton,
+            showingButton,
             resetButton,
             revokeButton,
             toggleButton,
