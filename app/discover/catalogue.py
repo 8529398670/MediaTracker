@@ -1050,12 +1050,20 @@ def _vocabulary() -> dict[str, list[str]]:
     return by_letter
 
 
+# Small words a title is misremembered by ("The Ghost of Mrs. Muir" for The
+# Ghost and Mrs. Muir): the second, forgiving pass does not insist on them.
+FILLER = frozenset("a an and the of in on at to for with from by or".split())
+
+
 def close_variants(needle: str) -> list[list[str]]:
     """Per word of a search, the catalogue words within a typo or two of it
-    (a typo in the first letter is rare enough not to look for)."""
+    (a typo in the first letter is rare enough not to look for). Filler words
+    are dropped unless they are all there is."""
     vocab = _vocabulary()
     out = []
-    for word in needle.split():
+    words = needle.split()
+    words = [word for word in words if word not in FILLER] or words
+    for word in words:
         slack = 2 if len(word) >= 8 else 1 if len(word) >= 4 else 0
         options = [word]
         if slack:
