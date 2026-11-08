@@ -44,6 +44,8 @@ const Undo = {
   // Set while a step runs, so UI code the step triggers does not record the
   // step a second time.
   replaying: false,
+  // Called whenever what can be undone or redone changes (the navbar buttons).
+  listeners: [],
 
   async run( action ) {
     await action.do();
@@ -59,6 +61,7 @@ const Undo = {
     if ( action.merge && last && last.merge === action.merge && now - last.at < this.mergeWindow ) {
       last.redo = action.redo;
       last.at = now;
+      this.changed();
       return;
     }
     this.done.push( {
@@ -72,6 +75,7 @@ const Undo = {
       at: now,
     } );
     if ( this.done.length > this.limit ) this.done.shift();
+    this.changed();
     // Labels are written to follow "Undone:", so one opening a sentence gets
     // a capital: "Name changed · Undo".
     if ( action.toast && action.label ) this.offer( action.label.charAt( 0 ).toUpperCase() + action.label.slice( 1 ) , "undo" );
@@ -94,6 +98,41 @@ const Undo = {
   clear() {
     this.done = [];
     this.undone = [];
+    this.changed();
+  },
+
+  onChange( listener ) {
+    this.listeners.push( listener );
+    listener();
+  },
+
+  changed() {
+    this.listeners.forEach( ( listener ) => listener() );
+  },
+
+  // The navbar's Undo and Redo: pressable only when there is a step to take,
+  // and their tooltips name it ("Undo theme change (Ctrl+Z)").
+  bindButtons( undoButton , redoButton ) {
+    const mac = /Mac|iPhone|iPad/.test( navigator.platform || navigator.userAgent );
+    const keys = { undo: mac ? "⌘Z" : "Ctrl+Z" , redo: mac ? "⇧⌘Z" : "Ctrl+Shift+Z" };
+    const label = ( direction , stack ) => {
+      const top = stack[ stack.length - 1 ];
+      const values = { label: top ? top.label : "" , keys: keys[ direction ] };
+      if ( direction === "undo" ) return top && top.label ? I18n.fill( "undo.nav_undo_label" , values ) : I18n.fill( "undo.nav_undo" , values );
+      return top && top.label ? I18n.fill( "undo.nav_redo_label" , values ) : I18n.fill( "undo.nav_redo" , values );
+    };
+    const paint = () => {
+      [ [ undoButton , "undo" , this.done ] , [ redoButton , "redo" , this.undone ] ].forEach( ( [ button , direction , stack ] ) => {
+        if ( !button ) return;
+        button.disabled = this.busy || stack.length === 0;
+        const text = label( direction , stack );
+        button.title = text;
+        button.setAttribute( "aria-label" , text );
+      } );
+    };
+    if ( undoButton ) undoButton.addEventListener( "click" , () => this.undo() );
+    if ( redoButton ) redoButton.addEventListener( "click" , () => this.redo() );
+    this.onChange( paint );
   },
 
   // A form calls this once it has saved: the field it was typed in lets go
@@ -125,6 +164,7 @@ const Undo = {
     }
     this.busy = true;
     this.replaying = true;
+    this.changed();
     try {
       if ( action.screen && this.hasNav() && Nav.current() !== action.screen ) Nav.show( action.screen );
       await action[ direction ]();
@@ -139,6 +179,7 @@ const Undo = {
     } finally {
       this.replaying = false;
       this.busy = false;
+      this.changed();
     }
   },
 

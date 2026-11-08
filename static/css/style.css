@@ -153,6 +153,7 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
 .form-control, .form-select { font-size: 1rem; min-height: 44px; background-color: var(--app-card); }
 .app-icon-button { font-size: 1.5rem; line-height: 1; padding: 0.25rem 0.5rem; color: var(--bs-body-color); }
 .app-icon-button:hover, .app-icon-button:focus-visible { color: var(--app-accent); }
+.app-icon-button:disabled { opacity: 0.35; }
 
 /* The shell: navbar on top, then sidebar + content. The content column is
    centred in whatever space is left -- beside the sidebar when signed in, the
@@ -393,10 +394,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 
 .acting .form-select { width: auto; max-width: 20rem; }
 .acting-for-other .acting .form-select { border-color: var(--bs-warning); background-color: color-mix(in srgb, var(--bs-warning) 15%, var(--app-surface)); }
-.acting-badge {
-  padding: 0.2rem 0.6rem; border: 1px solid var(--bs-warning); border-radius: 999px; white-space: nowrap;
-  background-color: color-mix(in srgb, var(--bs-warning) 15%, var(--app-surface)); color: var(--bs-body-color); text-decoration: none;
-}
 
 /* ==========================================================================
    Cards
@@ -710,3 +707,7 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
     scroll-behavior: auto !important;
   }
 }
+
+/* The app's mark beside its name in the top bar. */
+.app-brand { display: inline-flex; align-items: center; gap: 0.5rem; }
+.app-logo { width: 2rem; height: 2rem; flex: none; }

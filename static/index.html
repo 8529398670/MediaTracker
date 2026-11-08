@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <title data-i18n="app.title">&nbsp;</title>
-  <link rel="icon" href="/favicon.ico" />
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- Before the stylesheets paint, so a saved dark theme never flashes light. -->
   <script src="/js/theme.js"></script>
   <!-- Bootstrap 5 and its icon font, vendored (see /vendor/README.md), then
@@ -34,12 +36,20 @@
         <i class="bi bi-list" aria-hidden="true"></i>
       </button>
       <!-- The app's name is the way home, from any screen. -->
-      <a href="/" class="navbar-brand fw-semibold me-auto" data-i18n="app.title"></a>
+      <a href="/" class="navbar-brand app-brand fw-semibold me-auto">
+        <img src="/img/logo.svg" class="app-logo" alt="" width="32" height="32" />
+        <span data-i18n="app.title"></span>
+      </a>
       <span class="navbar-text small d-none d-md-inline" data-i18n="app.tagline"></span>
       <div id="app-nav" class="d-flex align-items-center gap-2" hidden>
-        <!-- Only while an admin is showing someone else's lists (the picker
-             is on the Account screen); a reminder that leads back to it. -->
-        <a id="acting-badge" href="#account" class="acting-badge small" hidden></a>
+        <!-- Undo and redo of the last thing done on the page, the same steps
+             as Ctrl+Z / Ctrl+Shift+Z. See Undo.bindButtons. -->
+        <button id="undo-button" class="btn btn-link app-icon-button" type="button" disabled>
+          <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+        </button>
+        <button id="redo-button" class="btn btn-link app-icon-button" type="button" disabled>
+          <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
   </nav>

@@ -163,6 +163,7 @@ const App = {
     this.showAnnouncement( me );
     Dom.get( "announcement-dismiss" ).addEventListener( "click" , () => this.onDismissAnnouncement() );
     Dom.show( Dom.get( "app-nav" ) , true );
+    Undo.bindButtons( Dom.get( "undo-button" ) , Dom.get( "redo-button" ) );
     this.labelAccount();
     Theme.render( Dom.get( "theme-picker" ) );
     Dom.get( "display-name" ).value = me.display_name;

@@ -96,6 +96,11 @@ undo:
   conflict: "It was changed somewhere else in the meantime, so it was left as it is."
   button: "Undo"
   redo_button: "Redo"
+  # The navbar buttons' tooltips. {label} is what the step did, {keys} the shortcut.
+  nav_undo: "Undo ({keys})"
+  nav_redo: "Redo ({keys})"
+  nav_undo_label: "Undo {label} ({keys})"
+  nav_redo_label: "Redo {label} ({keys})"
   theme: "theme change"
   sidebar: "sidebar"
   rename: "name changed"
@@ -671,7 +676,6 @@ acting:
   label: "Showing"
   me: "{name} (me)"
   description: "Whose queue, ratings and hearts the library shows and changes. Card layout, filters and saved views stay your own. An admin decides who has this and whose lists you start on."
-  badge: "Showing {name}'s lists"
   now: "Now showing {name}'s lists. Changes go to their queue, ratings and hearts."
 
 library:

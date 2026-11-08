@@ -4,7 +4,7 @@
 // sent as ?user=<id>); the server refuses anyone without the grant. An admin
 // can also say whose lists a user starts on (me.default_subject), which
 // start() sets before the first library load. While it is
-// set to someone else, a badge in the navbar says whose lists are showing.
+// set to someone else, the picker on the Account screen is highlighted.
 //
 // Card layout, filters and saved views stay the admin's own: only the state
 // on the titles is the other person's. Undo history is cleared on a switch,
@@ -37,10 +37,6 @@ const Acting = {
       select.appendChild( option );
     } );
     document.documentElement.classList.toggle( "acting-for-other" , current !== this.me.id );
-    const person = Library.people.find( ( entry ) => entry.id === current );
-    const badge = Dom.get( "acting-badge" );
-    Dom.text( badge , person ? I18n.fill( "acting.badge" , { name: person.display_name } ) : "" );
-    Dom.show( badge , current !== this.me.id && !!person );
   },
 
   async switchTo( userId ) {
