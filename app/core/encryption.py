@@ -18,8 +18,9 @@ Two deliberate rules:
    becomes an auth bypass.
 
 The libraries are libsodium (through PyNaCl) for authenticated encryption and
-key exchange, and bcrypt for one-time login secrets. Both ship prebuilt wheels
-for Alpine (musllinux), so the Docker build needs no compiler.
+key exchange, and bcrypt for login secrets, PINs and passwords. Both ship
+prebuilt wheels for Alpine (musllinux), so the Docker build needs no compiler.
+TOTP is the standard library's HMAC.
 """
 from __future__ import annotations
 
@@ -78,6 +79,11 @@ def sha256_hex(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def hmac_sha256_hex(key: str, message: str) -> str:
+    """Signs a message, as lowercase hex: what a webhook receiver checks."""
+    return hmac.new(key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 def constant_time_equal(a: str, b: str) -> bool:
     """Compare two digests or tokens without leaking, through how long the
     comparison takes, how many leading characters matched. `==` returns at
@@ -87,14 +93,15 @@ def constant_time_equal(a: str, b: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# bcrypt -- for one-time login secrets
+# bcrypt -- for login-link secrets, PINs, and passwords
 # ---------------------------------------------------------------------------
 
 
 def bcrypt_hash(plain_text: str) -> str:
-    """Used on login-link secrets, which are redeemed at most once. The cost
-    is paid on a single redemption rather than on every request, so bcrypt's
-    slowness buys real protection here without hurting throughput. Call it off
+    """Used on login-link secrets. The cost is paid once per sign-in through a
+    link (a link can allow several) rather than on every request, and
+    sign-ins have their own rate budget, so bcrypt's slowness buys real
+    protection here without hurting throughput. Call it off
     the event loop -- it takes a noticeable fraction of a second on purpose."""
     return _bcrypt.hashpw(plain_text.encode("utf-8"), _bcrypt.gensalt()).decode("ascii")
 
@@ -107,14 +114,68 @@ def bcrypt_compare(hashed: str, plain_text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# TOTP (RFC 6238) -- the codes an authenticator app shows
+#
+# SHA-1, six digits and thirty seconds are not choices: they are what every
+# authenticator app does, whatever a URI asks for. SHA-1's collision weakness
+# does not touch HMAC-SHA1 here.
+# ---------------------------------------------------------------------------
+
+TOTP_PERIOD_SECONDS = 30
+TOTP_DIGITS = 6
+# One step either side, for a phone whose clock has drifted.
+TOTP_WINDOW = 1
+
+
+def totp_new_secret() -> str:
+    """20 random bytes as base32, the form an authenticator app expects. 20
+    bytes encode to exactly 32 characters, so there is no padding."""
+    return base64.b32encode(random_bytes(20)).decode("ascii")
+
+
+def totp_code(secret: str, step: int) -> str:
+    """The code for one 30-second step."""
+    digest = hmac.new(base64.b32decode(secret), step.to_bytes(8, "big"), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF
+    return str(value % 10**TOTP_DIGITS).zfill(TOTP_DIGITS)
+
+
+def totp_match(secret: str, code: str, at_seconds: int, after_step: int) -> int | None:
+    """The step code is valid for, or None. after_step is the last step this
+    account used: anything at or before it is refused, which is what makes a
+    code single-use rather than good for its whole window."""
+    current = at_seconds // TOTP_PERIOD_SECONDS
+    for step in range(current - TOTP_WINDOW, current + TOTP_WINDOW + 1):
+        if step > after_step and constant_time_equal(totp_code(secret, step), code):
+            return step
+    return None
+
+
+def recovery_code() -> str:
+    """80 random bits as XXXX-XXXX-XXXX-XXXX. Long enough that the sha256
+    stored for it has nothing to brute force, like the other random secrets
+    here."""
+    text = base64.b32encode(random_bytes(10)).decode("ascii")
+    return "-".join(text[index : index + 4] for index in range(0, len(text), 4))
+
+
+# ---------------------------------------------------------------------------
 # keys and encoding
 # ---------------------------------------------------------------------------
 
 
 def generate_key_hex() -> str:
     """A fresh 256-bit key as 64 hex characters -- the shape of
-    server.secret_key in config.yaml."""
+    the key in secret.key."""
     return secrets.token_hex(32)
+
+
+def key_fingerprint(key_hex: str) -> str:
+    """Name a key without revealing it: the start of a hash of the key, which
+    a backup's manifest can carry so a restore can say which key it needs.
+    The prefix keeps this hash from matching any other use of the key."""
+    return sha256_hex("key-fingerprint-v1:" + key_hex)[:16]
 
 
 def _decode_key(key_hex: str) -> bytes:
@@ -154,13 +215,25 @@ def xchacha_encrypt_bytes(key_hex: str, plain_text: bytes) -> bytes:
     per message without any realistic risk of collision. The nonce is
     prepended to the cipher text; the Poly1305 tag means a modified value fails
     to open rather than decrypting to garbage."""
-    key = _decode_key(key_hex)
-    nonce = random_bytes(_XCHACHA_NONCE_BYTES)
-    sealed = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(plain_text, None, nonce, key)
-    return nonce + sealed
+    return xchacha_encrypt_bound(key_hex, plain_text, None)
 
 
 def xchacha_decrypt_bytes(key_hex: str, encrypted: bytes) -> bytes:
+    return xchacha_decrypt_bound(key_hex, encrypted, None)
+
+
+def xchacha_encrypt_bound(key_hex: str, plain_text: bytes, bound: bytes | None) -> bytes:
+    """Seals plain_text to bound as well as to the key: it opens only with the
+    same bound, which is itself not stored. A file's chunks use this, bound to
+    their place in the file, so that one moved, swapped with another file's or
+    dropped from the end fails to open instead of decrypting to the wrong file."""
+    key = _decode_key(key_hex)
+    nonce = random_bytes(_XCHACHA_NONCE_BYTES)
+    sealed = _sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(plain_text, bound, nonce, key)
+    return nonce + sealed
+
+
+def xchacha_decrypt_bound(key_hex: str, encrypted: bytes, bound: bytes | None) -> bytes:
     key = _decode_key(key_hex)
     # Too short to hold a nonce and a tag is refused here: libsodium's binding
     # reports that case as a ValueError rather than a decryption failure, and
@@ -169,7 +242,7 @@ def xchacha_decrypt_bytes(key_hex: str, encrypted: bytes) -> bytes:
         raise CipherTextError()
     nonce, sealed = encrypted[:_XCHACHA_NONCE_BYTES], encrypted[_XCHACHA_NONCE_BYTES:]
     try:
-        return _sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(sealed, None, nonce, key)
+        return _sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(sealed, bound, nonce, key)
     except (_CryptoError, ValueError, TypeError):
         raise CipherTextError() from None
 

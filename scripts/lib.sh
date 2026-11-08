@@ -92,6 +92,54 @@ our_server_pid() {
   fi
 }
 
+# Stop the server this checkout started, if it is running: TERM, then KILL if
+# it is still there 20 seconds later. Clears the pid file either way.
+stop_our_server() {
+  local pid
+  pid="$( our_server_pid )"
+  if [ -n "$pid" ]; then
+    echo "Stopping the server this checkout started (pid ${pid}, running since $( ps -p "$pid" -o lstart= 2>/dev/null | sed 's/  */ /g' ))..."
+    kill -TERM "$pid" 2>/dev/null || true
+    # uvicorn gives requests 10 seconds to finish (app/main.py), and then a
+    # background job gets 5 more (app/core/jobs.py). Past that, something is
+    # stuck, and waiting longer will not unstick it.
+    for _ in $( seq 1 80 ); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.25
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "It did not exit in 20 seconds; killing it."
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$PID_FILE"
+}
+
+# Start scripts/run.sh detached, its output in .run/server.log, and wait until
+# the server answers. On success BACKGROUND_PID is the server's pid; on failure
+# the end of the log is shown and the script exits.
+LOG_FILE="${RUN_DIR}/server.log"
+start_in_background() {
+  local launched
+  mkdir -p "$RUN_DIR"
+  # nohup so closing this terminal does not take the server with it. run.sh
+  # execs the server, so the pid it writes is the server's.
+  nohup scripts/run.sh > "$LOG_FILE" 2>&1 < /dev/null &
+  launched=$!
+  for _ in $( seq 1 40 ); do
+    sleep 0.5
+    BACKGROUND_PID="$( our_server_pid )"
+    if [ -n "$BACKGROUND_PID" ] && server_answers; then
+      return 0
+    fi
+    kill -0 "$launched" 2>/dev/null || break
+  done
+  echo "ERROR: the server did not come up. The end of ${LOG_FILE}:" >&2
+  echo "" >&2
+  tail -n 20 "$LOG_FILE" | sed 's/^/    /' >&2
+  exit 1
+}
+
 # "nginx (pid 812)" for whatever is listening on a TCP port, or nothing. The
 # program's directory is dropped: "Python -m http.server 8000" says more in
 # one line than a long install path does.

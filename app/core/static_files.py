@@ -25,6 +25,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import FileResponse, PlainTextResponse, Response
 
+from app.core import error_page
+
 # Extensions that are text, change often, and must never go stale.
 ALWAYS_FRESH_EXTENSIONS = {
     ".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg", ".txt", ".map",
@@ -57,6 +59,14 @@ def has_dot_dot(request_path: str) -> bool:
 
 def content_type(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+
+
+def _not_found(request: Request) -> Response:
+    """A browser gets the error page. A stylesheet or script tag keeps plain
+    text, which is what makes a missing asset easy to read in the console."""
+    if error_page.wanted(request):
+        return error_page.response(request, 404)
+    return PlainTextResponse("Not found", status_code=404)
 
 
 class StaticServer:
@@ -100,24 +110,25 @@ class StaticServer:
         if request_path == "" or request_path.endswith("/"):
             request_path = posixpath.join(request_path, self.index_file)
 
+        # No fallback to index.html. The app navigates by hash, and the two
+        # paths it does read have their own routes (/login/..., /join/...), so
+        # anything else is a real 404. An app that adds a path-routed page
+        # gives it a route before this one, as serve_login_page does.
         path = self.resolve(request_path)
-        if path is None:
-            return PlainTextResponse("Not found", status_code=404)
-
-        if not path.is_file():
-            # A path with no extension is a client-side route ("/settings"),
-            # so hand back index.html and let the browser router take over. A
-            # path that names a file and is missing is a genuine 404 --
-            # answering that with HTML would leave the browser parsing a page
-            # as a stylesheet and reporting a confusing MIME error instead of
-            # the real problem.
-            if path.suffix != "":
-                return PlainTextResponse("Not found", status_code=404)
-            path = self.resolve(self.index_file)
-            if path is None or not path.is_file():
-                return PlainTextResponse("Not found", status_code=404)
+        if path is None or not path.is_file():
+            return _not_found(request)
 
         return await self._send(request, path)
+
+    async def serve_join_page(self, request: Request) -> Response:
+        """An invite link's page. While auth.invite_links is off a person with
+        an old link gets the styled 404, not RequireInviteLinks's JSON."""
+        if not request.app.state.settings.get().invite_links_enabled:
+            response = _not_found(request)
+            # The credential is in this URL too.
+            response.headers["referrer-policy"] = "no-referrer"
+            return response
+        return await self.serve_login_page(request)
 
     async def serve_login_page(self, request: Request) -> Response:
         """A login link (or an invite link) opens the ordinary app page,
@@ -126,7 +137,7 @@ class StaticServer:
         app/routes/join.py."""
         path = self.resolve(self.index_file)
         if path is None or not path.is_file():
-            return PlainTextResponse("Not found", status_code=404)
+            return _not_found(request)
         response = await self._send(request, path)
         # The credential is in this page's URL; make sure no request the page
         # makes carries it onward in a Referer header.
@@ -146,7 +157,7 @@ class StaticServer:
         try:
             body, compressed = await run_in_threadpool(self._read_text_asset, path, accepts_gzip)
         except OSError:
-            return PlainTextResponse("Not found", status_code=404)
+            return _not_found(request)
         headers = {"cache-control": "no-store, no-cache, must-revalidate", "vary": "Accept-Encoding"}
         if compressed:
             headers["content-encoding"] = "gzip"

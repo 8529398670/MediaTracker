@@ -11,15 +11,15 @@ from __future__ import annotations
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
 from app.core.db import Store
 from app.models import users
-from app.routes.helpers import get_store, run
+from app.routes.helpers import get_store, run, send_page
 
 
 async def list_team(request: Request) -> Response:
-    return JSONResponse(await run(team_rows, get_store(request)))
+    return send_page(request, "members", await run(team_rows, get_store(request)))
 
 
 def team_rows(store: Store) -> list[dict[str, Any]]:

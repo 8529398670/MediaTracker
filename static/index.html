@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <title data-i18n="app.title">&nbsp;</title>
+  <link rel="icon" href="/favicon.ico" />
   <!-- Before the stylesheets paint, so a saved dark theme never flashes light. -->
   <script src="/js/theme.js"></script>
   <!-- Bootstrap 5 and its icon font, vendored (see /vendor/README.md), then
@@ -14,6 +15,7 @@
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
+  <a id="skip-link" href="#main" class="visually-hidden-focusable" data-i18n="nav.skip"></a>
   <!--
     No text is hardcoded here. Every visible string carries a data-i18n key
     that server/language resolves from language.yaml at runtime, so the copy
@@ -22,7 +24,7 @@
     data-i18n replaces an element's text, so wherever an icon sits next to a
     label the key goes on an inner <span>, never on the element holding both.
   -->
-  <nav class="navbar app-navbar border-bottom sticky-top">
+  <nav class="navbar app-navbar border-bottom sticky-top" data-i18n-attr="aria-label:nav.top_label">
     <div class="container-fluid gap-2">
       <!-- The menu button, left, beside the sidebar it controls: on a phone it
            slides the sidebar in, on a wide screen it collapses and expands it
@@ -56,7 +58,7 @@
                 data-i18n-attr="aria-label:nav.close"></button>
       </div>
       <div class="offcanvas-body">
-        <nav id="sidebar-nav" class="nav nav-pills flex-column w-100 gap-1">
+        <nav id="sidebar-nav" class="nav nav-pills flex-column w-100 gap-1" data-i18n-attr="aria-label:nav.sidebar_label">
           <!-- The library, one entry per type with how many are on your Up
                next list; filled in by LibraryNav (screens/library.js). -->
           <a class="nav-link nav-link-add" href="#add" data-nav="add"><i class="bi bi-plus-circle-fill" aria-hidden="true"></i><span data-i18n="nav.add"></span></a>
@@ -77,6 +79,8 @@
           <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="nav-link-text"><span data-i18n="nav.account"></span><span id="sidebar-user" class="nav-link-sub"></span></span></a>
           <a class="nav-link" href="#appearance" data-nav="appearance"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.appearance"></span></a>
           <a class="nav-link" href="#pin" data-nav="pin"><i class="bi bi-key" aria-hidden="true"></i><span data-i18n="nav.pin"></span></a>
+          <a class="nav-link" href="#password" data-nav="password"><i class="bi bi-lock" aria-hidden="true"></i><span data-i18n="nav.password"></span></a>
+          <a class="nav-link" href="#two-factor" data-nav="two-factor"><i class="bi bi-shield-lock" aria-hidden="true"></i><span data-i18n="nav.two_factor"></span></a>
           <a class="nav-link" href="#api-keys" data-nav="api-keys"><i class="bi bi-code-square" aria-hidden="true"></i><span data-i18n="nav.api_keys"></span></a>
 
           <div id="sidebar-admin" class="sidebar-group" hidden>
@@ -84,19 +88,72 @@
             <a class="nav-link" href="#users" data-nav="users"><i class="bi bi-people" aria-hidden="true"></i><span data-i18n="nav.users"></span></a>
             <a class="nav-link" href="#invite-links" data-nav="invite-links"><i class="bi bi-link-45deg" aria-hidden="true"></i><span data-i18n="nav.invite_links"></span></a>
             <a class="nav-link" href="#all-keys" data-nav="all-keys"><i class="bi bi-shield-lock" aria-hidden="true"></i><span data-i18n="nav.all_keys"></span></a>
+            <a class="nav-link" href="#logs" data-nav="logs"><i class="bi bi-journal-text" aria-hidden="true"></i><span data-i18n="nav.logs"></span></a>
+            <a class="nav-link" href="#settings" data-nav="settings"><i class="bi bi-sliders" aria-hidden="true"></i><span data-i18n="nav.settings"></span></a>
           </div>
+          <p id="sidebar-version" class="sidebar-version" hidden></p>
         </nav>
       </div>
     </aside>
 
-    <main hidden id="main" class="app-main">
-      <p id="error-banner" class="alert alert-danger" role="alert" hidden></p>
+    <main hidden id="main" class="app-main" tabindex="-1">
+      <p id="maintenance-banner" class="alert alert-warning" role="status" hidden></p>
+      <!-- server.announcement, until dismissed. See App.showAnnouncement. -->
+      <div id="announcement-banner" class="alert alert-info alert-dismissible" role="status" hidden>
+        <span id="announcement-text"></span>
+        <button id="announcement-dismiss" type="button" class="btn-close" data-i18n-attr="aria-label:nav.close"></button>
+      </div>
+      <div id="error-banner" class="alert alert-danger alert-dismissible" role="alert" hidden>
+        <span id="error-banner-text"></span>
+        <button id="error-copy-button" type="button" class="btn btn-sm btn-outline-danger ms-2" data-i18n="ui.copy"></button>
+        <button type="button" class="btn-close" data-box-close="" data-i18n-attr="aria-label:nav.close"></button>
+      </div>
+
+      <!-- While the signed-in screens fetch what they show. See App.renderSignedIn. -->
+      <div id="app-loading" class="app-loading" role="status" hidden>
+        <span class="spinner-border" aria-hidden="true"></span>
+        <span class="visually-hidden" data-i18n="ui.loading"></span>
+      </div>
 
       <section id="signed-out" class="card" hidden>
         <div class="card-body">
           <h2 class="h4 card-title" data-i18n="signed_out.heading"></h2>
           <p data-i18n="signed_out.body"></p>
           <p id="invalid-link" class="alert alert-warning mb-0" data-i18n="signed_out.invalid_link" hidden></p>
+          <p id="sign-in-expired" class="alert alert-warning mb-0" data-i18n="signed_out.sign_in_expired" hidden></p>
+          <p id="session-ended" class="alert alert-warning mb-0" data-i18n="signed_out.session_ended" hidden></p>
+
+          <!-- Only while the owner has auth.passwords on; see password.js. -->
+          <div id="password-login" class="mt-3" hidden>
+            <h3 class="h6" data-i18n="signed_out.password_heading"></h3>
+            <form id="password-login-form">
+              <div class="mb-3">
+                <label for="login-username" class="form-label" data-i18n="signed_out.username_label"></label>
+                <input id="login-username" class="form-control" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required />
+              </div>
+              <div class="mb-3">
+                <label for="login-password" class="form-label" data-i18n="signed_out.password_label"></label>
+                <input id="login-password" class="form-control" name="password" type="password" autocomplete="current-password" required />
+              </div>
+              <button id="password-login-button" type="submit" class="btn btn-primary" data-i18n="signed_out.password_button"></button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Asked for during any sign-in on an account with two-factor on. See
+           two_factor.js. -->
+      <section id="two-factor-step" class="card" hidden>
+        <div class="card-body">
+          <h2 class="h4 card-title" data-i18n="two_factor.step_heading"></h2>
+          <p data-i18n="two_factor.step_body"></p>
+          <form id="two-factor-step-form" autocomplete="off">
+            <div class="mb-3">
+              <label for="two-factor-step-code" class="form-label" data-i18n="two_factor.code_label"></label>
+              <input id="two-factor-step-code" class="form-control" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="24" required />
+            </div>
+            <button type="submit" class="btn btn-primary" data-i18n="two_factor.step_button"></button>
+          </form>
         </div>
       </section>
 
@@ -508,14 +565,43 @@
                  Any signed-in user may mint one; see Api.createMyLoginLink. -->
             <h3 class="h6" data-i18n="account.device_heading"></h3>
             <p class="text-body-secondary" data-i18n="account.device_description"></p>
+            <!-- The link you could still use, if any, and a way to stop it. -->
+            <div id="my-live-link" class="d-flex flex-wrap align-items-center gap-2 mb-3" hidden>
+              <span id="my-live-link-text" class="text-body-secondary"></span>
+              <button id="my-link-cancel-button" class="btn btn-sm btn-outline-danger" data-i18n="login_links.cancel_button"></button>
+            </div>
             <button id="my-link-button" class="btn btn-outline-secondary" data-i18n="account.device_button"></button>
-            <div id="my-link-box" class="alert alert-info mt-3" hidden>
-              <p class="mb-2" data-i18n="account.device_link_notice"></p>
+            <div id="my-link-box" class="alert alert-info alert-dismissible mt-3" hidden>
+              <button type="button" class="btn-close" data-box-close="my-link-button" data-i18n-attr="aria-label:nav.close"></button>
+              <p id="my-link-notice" class="mb-2"></p>
               <div class="link-box">
                 <code id="my-link-value"></code>
                 <button id="my-link-copy-button" class="btn btn-sm btn-outline-secondary" data-i18n="account.copy_button"></button>
+                <button id="my-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
               </div>
+              <canvas id="my-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
             </div>
+
+            <hr />
+
+            <!-- Every device with a live session on this account; see sessions.js. -->
+            <h3 class="h6" data-i18n="sessions.heading"></h3>
+            <p class="text-body-secondary" data-i18n="sessions.description"></p>
+            <div class="table-responsive">
+              <table id="sessions-table" class="table table-hover align-middle" data-empty="sessions.empty">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="sessions.table_device"></th>
+                    <th scope="col" data-i18n="sessions.table_ip"></th>
+                    <th scope="col" data-i18n="sessions.table_seen"></th>
+                    <th scope="col" data-i18n="sessions.table_signed_in"></th>
+                    <th scope="col" data-i18n="sessions.table_actions"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <button id="sessions-revoke-others" class="btn btn-outline-danger" data-i18n="sessions.revoke_others_button" hidden></button>
 
             <hr />
 
@@ -553,6 +639,85 @@
           </div>
         </section>
 
+        <!-- Only while the owner has auth.passwords on; see password.js. -->
+        <section class="card view" data-view="password" id="password-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="password.heading"></h2>
+            <p class="text-body-secondary" data-i18n="password.description"></p>
+            <p><span id="password-status" class="badge text-bg-secondary"></span></p>
+            <form id="password-form">
+              <div class="mb-3">
+                <label for="password-username" class="form-label" data-i18n="password.username_label"></label>
+                <input id="password-username" class="form-control" name="username" autocomplete="username" autocapitalize="none" spellcheck="false"
+                       minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" required />
+                <div class="form-text" data-i18n="password.username_help"></div>
+              </div>
+              <div class="mb-3">
+                <label for="password-new" class="form-label" data-i18n="password.new_label"></label>
+                <input id="password-new" class="form-control" name="new_password" type="password" autocomplete="new-password" required />
+                <div class="form-text" data-i18n="password.new_help"></div>
+              </div>
+              <div class="mb-3">
+                <label for="password-confirm" class="form-label" data-i18n="password.confirm_label"></label>
+                <input id="password-confirm" class="form-control" name="confirm_password" type="password" autocomplete="new-password" required />
+              </div>
+              <div id="password-code-row" class="mb-3" hidden>
+                <label for="password-code" class="form-label" data-i18n="two_factor.code_label"></label>
+                <input id="password-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" />
+              </div>
+              <div class="row-actions">
+                <button type="submit" class="btn btn-primary" data-i18n="password.save_button"></button>
+                <button type="button" id="password-remove-button" class="btn btn-outline-danger" data-i18n="password.remove_button" hidden></button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Only while the owner has auth.two_factor on; see two_factor.js. -->
+        <section class="card view" data-view="two-factor" id="two-factor-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="two_factor.heading"></h2>
+            <p class="text-body-secondary" data-i18n="two_factor.description"></p>
+            <p><span id="two-factor-status" class="badge text-bg-secondary"></span></p>
+            <button id="two-factor-start-button" class="btn btn-primary" data-i18n="two_factor.start_button" hidden></button>
+
+            <div id="two-factor-setup" hidden>
+              <p data-i18n="two_factor.setup_scan"></p>
+              <canvas id="two-factor-qr" class="d-block img-fluid mb-3 border rounded" role="img" data-i18n-attr="aria-label:ui.qr_label"></canvas>
+              <p class="mb-1" data-i18n="two_factor.setup_manual"></p>
+              <div class="link-box mb-3">
+                <code id="two-factor-secret"></code>
+                <button id="two-factor-secret-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_secret_button"></button>
+              </div>
+              <form id="two-factor-confirm-form" autocomplete="off">
+                <div class="mb-3">
+                  <label for="two-factor-code" class="form-label" data-i18n="two_factor.setup_code_label"></label>
+                  <input id="two-factor-code" class="form-control" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                </div>
+                <button type="submit" class="btn btn-primary" data-i18n="two_factor.confirm_button"></button>
+              </form>
+            </div>
+
+            <div id="two-factor-recovery" class="alert alert-info" hidden>
+              <p data-i18n="two_factor.recovery_notice"></p>
+              <pre id="two-factor-recovery-codes" class="mb-3"></pre>
+              <div class="row-actions">
+                <button id="two-factor-recovery-copy" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_button"></button>
+                <button id="two-factor-recovery-download" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.download_button"></button>
+                <button id="two-factor-recovery-done" class="btn btn-sm btn-primary" data-i18n="two_factor.done_button"></button>
+              </div>
+            </div>
+
+            <form id="two-factor-disable-form" autocomplete="off" hidden>
+              <div class="mb-3">
+                <label for="two-factor-disable-code" class="form-label" data-i18n="two_factor.code_label"></label>
+                <input id="two-factor-disable-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" required />
+              </div>
+              <button type="submit" class="btn btn-outline-danger" data-i18n="two_factor.disable_button"></button>
+            </form>
+          </div>
+        </section>
+
         <!--
           API keys: the non-browser way in, for every signed-in user. The role
           select is revealed only for an admin (see keys.js) because a key can
@@ -586,7 +751,8 @@
               </div>
             </form>
 
-            <div id="key-secret-box" class="alert alert-info mt-3" hidden>
+            <div id="key-secret-box" class="alert alert-info alert-dismissible mt-3" hidden>
+              <button type="button" class="btn-close" data-box-close="key-name" data-i18n-attr="aria-label:nav.close"></button>
               <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
               <div class="link-box">
                 <code id="key-secret-value"></code>
@@ -594,16 +760,26 @@
               </div>
             </div>
 
-            <div class="table-responsive mt-4">
-              <table id="keys-table" class="table table-hover align-middle">
+            <div class="mt-4" role="search">
+              <label for="keys-search" class="visually-hidden" data-i18n="api_keys.search_label"></label>
+              <input id="keys-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:api_keys.search_label" />
+            </div>
+            <div class="form-check mt-2">
+              <input id="keys-live-only" class="form-check-input" type="checkbox" />
+              <label for="keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="keys-table" class="table table-hover align-middle" data-empty="api_keys.empty">
                 <thead>
                   <tr>
-                    <th data-i18n="api_keys.table_name"></th>
-                    <th data-i18n="api_keys.table_role"></th>
-                    <th data-i18n="api_keys.table_status"></th>
-                    <th data-i18n="api_keys.table_last_used"></th>
-                    <th data-i18n="api_keys.table_expires"></th>
-                    <th data-i18n="api_keys.table_actions"></th>
+                    <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
+                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_status"></th>
+                    <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
+                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -630,31 +806,74 @@
                   <option value="admin" data-i18n="admin.role_admin"></option>
                 </select>
               </div>
+              <!-- How often and how long the link works; LoginLinks fills these. -->
+              <div class="col-md">
+                <label for="new-uses" class="form-label" data-i18n="login_links.uses_label"></label>
+                <select id="new-uses" class="form-select" name="uses"></select>
+              </div>
+              <div class="col-md">
+                <label for="new-expires" class="form-label" data-i18n="login_links.expires_label"></label>
+                <select id="new-expires" class="form-select" name="expires" aria-describedby="new-expires-help"></select>
+              </div>
+              <div id="new-expires-help" class="col-12 form-text mt-1 order-last" data-i18n="login_links.expires_help"></div>
               <div class="col-md-auto">
                 <button type="submit" class="btn btn-primary" data-i18n="admin.create_button"></button>
               </div>
             </form>
 
-            <div id="login-link-box" class="alert alert-info mt-3" hidden>
-              <p class="mb-2" data-i18n="admin.link_notice"></p>
+            <div id="login-link-box" class="alert alert-info alert-dismissible mt-3" hidden>
+              <button type="button" class="btn-close" data-box-close="new-name" data-i18n-attr="aria-label:nav.close"></button>
+              <p id="login-link-for" class="fw-semibold mb-1"></p>
+              <p id="login-link-notice" class="mb-2"></p>
               <div class="link-box">
                 <code id="login-link-value"></code>
                 <button id="copy-link-button" class="btn btn-sm btn-outline-secondary" data-i18n="admin.copy_button"></button>
+                <button id="login-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
               </div>
+              <canvas id="login-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
             </div>
 
-            <div class="table-responsive mt-4">
-              <table id="users-table" class="table table-hover align-middle">
+            <div class="mt-4" role="search">
+              <label for="users-search" class="visually-hidden" data-i18n="admin.search_label"></label>
+              <input id="users-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:admin.search_label" />
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="users-table" class="table table-hover align-middle" data-empty="admin.empty">
                 <thead>
                   <tr>
-                    <th data-i18n="admin.table_name"></th>
-                    <th data-i18n="admin.table_role"></th>
-                    <th data-i18n="admin.table_status"></th>
-                    <th data-i18n="admin.table_actions"></th>
+                    <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin.table_name"></button></th>
+                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="admin.table_role"></button></th>
+                    <th scope="col" data-sort="disabled"><button type="button" class="th-sort" data-i18n="admin.table_status"></button></th>
+                    <th scope="col" data-sort="created_at"><button type="button" class="th-sort" data-i18n="admin.table_created"></button></th>
+                    <th scope="col" data-i18n="admin.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
               </table>
+            </div>
+
+            <!-- One account's devices, from its Sessions button. See Sessions.showFor. -->
+            <div id="user-sessions" class="border rounded p-3 mt-4" hidden>
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <h3 id="user-sessions-heading" class="h6 mb-0"></h3>
+                <button id="user-sessions-close" type="button" class="btn-close" data-i18n-attr="aria-label:nav.close"></button>
+              </div>
+              <div class="table-responsive mt-2">
+                <table id="user-sessions-table" class="table table-hover align-middle" data-empty="sessions.user_empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-i18n="sessions.table_device"></th>
+                      <th scope="col" data-i18n="sessions.table_ip"></th>
+                      <th scope="col" data-i18n="sessions.table_seen"></th>
+                      <th scope="col" data-i18n="sessions.table_signed_in"></th>
+                      <th scope="col" data-i18n="sessions.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
@@ -684,23 +903,32 @@
               </div>
             </form>
 
-            <div id="invite-link-box" class="alert alert-info mt-3" hidden>
+            <div id="invite-link-box" class="alert alert-info alert-dismissible mt-3" hidden>
+              <button type="button" class="btn-close" data-box-close="invite-label" data-i18n-attr="aria-label:nav.close"></button>
               <p class="mb-2" data-i18n="invite_links.link_notice"></p>
               <div class="link-box">
                 <code id="invite-link-value"></code>
                 <button id="copy-invite-button" class="btn btn-sm btn-outline-secondary" data-i18n="invite_links.copy_button"></button>
+                <button id="invite-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
               </div>
+              <canvas id="invite-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
             </div>
 
-            <div class="table-responsive mt-4">
-              <table id="invite-links-table" class="table table-hover align-middle">
+            <div class="mt-4" role="search">
+              <label for="invites-search" class="visually-hidden" data-i18n="invite_links.search_label"></label>
+              <input id="invites-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:invite_links.search_label" />
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="invite-links-table" class="table table-hover align-middle" data-empty="invite_links.empty">
                 <thead>
                   <tr>
-                    <th data-i18n="invite_links.table_label"></th>
-                    <th data-i18n="invite_links.table_joined"></th>
-                    <th data-i18n="invite_links.table_status"></th>
-                    <th data-i18n="invite_links.table_expires"></th>
-                    <th data-i18n="invite_links.table_actions"></th>
+                    <th scope="col" data-sort="label"><button type="button" class="th-sort" data-i18n="invite_links.table_label"></button></th>
+                    <th scope="col" data-sort="used"><button type="button" class="th-sort" data-i18n="invite_links.table_joined"></button></th>
+                    <th scope="col" data-i18n="invite_links.table_status"></th>
+                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="invite_links.table_expires"></button></th>
+                    <th scope="col" data-i18n="invite_links.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -716,21 +944,128 @@
             <h2 class="h4 card-title" data-i18n="admin_keys.heading"></h2>
             <p class="text-body-secondary" data-i18n="admin_keys.description"></p>
 
-            <div class="table-responsive">
-              <table id="admin-keys-table" class="table table-hover align-middle">
+            <!-- A key that acts as someone else. keys.js fills the picker with
+                 only the accounts the server would allow. -->
+            <h3 class="h5" data-i18n="admin_keys.create_heading"></h3>
+            <p class="text-body-secondary" data-i18n="admin_keys.create_description"></p>
+            <form id="create-user-key-form" class="row g-3 align-items-end" autocomplete="off">
+              <div class="col-md">
+                <label for="user-key-user" class="form-label" data-i18n="admin_keys.user_label"></label>
+                <select id="user-key-user" class="form-select" name="user_id" required></select>
+              </div>
+              <div class="col-md">
+                <label for="user-key-name" class="form-label" data-i18n="api_keys.name_label"></label>
+                <input id="user-key-name" class="form-control" name="name" maxlength="80" required
+                       data-i18n-attr="placeholder:api_keys.name_placeholder" />
+              </div>
+              <div class="col-md">
+                <label for="user-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
+                <select id="user-key-role" class="form-select" name="role">
+                  <option value="user" data-i18n="api_keys.role_user"></option>
+                  <option value="admin" data-i18n="api_keys.role_admin"></option>
+                </select>
+              </div>
+              <div class="col-md">
+                <label for="user-key-days" class="form-label" data-i18n="api_keys.days_label"></label>
+                <input id="user-key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
+                       data-i18n-attr="placeholder:api_keys.days_placeholder" />
+              </div>
+              <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary" data-i18n="api_keys.create_button"></button>
+              </div>
+            </form>
+
+            <div id="user-key-secret-box" class="alert alert-info alert-dismissible mt-3" hidden>
+              <button type="button" class="btn-close" data-box-close="user-key-name" data-i18n-attr="aria-label:nav.close"></button>
+              <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
+              <div class="link-box">
+                <code id="user-key-secret-value"></code>
+                <button id="copy-user-key-button" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+              </div>
+            </div>
+
+            <div class="mt-3" role="search">
+              <label for="admin-keys-search" class="visually-hidden" data-i18n="api_keys.all_search_label"></label>
+              <input id="admin-keys-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:api_keys.all_search_label" />
+            </div>
+            <div class="form-check mt-2">
+              <input id="admin-keys-live-only" class="form-check-input" type="checkbox" />
+              <label for="admin-keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="admin-keys-table" class="table table-hover align-middle" data-empty="api_keys.all_empty">
                 <thead>
                   <tr>
-                    <th data-i18n="admin_keys.table_owner"></th>
-                    <th data-i18n="api_keys.table_name"></th>
-                    <th data-i18n="api_keys.table_role"></th>
-                    <th data-i18n="api_keys.table_status"></th>
-                    <th data-i18n="api_keys.table_last_used"></th>
-                    <th data-i18n="api_keys.table_actions"></th>
+                    <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin_keys.table_owner"></button></th>
+                    <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
+                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_status"></th>
+                    <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
+                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <!-- The activity log, owner only; see logs.js. data-no-track keeps
+             reading the log from writing to it (track.js). -->
+        <section class="card view" data-view="logs" id="logs-panel" data-no-track hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="logs.heading"></h2>
+            <p class="text-body-secondary" data-i18n="logs.description"></p>
+
+            <form id="logs-search-form" class="row g-2 align-items-end" role="search" autocomplete="off">
+              <div class="col-md">
+                <label for="logs-query" class="form-label" data-i18n="logs.search_label"></label>
+                <input id="logs-query" class="form-control" type="search" name="q" maxlength="200"
+                       data-i18n-attr="placeholder:logs.search_placeholder" />
+              </div>
+              <div class="col-md-auto row-actions">
+                <button type="button" id="logs-live" class="btn btn-outline-secondary" aria-pressed="false">
+                  <i class="bi bi-broadcast" aria-hidden="true"></i> <span data-i18n="logs.live_button"></span>
+                </button>
+                <button type="button" id="logs-prune" class="btn btn-outline-secondary" data-i18n="logs.prune_button"></button>
+              </div>
+            </form>
+            <p class="form-text" data-i18n="logs.search_help"></p>
+            <div id="logs-kinds" class="row-actions mb-3" role="group" data-i18n-attr="aria-label:logs.kinds_label"></div>
+
+            <p id="logs-settings" class="small text-body-secondary"></p>
+            <p id="logs-empty" class="text-body-secondary" hidden></p>
+            <div id="logs-days" class="log-days"></div>
+          </div>
+        </section>
+
+        <!-- Owner only: config.yaml, one field per setting. See js/settings.js. -->
+        <section class="card view" data-view="settings" id="settings-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 card-title" data-i18n="settings.heading"></h2>
+            <p class="text-body-secondary" data-i18n="settings.description"></p>
+            <p class="small text-body-secondary mb-1"><code id="settings-file"></code></p>
+            <p id="settings-secret" class="small text-body-secondary"></p>
+
+            <div id="settings-invalid" class="alert alert-danger settings-help" role="alert" hidden></div>
+            <div id="settings-stale" class="alert alert-warning" role="alert" data-i18n="settings.stale" hidden></div>
+            <div id="settings-read-only" class="alert alert-secondary" role="status" data-i18n="settings.read_only" hidden></div>
+
+            <form id="settings-form" autocomplete="off" novalidate>
+              <div id="settings-sections"></div>
+              <div id="settings-problems" class="alert alert-danger settings-help" role="alert" hidden></div>
+              <div id="settings-changed" class="alert alert-warning d-flex align-items-center gap-2" role="alert" hidden>
+                <span class="me-auto" data-i18n="settings.changed_on_disk"></span>
+              </div>
+              <div class="settings-actions row-actions">
+                <button type="submit" id="settings-save" class="btn btn-primary" data-i18n="settings.save_button" disabled></button>
+                <button type="button" id="settings-reload" class="btn btn-outline-secondary" data-i18n="settings.reload_button"></button>
+                <span id="settings-unsaved" class="small text-body-secondary"></span>
+              </div>
+            </form>
           </div>
         </section>
       </section>
@@ -888,6 +1223,40 @@
     </div>
   </div>
 
+  <!-- Asks before anything that cannot be taken back: see Dom.confirm. -->
+  <div id="confirm-modal" class="modal fade" tabindex="-1" aria-labelledby="confirm-text" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div id="confirm-text" class="modal-body"></div>
+        <div class="modal-footer">
+          <button id="confirm-cancel" type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="ui.cancel"></button>
+          <button id="confirm-ok" type="button" class="btn btn-danger" data-i18n="ui.confirm"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A small form in a dialog: see Dom.form, which fills it in. -->
+  <div id="form-modal" class="modal fade" tabindex="-1" aria-labelledby="form-modal-title" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form id="form-modal-form" autocomplete="off">
+          <div class="modal-header">
+            <h2 id="form-modal-title" class="modal-title fs-5"></h2>
+          </div>
+          <div class="modal-body">
+            <div id="form-modal-fields" class="vstack gap-3"></div>
+            <div id="form-modal-problem" class="alert alert-danger mt-3 mb-0" role="alert" hidden></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="ui.cancel"></button>
+            <button id="form-modal-save" type="submit" class="btn btn-primary"></button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!--
     Plain scripts in dependency order. No bundler, no modules that need a
     build step: each file adds one global and the browser runs them as-is.
@@ -895,11 +1264,16 @@
     the Content-Security-Policy can stay locked to 'self'.
   -->
   <script src="/vendor/bootstrap.bundle.min.js"></script>
+  <script src="/vendor/qrcode.js"></script>
   <script src="/js/dom.js"></script>
+  <script src="/js/qr.js"></script>
+  <script src="/js/login_links.js"></script>
   <script src="/js/i18n.js"></script>
   <script src="/js/undo.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/track.js"></script>
   <script src="/js/nav.js"></script>
+  <script src="/js/pager.js"></script>
   <script src="/js/media/genres.js"></script>
   <script src="/js/query/search.js"></script>
   <script src="/js/query/filters.js"></script>
@@ -933,9 +1307,15 @@
   <script src="/js/screens/jobs.js"></script>
   <script src="/js/screens/playlists.js"></script>
   <script src="/js/keys.js"></script>
+  <script src="/js/sessions.js"></script>
   <script src="/js/join.js"></script>
   <script src="/js/pin.js"></script>
+  <script src="/js/password.js"></script>
+  <script src="/js/two_factor.js"></script>
   <script src="/js/invites.js"></script>
+  <script src="/js/logs.js"></script>
+  <script src="/js/settings.js"></script>
+  <script src="/js/fresh.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

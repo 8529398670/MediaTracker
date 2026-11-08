@@ -4,6 +4,9 @@ rem Windows twin of run.sh: same commands, same behavior, except where noted.
 rem
 rem   scripts\run.bat                    create/update .venv if needed, stop the copy
 rem                              this checkout started last, start a fresh one
+rem   scripts\run.bat stop               stop the copy this checkout started (in
+rem                              this window, another, or the hidden one
+rem                              scripts\login.bat --background starts)
 rem   scripts\run.bat manage <command>   run an admin command against it (see below)
 rem   scripts\run.bat <anything else>    same: passed straight to `python -m app`
 rem
@@ -49,6 +52,14 @@ set "PYTHON=%VENV%\Scripts\python.exe"
 rem The app\requirements.txt that was last installed successfully. Any edit to the
 rem real one makes them differ, which is the signal to install again.
 set "STAMP=%VENV%\.requirements.stamp"
+
+if /i not "%~1"=="stop" goto not_stop
+if not "%~2"=="" goto not_stop
+rem The same stop as :stop_old below, when there is nothing to start after it.
+set "RUN_PYTHON=%PYTHON%"
+powershell -NoProfile -Command "$all = @(Get-CimInstance Win32_Process); $old = @($all | Where-Object { $_.ExecutablePath -eq $env:RUN_PYTHON -and $_.CommandLine -match '\s-m\s+app\s*$' }); if (-not $old) { Write-Host 'No server started by this checkout is running.'; exit }; $ids = @($old.ProcessId) + @($all | Where-Object { $old.ProcessId -contains $_.ParentProcessId } | ForEach-Object { $_.ProcessId }); foreach ($p in $old) { Write-Host ('Stopping the server this checkout started (pid ' + $p.ProcessId + ', running since ' + $p.CreationDate + ')...'); taskkill.exe /T /F /PID $p.ProcessId | Out-Null }; foreach ($id in $ids) { Wait-Process -Id $id -Timeout 15 -ErrorAction SilentlyContinue }; Write-Host 'Stopped.'"
+exit /b 0
+:not_stop
 
 rem The venv's own python is called by path rather than activating the venv:
 rem it finds its packages either way, and nothing here depends on PATH.
@@ -102,13 +113,14 @@ rem clone has none. Without one here the app would quietly create
 rem %USERPROFILE%\.config\media-tracker\config.yaml instead, which is not the
 rem file this checkout's docker\run.sh reads. Write it here and stop, like
 rem docker\run.sh, so it gets looked at before the first start.
-if "%config_exists%"=="true" goto stop_old
+if "%config_exists%"=="true" goto migrate
 "%PYTHON%" -m app config init --file .\config\config.yaml >nul
 if errorlevel 1 exit /b 1
 call :read_config
 echo First run: wrote %config_file%
-echo   (with a new secret key -- back it up with the database; it is the only
-echo   thing that can read it).
+echo   and %secret_file%
+echo   (secret.key holds a new key -- back it up with the database; it is the
+echo   only thing that can read it).
 echo.
 echo It will serve %url%
 echo   (from %url_source%).
@@ -123,8 +135,21 @@ echo.
 echo     secure_cookies: true   -^>   secure_cookies: false
 :first_done
 echo.
-echo Then run scripts\run.bat again.
+echo Most settings can be changed later while the server runs, from the owner's
+echo Settings screen or by editing config.yaml. Then run scripts\run.bat again.
 exit /b 0
+
+:migrate
+rem A config.yaml from before secret.key existed has the key inside it. Move it
+rem out now, before anything starts, so the window says so. Silent otherwise.
+"%PYTHON%" -m app config migrate --file .\config\config.yaml
+if errorlevel 1 exit /b 1
+call :read_config
+if "%secret_exists%"=="true" goto stop_old
+if not "%database_exists%"=="true" goto stop_old
+echo ERROR: %secret_file% is missing, and %database% exists.
+echo        Restore secret.key from your backup: a new key cannot read the database.
+exit /b 1
 
 :stop_old
 rem Stop the copy this checkout started last. .venv\Scripts\python.exe is a

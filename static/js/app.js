@@ -1,10 +1,11 @@
 // Page logic for the account + admin screen this template ships with.
 //
 // Most projects will replace much of this file. What is worth keeping is the
-// shape: load the language file, ask /api/me once, then branch on
-// authenticated/role. Do not re-check the session anywhere else -- the server
-// is the authority, and a second client-side notion of "am I logged in" is
-// how the two drift apart.
+// shape: load the language file, ask /api/me, then branch on
+// authenticated/role. Do not keep a second client-side notion of "am I logged
+// in" -- the server is the authority, and guessing is how the two drift apart.
+// When the page needs to know again it asks again: see fresh.js, and the 401
+// handling in api.js.
 //
 // New screens belong in their own file under /js/ with their own init(),
 // rather than being appended here until this becomes the monolith the rest of
@@ -20,9 +21,17 @@ const App = {
     } catch ( error ) {
       // Without the language file every label is blank, so say something in
       // the one place that can afford a hardcoded string.
-      Dom.text( Dom.get( "error-banner" ) , "Could not load language file." );
+      Dom.text( Dom.get( "error-banner-text" ) , "Could not load language file." );
+      Dom.show( Dom.get( "error-copy-button" ) , false );
       Dom.show( Dom.get( "error-banner" ) , true );
     }
+
+    Dom.all( "input[type=password]" ).forEach( ( input ) => Dom.revealable( input ) );
+    // Not a plain #main link: the hash is which screen is showing.
+    Dom.get( "skip-link" ).addEventListener( "click" , ( event ) => {
+      event.preventDefault();
+      Dom.get( "main" ).focus();
+    } );
 
     let me = { authenticated: false };
     try {
@@ -52,12 +61,19 @@ const App = {
   renderSignedOut() {
     Dom.show( Dom.get( "signed-out" ) , true );
     // A failed login lands here with ?login=invalid rather than explaining
-    // what was wrong with the link -- see app/routes/auth.py.
+    // what was wrong with the link -- see routes/auth.go.
     const params = new URLSearchParams( window.location.search );
     if ( params.get( "login" ) === "invalid" ) {
       const banner = Dom.get( "invalid-link" );
       if ( I18n.get( "signed_out.invalid_link" ) !== "" ) Dom.show( banner , true );
     }
+    if ( params.get( "login" ) === "expired" ) {
+      Dom.show( Dom.get( "sign-in-expired" ) , I18n.get( "signed_out.sign_in_expired" ) !== "" );
+    }
+    if ( params.get( "login" ) === "ended" ) {
+      Dom.show( Dom.get( "session-ended" ) , I18n.get( "signed_out.session_ended" ) !== "" );
+    }
+    Password.initLogin();
   },
 
   // A login link is /login/<credential>, and the server answers it with this
@@ -92,7 +108,11 @@ const App = {
     button.addEventListener( "click" , async () => {
       button.disabled = true;
       try {
-        await Api.login( this.loginCredential() );
+        const result = await Api.login( this.loginCredential() );
+        if ( result.two_factor ) {
+          TwoFactor.ask( result.challenge );
+          return;
+        }
         // replace, not assign: the link should not stay in the back button.
         window.location.replace( "/" );
       } catch ( error ) {
@@ -108,22 +128,64 @@ const App = {
     } );
   },
 
+  // Says so on every screen, so nobody wonders why a change was refused and
+  // the owner, whom the mode lets through, cannot leave it on by accident.
+  showMaintenance( me ) {
+    const banner = Dom.get( "maintenance-banner" );
+    const on = me.maintenance === "read_only" || me.maintenance === "full";
+    if ( on ) Dom.text( banner , I18n.get( "maintenance." + me.maintenance + "_banner" ) );
+    Dom.show( banner , on );
+  },
+
+  // What the owner wants everyone to read. Dismissing it is remembered against
+  // its text, so the next message shows up however the last one went.
+  showAnnouncement( me ) {
+    const text = me.announcement || "";
+    let dismissed = "";
+    try {
+      dismissed = window.localStorage.getItem( "announcement-dismissed" ) || "";
+    } catch ( error ) { /* storage blocked: it comes back on the next load */ }
+    Dom.text( Dom.get( "announcement-text" ) , text );
+    Dom.show( Dom.get( "announcement-banner" ) , text !== "" && text !== dismissed );
+  },
+
+  onDismissAnnouncement() {
+    Dom.show( Dom.get( "announcement-banner" ) , false );
+    try {
+      window.localStorage.setItem( "announcement-dismissed" , Dom.get( "announcement-text" ).textContent );
+    } catch ( error ) { /* storage blocked: it comes back on the next load */ }
+  },
+
   async renderSignedIn( me ) {
+    Dom.show( Dom.get( "app-loading" ) , true );
     Dom.show( Dom.get( "signed-in" ) , true );
+    this.showMaintenance( me );
+    this.showAnnouncement( me );
+    Dom.get( "announcement-dismiss" ).addEventListener( "click" , () => this.onDismissAnnouncement() );
     Dom.show( Dom.get( "app-nav" ) , true );
     this.labelAccount();
     Theme.render( Dom.get( "theme-picker" ) );
     Dom.get( "display-name" ).value = me.display_name;
 
-    Dom.get( "rename-form" ).addEventListener( "submit" , this.onRename.bind( this ) );
+    Dom.onSubmit( Dom.get( "rename-form" ) , this.onRename.bind( this ) );
     Dom.get( "logout-button" ).addEventListener( "click" , this.onLogout.bind( this ) );
-    Dom.get( "my-link-button" ).addEventListener( "click" , this.onMyLoginLink.bind( this ) );
+    Dom.onPress( Dom.get( "my-link-button" ) , this.onMyLoginLink.bind( this ) );
+    Dom.get( "my-link-cancel-button" ).addEventListener( "click" , this.onCancelMyLoginLink.bind( this ) );
+    this.showMyLiveLink( me.login_link );
     Dom.get( "my-link-copy-button" ).addEventListener( "click" , () => Dom.copy( Dom.get( "my-link-value" ) ) );
+    Qr.toggle( Dom.get( "my-link-qr-button" ) , Dom.get( "my-link-qr" ) , Dom.get( "my-link-value" ) );
 
     // Each screen owns its own file and its own init(). These lines are the
     // only place that knows which screens exist.
+    Track.init( me );
     Pin.init( me );
-    await Keys.init( me );
+    Password.init( me );
+    TwoFactor.init( me );
+    Fresh.init( me );
+    // Side by side: the wait is the slowest screen, not all of them added up.
+    const loading = [];
+    loading.push( Keys.init( me ) );
+    loading.push( Sessions.init() );
 
     // The library first: everything below draws from it.
     try {
@@ -146,11 +208,33 @@ const App = {
 
     if ( me.role === "admin" ) {
       Dom.show( Dom.get( "admin-panel" ) , true );
-      Dom.get( "create-user-form" ).addEventListener( "submit" , this.onCreateUser.bind( this ) );
+      LoginLinks.fill( Dom.get( "new-uses" ) , Dom.get( "new-expires" ) );
+      Dom.onSubmit( Dom.get( "create-user-form" ) , this.onCreateUser.bind( this ) );
       Dom.get( "copy-link-button" ).addEventListener( "click" , this.onCopyLink.bind( this ) );
-      await this.refreshUsers();
-      await Invites.init( me );
+      Qr.toggle( Dom.get( "login-link-qr-button" ) , Dom.get( "login-link-qr" ) , Dom.get( "login-link-value" ) );
+      Pager.search( "users-table" , "users-search" , () => this.refreshUsers() );
+      Dom.get( "user-sessions-close" ).addEventListener( "click" , () => Sessions.closeFor() );
+      Pager.sortable( "users-table" , () => this.refreshUsers() );
+      // Only the owner gets the Logs, Jobs, Webhooks and Settings screens; each init
+      // checks is_owner.
+      loading.push( this.refreshUsers() );
+      loading.push( Invites.init( me ) );
+      loading.push( Logs.init( me ) );
+      loading.push( Settings.init( me ) );
+      const version = I18n.get( "nav.version" );
+      if ( version !== "" ) {
+        Dom.text( Dom.get( "sidebar-version" ) , version.replace( "{version}" , me.version ) );
+        Dom.show( Dom.get( "sidebar-version" ) , true );
+      }
     }
+
+    // allSettled, not all: Nav.init has to run whatever else went wrong, or
+    // one screen's failure would leave no screen showing at all.
+    const results = await Promise.allSettled( loading );
+    results.forEach( ( result ) => {
+      if ( result.status === "rejected" ) this.showError( result.reason.message );
+    } );
+    Dom.show( Dom.get( "app-loading" ) , false );
 
     // Last, so the sidebar offers exactly the screens the lines above un-hid.
     Nav.init();
@@ -186,7 +270,10 @@ const App = {
     event.preventDefault();
     const value = Dom.get( "display-name" ).value.trim();
     const previous = this.currentUser.display_name;
-    if ( value === previous ) return;
+    if ( value === previous ) {
+      Dom.toast( I18n.get( "ui.unchanged" ) , "ok" );
+      return;
+    }
     try {
       await this.applyRename( value , previous );
     } catch ( error ) {
@@ -221,13 +308,46 @@ const App = {
     Dom.text( Dom.get( "sidebar-user" ) , user.display_name + " (" + user.role + ")" );
   },
 
-  // A fresh one-time link for this account, to open on another device. The
-  // server only allows it from a browser session, never an API key.
+  // A fresh link for this account, to open on another device: once, or
+  // several times until it expires. The server only allows it from a browser
+  // session, never an API key.
   async onMyLoginLink() {
+    const issued = await Dom.form( {
+      title: I18n.get( "account.device_heading" ),
+      submit: I18n.get( "login_links.make_button" ),
+      fields: LoginLinks.fields(),
+      save: ( values ) => Api.createMyLoginLink( LoginLinks.body( values.uses , values.expires ) ),
+    } );
+    if ( !issued ) return;
+    Dom.text( Dom.get( "my-link-value" ) , window.location.origin + issued.login_path );
+    Dom.text( Dom.get( "my-link-notice" ) , I18n.get( "account.device_link_notice" ).replace( "{summary}" , () => LoginLinks.summary( issued ) ) );
+    Qr.hide( Dom.get( "my-link-qr" ) );
+    Dom.show( Dom.get( "my-link-box" ) , true );
+    await this.refreshMyLiveLink();
+    if ( this.currentUser.role === "admin" ) await this.refreshUsers();
+  },
+
+  // The link this account could still sign in with, above the button.
+  showMyLiveLink( link ) {
+    Dom.show( Dom.get( "my-live-link" ) , Boolean( link ) );
+    if ( link ) Dom.text( Dom.get( "my-live-link-text" ) , LoginLinks.live( link , "my_live" ) );
+  },
+
+  async refreshMyLiveLink() {
     try {
-      const issued = await Api.createMyLoginLink();
-      Dom.text( Dom.get( "my-link-value" ) , window.location.origin + issued.login_path );
-      Dom.show( Dom.get( "my-link-box" ) , true );
+      const me = await Api.me();
+      this.showMyLiveLink( me.login_link );
+    } catch ( error ) { /* the line is a convenience; the next load shows it */ }
+  },
+
+  async onCancelMyLoginLink() {
+    if ( !( await Dom.confirm( I18n.get( "login_links.my_cancel_confirm" ) ) ) ) return;
+    try {
+      await Api.cancelMyLoginLink();
+      this.showMyLiveLink( null );
+      Dom.show( Dom.get( "my-link-box" ) , false );
+      if ( this.currentUser.role === "admin" ) await this.refreshUsers();
+      Dom.toast( I18n.get( "login_links.my_cancelled_toast" ) , "ok" );
     } catch ( error ) {
       this.showError( error.message );
     }
@@ -247,9 +367,10 @@ const App = {
     event.preventDefault();
     const name = Dom.get( "new-name" ).value.trim();
     const role = Dom.get( "new-role" ).value;
+    const options = LoginLinks.body( Dom.get( "new-uses" ).value , Dom.get( "new-expires" ).value );
     try {
-      const created = await Api.createUser( name , role );
-      this.showLoginLink( created.login_path );
+      const created = await Api.createUser( name , role , options );
+      this.showLoginLink( created , name );
       Dom.get( "new-name" ).value = "";
       await this.refreshUsers();
     } catch ( error ) {
@@ -259,27 +380,33 @@ const App = {
 
   // The server returns a path, not a full URL: behind a reverse proxy it does
   // not reliably know its own public origin, whereas the browser always does.
-  showLoginLink( loginPath ) {
-    Dom.text( Dom.get( "login-link-value" ) , window.location.origin + loginPath );
-    Dom.show( Dom.get( "login-link-box" ) , true );
+  // issued is the server's answer: the path and what the link allows.
+  showLoginLink( issued , name ) {
+    const box = Dom.get( "login-link-box" );
+    Dom.text( Dom.get( "login-link-for" ) , I18n.get( "admin.link_for" ).replace( "{name}" , () => name ) );
+    Dom.text( Dom.get( "login-link-notice" ) , I18n.get( "admin.link_notice" ).replace( "{summary}" , () => LoginLinks.summary( issued ) ) );
+    Dom.text( Dom.get( "login-link-value" ) , window.location.origin + issued.login_path );
+    Qr.hide( Dom.get( "login-link-qr" ) );
+    Dom.show( box , true );
+    // The row that asked for it may be a long way down the Users table.
+    box.scrollIntoView( { block: "nearest" } );
   },
 
   async onCopyLink() {
     await Dom.copy( Dom.get( "login-link-value" ) );
   },
 
+  // A name or a role shows on the other admin screens too: All keys lists
+  // whose each key is, and a link stops when its maker stops being an admin.
+  async refreshAfterUserChange() {
+    await App.refreshUsers();
+    if ( App.currentUser.api_keys_enabled ) await Keys.refreshAll();
+    if ( App.currentUser.invite_links_enabled !== false ) await Invites.refresh();
+  },
+
   async refreshUsers() {
     const body = Dom.get( "users-table" ).querySelector( "tbody" );
-    let users = [];
-    try {
-      users = await Api.listUsers();
-    } catch ( error ) {
-      this.showError( error.message );
-      return;
-    }
-
-    Dom.clear( body );
-    users.forEach( function ( user ) {
+    await Pager.load( "users-table" , "users" , ( offset ) => Api.listUsers( offset , Pager.params( "users-table" ) ) , function ( user ) {
       const statusKey = user.disabled ? "admin.status_disabled" : "admin.status_active";
       const statusTone = user.disabled ? "secondary" : "success";
 
@@ -287,9 +414,33 @@ const App = {
         class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( "admin.reissue_button" ),
         on: { click: async function () {
+          const issued = await Dom.form( {
+            title: I18n.get( "admin.reissue_heading" ).replace( "{name}" , () => user.display_name ),
+            submit: I18n.get( "login_links.make_button" ),
+            fields: LoginLinks.fields( I18n.get( "admin.reissue_confirm" ).replace( "{name}" , () => user.display_name ) ),
+            save: ( values ) => Api.reissueLogin( user.id , LoginLinks.body( values.uses , values.expires ) ),
+          } );
+          if ( !issued ) return;
+          App.showLoginLink( issued , user.display_name );
+          await App.refreshUsers();
+          if ( user.id === App.currentUser.id ) await App.refreshMyLiveLink();
+        } },
+      } );
+
+      // A link they could still use: stop it without making another.
+      const cancelLinkButton = !user.login_link ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-danger",
+        text: I18n.get( "login_links.cancel_button" ),
+        on: { click: async function () {
+          const question = I18n.get( "login_links.cancel_confirm" ).replace( "{name}" , () => user.display_name );
+          if ( !( await Dom.confirm( question ) ) ) return;
           try {
-            const issued = await Api.reissueLogin( user.id );
-            App.showLoginLink( issued.login_path );
+            await Api.cancelLoginLink( user.id );
+            // The box may still be showing the link just cancelled.
+            Dom.show( Dom.get( "login-link-box" ) , false );
+            await App.refreshUsers();
+            if ( user.id === App.currentUser.id ) App.showMyLiveLink( null );
+            Dom.toast( I18n.get( "login_links.cancelled_toast" ).replace( "{name}" , () => user.display_name ) , "ok" );
           } catch ( error ) { App.showError( error.message ); }
         } },
       } );
@@ -309,23 +460,68 @@ const App = {
         text: I18n.get( "admin.revoke_button" ),
         on: { click: async function () {
           const question = I18n.get( "admin.revoke_confirm" ).replace( "{name}" , user.display_name );
-          if ( question !== "" && !window.confirm( question ) ) return;
+          if ( !( await Dom.confirm( question ) ) ) return;
           try {
             await Api.revokeAccess( user.id );
             if ( App.currentUser.api_keys_enabled ) await Keys.refreshAll();
+            Dom.toast( I18n.get( "admin.revoked_toast" ).replace( "{name}" , () => user.display_name ) , "ok" );
           } catch ( error ) { App.showError( error.message ); }
         } },
       } );
 
+      // Disabling asks first and is not undoable, like a revoke: it ends their
+      // sessions and unused links, and enabling does not bring those back.
       const toggleButton = isProtected ? null : Dom.el( "button" , {
         class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( user.disabled ? "admin.enable_button" : "admin.disable_button" ),
         on: { click: async function () {
+          if ( !user.disabled ) {
+            const question = I18n.get( "admin.disable_confirm" ).replace( "{name}" , user.display_name );
+            if ( !( await Dom.confirm( question ) ) ) return;
+          }
           try {
             await Api.setDisabled( user.id , !user.disabled );
             await App.refreshUsers();
+            Dom.toast( I18n.get( user.disabled ? "admin.enabled_toast" : "admin.disabled_toast" ).replace( "{name}" , user.display_name ) , "ok" );
           } catch ( error ) { App.showError( error.message ); }
         } },
+      } );
+
+      // Who may change what follows the delete rules, but any admin may make
+      // another. Both ask first and neither can undo: becoming an admin ends
+      // their sessions, which nothing brings back.
+      const mayManage = user.role !== "admin" || App.currentUser.is_owner;
+      const newRole = user.role === "admin" ? "user" : "admin";
+      const roleButton = isProtected || !mayManage ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-secondary",
+        text: I18n.get( "admin.make_" + newRole + "_button" ),
+        on: { click: async function () {
+          const question = I18n.get( "admin.make_" + newRole + "_confirm" ).replace( "{name}" , () => user.display_name );
+          if ( !( await Dom.confirm( question ) ) ) return;
+          try {
+            await Api.setUserRole( user.id , newRole );
+            await App.refreshAfterUserChange();
+            Dom.toast( I18n.get( "admin.role_changed_toast" ).replace( "{name}" , () => user.display_name ).replace( "{role}" , newRole ) , "ok" );
+          } catch ( error ) { App.showError( error.message ); }
+        } },
+      } );
+
+      // Your own name is on the Account screen. It edits in place, and is
+      // built with textContent: a display name is user-controlled input.
+      const nameCell = isSelf || !mayManage ? Dom.el( "span" , { text: user.display_name } ) : Dom.editable( user.display_name , {
+        label: I18n.get( "admin.table_name" ),
+        maxLength: 80,
+        save: async function ( value ) {
+          const previous = user.display_name;
+          await Api.renameUser( user.id , value , previous );
+          user.display_name = value;
+          Undo.record( {
+            label: I18n.get( "undo.rename" ),
+            toast: true,
+            undo: async () => { await Api.renameUser( user.id , previous , value ); await App.refreshAfterUserChange(); },
+            redo: async () => { await Api.renameUser( user.id , value , previous ); await App.refreshAfterUserChange(); },
+          } );
+        },
       } );
 
       // Deleting removes the account and everything it held, for good. Any
@@ -336,11 +532,50 @@ const App = {
         text: I18n.get( "admin.delete_button" ),
         on: { click: async function () {
           const question = I18n.get( "admin.delete_confirm" ).replace( "{name}" , user.display_name );
-          if ( question !== "" && !window.confirm( question ) ) return;
+          if ( !( await Dom.confirm( question ) ) ) return;
           try {
             await Api.deleteUser( user.id );
             await App.refreshUsers();
             if ( App.currentUser.api_keys_enabled ) await Keys.refreshAll();
+          } catch ( error ) { App.showError( error.message ); }
+        } },
+      } );
+
+      // Only for someone who lost their phone and recovery codes. Who may
+      // reset whom follows the delete rules; the owner's is shell-only.
+      const canReset = user.two_factor && !isProtected && ( user.role !== "admin" || App.currentUser.is_owner );
+      const resetButton = !canReset ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-danger",
+        text: I18n.get( "admin.reset_two_factor_button" ),
+        on: { click: async function () {
+          const question = I18n.get( "admin.reset_two_factor_confirm" ).replace( "{name}" , user.display_name );
+          if ( !( await Dom.confirm( question ) ) ) return;
+          try {
+            await Api.resetTwoFactor( user.id );
+            await App.refreshUsers();
+            Dom.toast( I18n.get( "admin.two_factor_reset_toast" ).replace( "{name}" , () => user.display_name ) , "ok" );
+          } catch ( error ) { App.showError( error.message ); }
+        } },
+      } );
+
+      // Where they are signed in. The owner's are the owner's own, which the
+      // server would refuse.
+      const sessionsButton = user.owner && !App.currentUser.is_owner ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-secondary",
+        text: I18n.get( "admin.sessions_button" ),
+        on: { click: () => Sessions.showFor( user ) },
+      } );
+
+      // The owner's per-account password switch. Everyone else gets a 404
+      // from the server, so it is not offered.
+      const canBlock = App.currentUser.is_owner && App.currentUser.passwords_enabled;
+      const passwordButton = !canBlock ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-secondary",
+        text: I18n.get( user.password_blocked ? "admin.allow_password_button" : "admin.block_password_button" ),
+        on: { click: async function () {
+          try {
+            await Api.setPasswordAccess( user.id , user.password_blocked );
+            await App.refreshUsers();
           } catch ( error ) { App.showError( error.message ); }
         } },
       } );
@@ -350,12 +585,30 @@ const App = {
 
       // Built with createElement + textContent, never an HTML string: a
       // display name is user-controlled input.
+      // The username is what they sign in with, so it is under the name, not
+      // instead of it. An account with no password has none.
+      const username = user.username ? Dom.el( "div" , { class: "small text-body-secondary" , text: user.username } ) : null;
+      const status = [ Dom.badge( I18n.get( statusKey ) , statusTone ) ];
+      if ( user.two_factor ) status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( I18n.get( "admin.two_factor_badge" ) , "secondary" ) ] } ) );
+      if ( user.login_link ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , text: LoginLinks.live( user.login_link , "live" ) } ) );
+
       body.appendChild( Dom.el( "tr" , { children: [
-        Dom.el( "td" , { text: user.display_name } ),
+        Dom.el( "td" , { children: [ nameCell , username ].filter( Boolean ) } ),
         Dom.el( "td" , { text: roleText } ),
-        Dom.el( "td" , { children: [ Dom.badge( I18n.get( statusKey ) , statusTone ) ] } ),
+        Dom.el( "td" , { children: status } ),
+        Dom.el( "td" , { class: "text-nowrap" , children: [ Dom.when( user.created_at ) ] } ),
         Dom.el( "td" , { children: [
-          Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , revokeButton , toggleButton , deleteButton ].filter( Boolean ) } ),
+          Dom.rowActions( user.display_name , [
+            reissueButton,
+            cancelLinkButton,
+            sessionsButton,
+            passwordButton,
+            roleButton,
+            resetButton,
+            revokeButton,
+            toggleButton,
+            deleteButton,
+          ] ),
         ] } ),
       ] } ) );
     } );
@@ -365,9 +618,29 @@ const App = {
   // invite_link_full, ...); language.yaml's errors section words those.
   showError( message ) {
     const banner = Dom.get( "error-banner" );
+    const text = Dom.get( "error-banner-text" );
     const worded = message ? I18n.get( "errors." + message ) : "";
-    Dom.text( banner , worded || message || I18n.get( "errors.generic" ) );
-    Dom.flash( banner , 5000 );
+    Dom.text( text , worded || message || I18n.get( "errors.generic" ) );
+    const copy = Dom.get( "error-copy-button" );
+    Dom.show( copy , I18n.get( "ui.copy" ) !== "" );
+    copy.onclick = () => Dom.copy( text );
+    // It stays until it is closed or replaced: it may hold a reference to quote.
+    Dom.show( banner , true );
+    // It sits at the top of the screen, which may be scrolled well past.
+    banner.scrollIntoView( { block: "nearest" } );
+  },
+
+  // A refusal about one field goes beside that field, and anything else to the
+  // banner. fields maps error codes to input ids. A field that is not on screen
+  // cannot show it, so that goes to the banner too.
+  showFieldError( message , fields ) {
+    const input = Dom.get( fields[ message ] );
+    if ( !input || input.offsetParent === null ) {
+      this.showError( message );
+      return;
+    }
+    Dom.fieldError( input , Dom.worded( { message: message } ) );
+    input.focus();
   },
 };
 

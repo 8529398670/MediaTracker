@@ -10,8 +10,14 @@ data/
 *.db
 *.db-wal
 *.db-shm
-# Holds the secret key: never in an image layer, which is forever.
+# The secret key, and this deployment's settings: never in an image layer,
+# which is forever. Both are mounted at run time (docker/run.sh).
 config/config.yaml
+config/secret.key
+**/secret.key
+**/secret.key.*
+config/config.yaml.*
+config/.config.yaml.*
 *.md
 docker/
 scripts/

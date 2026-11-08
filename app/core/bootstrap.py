@@ -2,7 +2,7 @@
 can mint a login link, and on a fresh database there is no admin to do it.
 
 So on first boot -- and only when no enabled admin exists -- the server
-creates one and prints a one-time login link to its own logs. Whoever can read
+creates one and prints a login link (one-time) to its own logs. Whoever can read
 the container logs is already trusted with the deployment, so this grants
 nothing they did not already have, and it means a fresh deploy is usable
 without a separate setup command.
@@ -19,18 +19,6 @@ from app.models import login_tokens, users
 RULE = "-" * 72
 
 
-def describe_seconds(seconds: int) -> str:
-    if seconds % 86400 == 0:
-        count, unit = seconds // 86400, "day"
-    elif seconds % 3600 == 0:
-        count, unit = seconds // 3600, "hour"
-    elif seconds % 60 == 0:
-        count, unit = seconds // 60, "minute"
-    else:
-        count, unit = seconds, "second"
-    return f"{count} {unit}{'' if count == 1 else 's'}"
-
-
 def ensure_first_admin(store: Store, cfg: Config, display_name: str = "Admin") -> None:
     """A no-op once any enabled admin exists, so restarting the container does
     not keep minting new admin accounts.
@@ -42,22 +30,25 @@ def ensure_first_admin(store: Store, cfg: Config, display_name: str = "Admin") -
     if users.any_admin_exists(store):
         return
     user = users.create_user(store, display_name, users.ROLE_ADMIN)
-    credential = login_tokens.issue_login_token(store, user.id, cfg.login_token_ttl_seconds)
-    print_login_link(cfg, f"first-run admin {display_name!r}", credential)
+    credential, info = login_tokens.issue_login_link(store, user.id, login_tokens.once(cfg.login_token_ttl_seconds))
+    print_login_link(cfg, f"first-run admin {display_name!r}", credential, info)
 
 
-def print_login_link(cfg: Config, label: str, credential: str) -> None:
+def print_login_link(cfg: Config, label: str, credential: str, info: dict) -> None:
     """The one moment a login credential is ever visible, as one full URL you
     can click. The address is server.public_url when set; without it the
     server only knows its own listen address, which the note under it says
-    rather than leaving a confidently wrong host unexplained."""
+    rather than leaving a confidently wrong host unexplained.
+
+    The header says LOGIN LINK whatever the link allows; scripts/login.sh and
+    docker/run.sh find the link by it."""
     lines = [
         RULE,
-        f"  ONE-TIME LOGIN LINK -- {label}",
+        f"  LOGIN LINK -- {label}",
         RULE,
         f"  {cfg.url}/login/{credential}",
         RULE,
-        f"  Valid once, for {describe_seconds(cfg.login_token_ttl_seconds)}.",
+        f"  {login_tokens.describe_link(info)}",
         _link_note(cfg),
         "  It is not stored anywhere and cannot be shown again -- if you lose",
         "  it, mint another with scripts/login.sh (or: python -m app manage",

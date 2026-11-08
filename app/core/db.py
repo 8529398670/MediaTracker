@@ -2,7 +2,7 @@
 
 Every model goes through this module and nothing else touches SQLite. Each
 record is a JSON document, and with server.encrypt_at_rest on (the default)
-it is XChaCha-encrypted with server.secret_key before it is written. Doing
+it is XChaCha-encrypted with the key in secret.key before it is written. Doing
 that here, in encode/decode, is what makes at-rest encryption a single switch
 instead of something each model has to remember -- and it means the answer to
 "where does data get written" is one file.
@@ -28,10 +28,12 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Sequence
 
-from app.core import encryption
+from app.core import encryption, server_lock
 
 # Bucket names. Add new ones here and to BUCKETS so their tables are created
 # at startup -- a table that only gets created on first write is an
@@ -41,6 +43,13 @@ BUCKET_SESSIONS = "sessions"
 BUCKET_LOGIN_TOKENS = "login_tokens"
 BUCKET_API_KEYS = "api_keys"
 BUCKET_INVITE_LINKS = "invite_links"
+BUCKET_SIGN_IN_CHALLENGES = "sign_in_challenges"
+BUCKET_JOBS = "jobs"
+BUCKET_WEBHOOKS = "webhooks"
+# The outbox: see app/core/webhooks.py.
+BUCKET_WEBHOOK_DELIVERIES = "webhook_deliveries"
+# Describes uploads; the bytes are on disk. See app/models/files.py.
+BUCKET_FILES = "files"
 BUCKET_META = "meta"
 
 # The media library. Titles are shared by everyone; user_state is one
@@ -68,6 +77,11 @@ BUCKETS = (
     BUCKET_LOGIN_TOKENS,
     BUCKET_API_KEYS,
     BUCKET_INVITE_LINKS,
+    BUCKET_SIGN_IN_CHALLENGES,
+    BUCKET_JOBS,
+    BUCKET_WEBHOOKS,
+    BUCKET_WEBHOOK_DELIVERIES,
+    BUCKET_FILES,
     BUCKET_META,
     BUCKET_TITLES,
     BUCKET_USER_STATE,
@@ -93,7 +107,7 @@ Key = int | str
 
 class DecodeError(Exception):
     """A stored record that cannot be read back -- almost always a
-    server.secret_key that is not the one the record was written with."""
+    secret.key that is not the one the record was written with."""
 
 
 def _table(bucket: str) -> str:
@@ -158,6 +172,21 @@ class Store:
                 "CREATE TABLE IF NOT EXISTS sequences (bucket TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)"
             )
 
+    def schema_version(self) -> int:
+        """The version this database is at. See "data migrations" below."""
+        with self._connection() as connection:
+            return connection.execute("PRAGMA user_version").fetchone()[0]
+
+    def snapshot(self, path: Path) -> None:
+        """Write a consistent copy of the database to path while the server
+        goes on working: VACUUM INTO reads one fixed moment, and picks up what
+        is still in the -wal file, which copying app.db would miss. The file
+        keeps its encryption, so it needs the same key to read. Made 0600 up
+        front, because SQLite would otherwise use the umask."""
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        with self._connection() as connection:
+            connection.execute("VACUUM INTO ?", (str(path),))
+
     # -- encoding ----------------------------------------------------------
 
     def encode(self, record: Record) -> bytes:
@@ -173,8 +202,8 @@ class Store:
                 plain = encryption.xchacha_decrypt_bytes(self._secret_key, bytes(raw))
             except encryption.CipherTextError:
                 raise DecodeError(
-                    "could not decrypt a stored record -- is server.secret_key in config.yaml "
-                    "the same one it was written with?"
+                    "could not decrypt a stored record -- is secret.key "
+                    "the same key it was written with?"
                 ) from None
         try:
             return json.loads(plain)
@@ -273,6 +302,10 @@ class Transaction:
         self._store = store
         self._connection = connection
 
+    def set_schema_version(self, version: int) -> None:
+        """In this transaction, so a migration and its version commit together."""
+        self._connection.execute(f"PRAGMA user_version = {int(version)}")
+
     def get(self, bucket: str, key: Key) -> Record | None:
         row = self._connection.execute(f"SELECT value FROM {_table(bucket)} WHERE key = ?", (key,)).fetchone()
         return None if row is None else self._store.decode(row[0])
@@ -307,15 +340,152 @@ class Transaction:
         return len(doomed)
 
 
-def open_store(database_path: Path, secret_key: str, encrypt_at_rest: bool) -> Store:
-    """Create the file if needed and make sure every bucket's table exists."""
+# ---------------------------------------------------------------------------
+# data migrations
+#
+# How a stored record changes shape in a deployed app. Records are JSON, so
+# most changes need nothing here: a new optional field reads as absent from
+# older records (use record.get), and a new bucket is created at startup. A
+# migration is for the rest: a field renamed or split, a value changed to a new
+# meaning, records moved between buckets.
+#
+# The database's version (PRAGMA user_version) is how many of MIGRATIONS have
+# run on it. open_store runs whatever is missing, in order, before anything
+# else sees the data:
+#
+#   - A new database has nothing to migrate, so it is stamped with the latest
+#     version and none of them run.
+#   - An existing one is copied first, to app.db.before-migration-v<N>-<time>,
+#     so a migration that turns out wrong can be undone by hand.
+#   - Each migration runs in one transaction with the version bump, so a
+#     failure leaves the database exactly as the last one left it, the server
+#     refuses to start and says which one failed, and the next start tries it
+#     again.
+#   - A database newer than this code is refused rather than read: old code
+#     would not know what the new shape means, and could write it back wrong.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Migration:
+    """One step. up gets the same record API as Store.transaction."""
+
+    name: str
+    up: Callable[["Transaction"], None]
+
+
+# Every step this app has ever needed. Add to the end, and never edit, reorder
+# or remove one that has shipped: a database's version is a position in this
+# list. references/architecture.md has a worked example.
+MIGRATIONS: list[Migration] = []
+
+
+def latest_schema_version() -> int:
+    return len(MIGRATIONS)
+
+
+def _migrate(store: Store, fresh: bool, steps: Sequence[Migration], server_lock_path: Path | None) -> None:
+    version = store.schema_version()
+    latest = len(steps)
+    if version > latest:
+        raise RuntimeError(
+            f"the database is at schema version {version} and this code only knows {latest} -- it was written by a "
+            "newer version of this app; run that version, or restore a backup"
+        )
+    if fresh:
+        with store._connection() as connection:
+            connection.execute(f"PRAGMA user_version = {latest}")
+        return
+    if version == latest:
+        return
+
+    # manage shares the database with a running server, which would carry on
+    # with the old shape in memory if the file changed under it.
+    if server_lock_path is not None and server_lock.held(server_lock_path):
+        raise RuntimeError(
+            f"the database is at schema version {version} and this code expects {latest}, and a server is running on "
+            "it -- restart the server, which upgrades the database itself"
+        )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    kept = store.path.with_name(f"{store.path.name}.before-migration-v{version}-{stamp}")
+    try:
+        store.snapshot(kept)
+    except (OSError, sqlite3.Error) as error:
+        raise RuntimeError(f"could not copy the database before migrating it: {error}") from None
+    print(f"[migrate] schema version {version} to {latest}, the previous database is kept at {kept}", flush=True)
+
+    for index in range(version, latest):
+        step = steps[index]
+        try:
+            with store.transaction() as tx:
+                step.up(tx)
+                tx.set_schema_version(index + 1)
+        except Exception as error:  # noqa: BLE001 -- whatever a migration raises is reported the same way
+            raise RuntimeError(f"migration {index + 1} ({step.name}) failed, the database is unchanged by it: {error}") from error
+        print(f"[migrate] {index + 1}: {step.name}", flush=True)
+
+
+def _buckets_in(connection: sqlite3.Connection) -> list[str]:
+    """The buckets this file has a table for. A file a backup brought back can
+    be older than the code: it has no table for a bucket added since, and that
+    means empty, not damaged -- open_store creates the table once it is live."""
+    tables = {name for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    return [bucket for bucket in BUCKETS if bucket in tables]
+
+
+def check_file(path: Path, secret_key: str, encrypt_at_rest: bool) -> None:
+    """Decode every record in a database file nothing is using, so a backup
+    can be proved readable before it replaces anything. Raises DecodeError, or
+    sqlite3.Error for a file that is not a database."""
+    store = Store(path, secret_key, encrypt_at_rest)
+    with store._connection() as connection:
+        result = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        if result != "ok":
+            raise DecodeError(f"the file fails SQLite's integrity check: {result}")
+        for bucket in _buckets_in(connection):
+            for (value,) in connection.execute(f"SELECT value FROM {_table(bucket)}"):
+                store.decode(value)
+
+
+def rekey(path: Path, old_key: str, new_key: str, encrypt_at_rest: bool, rewrite: Callable[[str, Record], None]) -> None:
+    """Rewrite a database file nothing is using from old_key to new_key, in
+    one transaction, so it is all or nothing. Every record goes through
+    rewrite, which changes it in place, for the fields a model encrypts a
+    second time on its own (see sealed.rekey_record). With encrypt_at_rest
+    off only rewrite has anything to change. Tables an app added through
+    connect() are not encrypted by this module, so they are left alone."""
+    reader = Store(path, old_key, encrypt_at_rest)
+    writer = Store(path, new_key, encrypt_at_rest)
+    with reader._write() as connection:
+        for bucket in _buckets_in(connection):
+            table = _table(bucket)
+            for key, value in connection.execute(f"SELECT key, value FROM {table}").fetchall():
+                record = reader.decode(value)
+                rewrite(bucket, record)
+                connection.execute(f"UPDATE {table} SET value = ? WHERE key = ?", (writer.encode(record), key))
+
+
+def open_store(
+    database_path: Path,
+    secret_key: str,
+    encrypt_at_rest: bool,
+    server_lock_path: Path | None = None,
+    migrations: Sequence[Migration] | None = None,
+) -> Store:
+    """Create the file if needed, make sure every bucket's table exists, and
+    bring it up to the latest schema. server_lock_path is for a caller that
+    is not the server: it stops that caller migrating under a running one.
+    migrations is for a test to bring its own."""
     store = Store(database_path, secret_key, encrypt_at_rest)
+    fresh = not database_path.exists() or database_path.stat().st_size == 0
     try:
         # Created 0600 up front: SQLite would otherwise use the umask, and it
         # gives the -wal and -shm files the database file's own mode.
         if not database_path.exists():
             os.close(os.open(database_path, os.O_WRONLY | os.O_CREAT, 0o600))
         store.initialise()
+        _migrate(store, fresh, MIGRATIONS if migrations is None else migrations, server_lock_path)
     except OSError as error:
         raise RuntimeError(f"could not create the database at {database_path}: {error.strerror}") from None
     except sqlite3.Error as error:

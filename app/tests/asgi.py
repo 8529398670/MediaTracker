@@ -10,43 +10,51 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from app.core import config, db, language
+from app.core import config, config_live, config_secret, db, language
 from app.core.config import Config, ImagesSection, JobsSection, LibrarySection, ProvidersSection
 from app.core.static_files import StaticServer
 from app.main import build_app
 from app.models import types
+from app.reference import images
+from app.reference import paths as reference_paths
 
 CODE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def test_config(directory: Path) -> Config:
-    return Config(
+    """The defaults, as a fresh config.yaml in directory would give them, with
+    what a route test needs: no outbound lookups, no limits in the way, and
+    plain http cookies."""
+    path = directory / "config.yaml"
+    config.write_new(path)
+    # Everything the app keeps (database, logs, storage) goes in directory,
+    # never in the real ~/.config/media-tracker.
+    raw = path.read_text(encoding="utf-8").replace('app_dir: ""', f'app_dir: "{directory}"', 1)
+    path.write_text(raw, encoding="utf-8")
+    file = config.read_file(path)
+    cfg = config.build_config(file, path, config.resolve_paths(file, path), config_secret.read_secret(config_secret.secret_path_for(path)))
+    return replace(
+        cfg,
         project_name="Test",
-        project_dir=directory,
         url="http://127.0.0.1:1",
         url_source="test",
-        config_file=directory / "config.yaml",
-        config_created=False,
-        config_warning="",
         app_dir=directory,
         database_path=directory / "app.db",
         storage_dir=directory / "storage",
         static_dir=str(CODE_ROOT / "static"),
-        language_file="",
         host="127.0.0.1",
         port=1,
         secure_cookies=False,
         cookie_name="test_session",
         session_ttl_seconds=3600,
         login_token_ttl_seconds=600,
-        api_keys_enabled=True,
         api_key_ttl_seconds=3600,
-        secret_key="0" * 64,
         rate_limit_max=10_000,
         providers=ProvidersSection(False, "", "", "test", 5, 1000),
         images=ImagesSection(16, 10_000, ["image.tmdb.org"]),
         library=LibrarySection(30, 1000),
         jobs=JobsSection(24, 720, 24, False),
+        raw=config_live.read_raw(path),
     )
 
 
@@ -57,8 +65,11 @@ class Client:
         self.cfg = test_config(root)
         self.store = db.open_store(self.cfg.database_path, self.cfg.secret_key, False)
         types.ensure_builtin(self.store)
+        # The poster cache is module-wide: point it at this test's own storage,
+        # not wherever an earlier test's server left it.
+        images.CACHE.configure(reference_paths.configure(self.cfg.storage_dir).images, self.cfg.images.cache_mb, self.cfg.images.allow_hosts)
         lang = language.parse((CODE_ROOT / "config" / "language.yaml").read_bytes())
-        self.app = build_app(self.cfg, self.store, lang, StaticServer(CODE_ROOT / "static"))
+        self.app = build_app(config_live.Holder(self.cfg), self.store, lang, StaticServer(CODE_ROOT / "static"))
 
     def close(self) -> None:
         self.directory.cleanup()

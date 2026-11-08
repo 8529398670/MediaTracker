@@ -7,7 +7,8 @@ helpers below are the only place that conversion happens.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from datetime import timedelta
 
 # How long a deleted API key or invite link can still be put back. Delete is
 # the undoable one of the two ways to switch something off (revoke is final),

@@ -1,4 +1,4 @@
-"""`python -m app config ...` -- create, check, or read config.yaml.
+"""`python -m app config ...` -- create, check, change, or read config.yaml.
 
 These exist so that nothing else has to parse YAML. The scripts in scripts/
 and docker/ eval the output of `config shell server|docker`, which means they
@@ -10,22 +10,34 @@ script prints is what the server will do.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from app.core import config
 
-USAGE = f"""config -- create, check, or read config.yaml
+USAGE = f"""config -- create, check, change, or read config.yaml
 
 Usage:
-  init  [--file ./config/config.yaml]
-                                     write a new config.yaml with a fresh
-                                     secret key (--file - prints it instead)
+  init  [--file ./config/config.yaml | --dir DIR]
+                                     write a new config.yaml, and a secret.key
+                                     beside it unless one is there (--file -
+                                     prints config.yaml instead)
   example [--file ./config/config.example.yaml]
                                      write the committed example: every
-                                     default, no secret key (--file - prints it)
-  check [--file path]                validate the config in use and say which
-                                     file it is
+                                     default (--file - prints it)
+  secret [--file ./config/secret.key]
+                                     write a new secret.key; never replaces
+                                     one (--file - prints a fresh key)
+  migrate [--file path | --dir DIR]  move server.secret_key out of an older
+                                     config.yaml into secret.key; silent when
+                                     there is nothing to do
+  check [--file path]                validate the config in use and its
+                                     secret.key, and say which files they are
+  set [--file path] section.key value
+                                     change one setting in place, keeping
+                                     every comment; a running server applies
+                                     it within seconds. Lists: [a, b] or a,b
   shell [--file path] [--format sh|bat] server|docker
                                      print one section as assignments for the
                                      scripts to read: sh (quoted, for eval) or
@@ -42,14 +54,27 @@ def run(arguments: list[str]) -> None:
                                      formatter_class=argparse.RawDescriptionHelpFormatter, add_help=True)
     commands = parser.add_subparsers(dest="command", required=True)
 
-    init = commands.add_parser("init", help="write a new config.yaml with a fresh secret key")
+    init = commands.add_parser("init", help="write a new config.yaml, and a secret.key beside it")
     init.add_argument("--file", default=str(Path(config.CONFIG_DIR_NAME) / config.CONFIG_FILE_NAME), help="where to write it; - for stdout")
+    init.add_argument("--dir", default="", help="folder for config.yaml and secret.key")
 
-    example = commands.add_parser("example", help="write config.example.yaml: every default, no secret key")
+    example = commands.add_parser("example", help="write config.example.yaml: every default")
     example.add_argument("--file", default=str(Path(config.CONFIG_DIR_NAME) / config.EXAMPLE_FILE_NAME), help="where to write it; - for stdout")
+
+    secret = commands.add_parser("secret", help="write a new secret.key")
+    secret.add_argument("--file", default=str(Path(config.CONFIG_DIR_NAME) / config.SECRET_FILE_NAME), help="where to write it; - prints a fresh key")
+
+    migrate = commands.add_parser("migrate", help="move server.secret_key out of config.yaml into secret.key")
+    migrate.add_argument("--file", default="", help="config file to migrate (default: the one in use)")
+    migrate.add_argument("--dir", default="", help="folder holding config.yaml")
 
     check = commands.add_parser("check", help="validate the config in use")
     check.add_argument("--file", default="", help="config file to check (default: the one in use)")
+
+    set_parser = commands.add_parser("set", help="change one setting in place")
+    set_parser.add_argument("--file", default="", help="config file to change (default: the one in use)")
+    set_parser.add_argument("key", help="section.key, e.g. server.public_url")
+    set_parser.add_argument("value", help="the new value")
 
     shell = commands.add_parser("shell", help="print one section as shell assignments")
     shell.add_argument("--file", default="", help="config file to read (default: the one in use)")
@@ -57,16 +82,103 @@ def run(arguments: list[str]) -> None:
     shell.add_argument("section", choices=["server", "docker"])
 
     args = parser.parse_args(arguments)
-    {"init": command_init, "example": command_example, "check": command_check, "shell": command_shell}[args.command](args)
+    {
+        "init": command_init,
+        "example": command_example,
+        "secret": command_secret,
+        "migrate": command_migrate,
+        "check": command_check,
+        "set": command_set,
+        "shell": command_shell,
+    }[args.command](args)
+
+
+def _config_path(args: argparse.Namespace) -> str:
+    """--file, or --dir DIR meaning DIR/config.yaml (and so DIR/secret.key).
+    docker/lib.sh uses --dir with the project's config/ folder mounted, which
+    lets the files be created as the invoking user."""
+    if getattr(args, "dir", ""):
+        return str(Path(args.dir) / config.CONFIG_FILE_NAME)
+    return args.file
 
 
 def command_init(args: argparse.Namespace) -> None:
-    if args.file == "-":
+    from app.core import config_secret
+
+    path = _config_path(args)
+    if path == "-":
         sys.stdout.write(config.new_file_content())
         return
-    config.write_new(Path(args.file))
-    print(f"wrote {args.file} (mode 0600, fresh secret key)")
-    print("Review it, then keep it out of version control and back it up with the app's data.")
+    secret_created = config.write_new(Path(path))
+    print(f"wrote {path} (mode 0600)")
+    if secret_created:
+        print(f"wrote {config_secret.secret_path_for(Path(path))} (mode 0600, fresh secret key)")
+    else:
+        print(f"kept  {config_secret.secret_path_for(Path(path))} (already there)")
+    print("Keep both out of version control, and back secret.key up with the app's data.")
+
+
+def command_secret(args: argparse.Namespace) -> None:
+    """secret.key on its own: for a config.yaml copied from
+    config.example.yaml, or a fresh install whose config came from
+    elsewhere."""
+    from app.core import config_secret
+
+    if args.file == "-":
+        print(config_secret.generate_secret())
+        return
+    try:
+        config_secret.write_secret(Path(args.file), config_secret.generate_secret())
+    except FileExistsError:
+        raise config.ConfigError(f"{args.file} already exists -- an existing key is never replaced") from None
+    print(f"wrote {args.file} (mode 0600, fresh secret key -- back it up with the app's data)")
+
+
+def command_migrate(args: argparse.Namespace) -> None:
+    """migrate_legacy_secret from the command line. scripts/run.sh and
+    docker/run.sh run it before every start, so it says nothing unless it did
+    something."""
+    from app.core import config_secret
+
+    path = Path(_config_path(args)) if (args.file or args.dir) else config.locate()[0]
+    if not path.is_file():
+        return
+    result = config_secret.migrate_legacy_secret(path)
+    if result.moved:
+        print(f"MOVED server.secret_key out of {path} into {result.secret_file} (mode 0600).")
+        print("  config.yaml holds no secret now; back secret.key up with the app's data.")
+    elif result.removed:
+        print(f"Removed server.secret_key from {path}; {result.secret_file} already held the same key.")
+
+
+def command_set(args: argparse.Namespace) -> None:
+    """Change one setting the way the Settings screen does: the value is
+    checked against the schema, written in place, and the whole file
+    validated before anything is written."""
+    from app.core import config_live, config_schema
+    from app.core.layout import PINNED, in_container
+
+    path = Path(args.file) if args.file else config.locate()[0]
+    key = config_schema.schema_key(args.key)
+    if key is None:
+        raise config_live.UnknownSettingError(args.key)
+    value = config_schema.parse_value(key, args.value)
+    try:
+        raw = config_live.read_raw(path)
+    except OSError as error:
+        raise config.ConfigError(f"could not read {path}: {error.strerror}") from None
+    edited, unchanged = config_live.edit_changes(raw, {key.path: value}, str(path), False)
+    if unchanged:
+        print(f"{key.path} is already {args.value} in {path}")
+        return
+    in_place = in_container() and str(path) == PINNED.config_file
+    backup = Path(PINNED.app_dir) / config.BACKUP_FILE_NAME if in_place else None
+    config_live.write_config_file(path, edited, in_place, backup)
+    when = {
+        config_schema.MODE_LIVE: "a running server applies it within seconds",
+        config_schema.MODE_SCRIPTS: "used the next time the scripts run",
+    }.get(key.mode, "takes effect when the server restarts")
+    print(f"set {key.path} in {path} -- {when}")
 
 
 def command_example(args: argparse.Namespace) -> None:
@@ -98,11 +210,24 @@ def command_check(args: argparse.Namespace) -> None:
             raise config.ConfigError(f"{path} does not exist")
         print(f"no config.yaml yet -- the server will create {path} on first run (scripts/run.sh writes ./config/config.yaml instead)")
         return
-    config.check_secret_key(file, path)
+    from app.core import config_secret
+
+    secret_path = config_secret.secret_path_for(path)
+    if file.server.secret_key:
+        print(f"warning: {path} still holds server.secret_key -- `config migrate` moves it into {secret_path}")
+    else:
+        config_secret.read_secret(secret_path)
     print(f"ok  {path}")
-    warning = config.permission_warning(path)
+    if secret_path.is_file():
+        print(f"ok  {secret_path}")
+    warning = config.permission_warning(path, secret_path)
     if warning:
         print(f"warning: {warning}")
+    try:
+        if os.stat(path).st_nlink == 0:
+            print("warning: config.yaml was replaced on the host since this container started; restart it to see the new file")
+    except OSError:
+        pass
 
 
 def shell_quote(value: str) -> str:
@@ -127,6 +252,8 @@ def command_shell(args: argparse.Namespace) -> None:
         lines = [
             ("config_file", str(path)),
             ("config_exists", _flag(found)),
+            ("secret_file", str(path.parent / config.SECRET_FILE_NAME)),
+            ("secret_exists", _flag((path.parent / config.SECRET_FILE_NAME).is_file())),
             ("project_dir", str(paths.project_dir)),
             ("app_dir", str(paths.app_dir)),
             ("database", str(paths.database_path)),
@@ -167,7 +294,7 @@ def command_shell(args: argparse.Namespace) -> None:
             ("docker_url", url),
             ("docker_url_source", url_source),
         ]
-    # Never the secret key: nothing a script does needs it, and this output
+    # Never the secret key, only where it is: nothing a script does needs it, and this output
     # tends to end up in terminal scrollback and CI logs.
     for name, value in lines:
         if args.format == "bat":

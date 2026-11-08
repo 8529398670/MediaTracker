@@ -25,6 +25,9 @@ from pathlib import Path
 CODE_ROOT = Path(__file__).resolve().parents[2]
 BUNDLED_STATIC = CODE_ROOT / "static"
 BUNDLED_LANGUAGE = CODE_ROOT / "config" / "language.yaml"
+# Bundled only, unlike language.yaml: it describes the routes in this code, so
+# a copy anywhere else could only disagree with them.
+OPENAPI_SPEC = CODE_ROOT / "config" / "openapi.json"
 
 
 @dataclass(frozen=True)

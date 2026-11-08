@@ -1,9 +1,9 @@
 """User accounts, and the owner.
 
-There is no password field, and adding one would undo the entire design:
-identity is proven only by redeeming a login link, presenting a session
-cookie, or presenting an API key. See references/architecture.md before
-changing that.
+Links are the way in. A password is optional and off by default (see
+app/models/passwords.py): an account gets one only by signing in with a link
+first, so there is no signup, and the owner decides whether passwords work at
+all. See references/architecture.md.
 
 The owner is the one admin who outranks the others. It exists for a single
 decision the admin role cannot settle by itself: who may permanently delete
@@ -27,6 +27,7 @@ never fires again once an owner exists.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from datetime import datetime
 
 from app.core.db import BUCKET_META, BUCKET_USERS, Record, Store, Transaction
@@ -56,6 +57,21 @@ class User:
     # invite link. It is not a password: nothing else checks it. See
     # app/models/pins.py.
     pin_hash: str = ""
+    # What password sign-in needs: a unique name to look the account up by,
+    # since display names are not unique, and a bcrypt hash of what the
+    # browser derived from the password. See app/models/passwords.py.
+    username: str = ""
+    password_hash: str = ""
+    # The owner's per-account block. It stops the password working and keeps
+    # the hash, so unblocking restores it.
+    password_blocked: bool = False
+    # TOTP secrets are encrypted here as well as with the record, because
+    # server.encrypt_at_rest can be off and a secret cannot be hashed. See
+    # app/models/two_factor.py.
+    totp_secret: str = ""
+    totp_pending: str = ""
+    totp_last_step: int = 0
+    recovery_hashes: list[str] = field(default_factory=list)
 
     @property
     def disabled(self) -> bool:
@@ -73,6 +89,13 @@ class User:
             "created_at": to_iso(self.created_at),
             "disabled_at": to_iso(self.disabled_at),
             "pin_hash": self.pin_hash,
+            "username": self.username,
+            "password_hash": self.password_hash,
+            "password_blocked": self.password_blocked,
+            "totp_secret": self.totp_secret,
+            "totp_pending": self.totp_pending,
+            "totp_last_step": self.totp_last_step,
+            "recovery_hashes": self.recovery_hashes,
         }
 
     @classmethod
@@ -84,6 +107,13 @@ class User:
             created_at=from_iso(record["created_at"]),
             disabled_at=from_iso(record.get("disabled_at")),
             pin_hash=record.get("pin_hash", ""),
+            username=record.get("username", ""),
+            password_hash=record.get("password_hash", ""),
+            password_blocked=record.get("password_blocked", False),
+            totp_secret=record.get("totp_secret", ""),
+            totp_pending=record.get("totp_pending", ""),
+            totp_last_step=record.get("totp_last_step", 0),
+            recovery_hashes=record.get("recovery_hashes", []),
         )
 
 

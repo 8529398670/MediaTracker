@@ -30,7 +30,7 @@ from app.core import encryption
 from app.core.db import BUCKET_API_KEYS, BUCKET_USERS, Record, Store
 from app.models import RestoreGoneError, deleted_long_ago, from_iso, mark_deleted, to_iso, unmark_deleted, utc_now
 from app.models.sessions import split_credential
-from app.models.users import ROLE_ADMIN, ROLE_USER, User, get_user, valid_role
+from app.models.users import ROLE_ADMIN, ROLE_USER, RenameConflictError, User, get_user, owner_id_tx, valid_role
 
 # How many live keys one account can hold. Any signed-in user can mint keys,
 # so without a cap a single account can grow the bucket without limit. 25 is
@@ -82,9 +82,42 @@ class APIKeyDisabledError(APIKeyError):
         super().__init__("cannot issue an API key for a disabled account")
 
 
+class APIKeyDeadError(APIKeyError):
+    def __init__(self) -> None:
+        super().__init__("only a live API key can have its expiry changed")
+
+
 class APIKeyOwnerError(APIKeyError):
     def __init__(self, user_id: int) -> None:
         super().__init__(f"no user with id {user_id}")
+
+
+class APIKeyForOwnerError(APIKeyError):
+    """Nobody mints a key that acts as the owner from the web."""
+
+    def __init__(self) -> None:
+        super().__init__("a key for the owner can only be made by the owner, or from a shell")
+
+
+class APIKeyExpiryOwnerError(APIKeyError):
+    """Nobody else changes when the owner's keys expire."""
+
+    def __init__(self) -> None:
+        super().__init__("only the owner can change when the owner's keys expire")
+
+
+class APIKeyExpiryAdminError(APIKeyError):
+    """Only the owner changes when another admin's keys expire."""
+
+    def __init__(self) -> None:
+        super().__init__("only the owner can change when an admin's keys expire")
+
+
+class APIKeyForAdminError(APIKeyError):
+    """Only the owner mints a key that acts as another admin."""
+
+    def __init__(self) -> None:
+        super().__init__("only the owner can create a key for an admin")
 
 
 @dataclass
@@ -102,6 +135,11 @@ class APIKey:
     # but restore_api_key can bring it back for RESTORE_WINDOW.
     deleted_at: datetime | None = None
     deleted_by: int | None = None
+    # The admin who minted this key as its owner, through issue_api_key_for.
+    # None means the owner made it, or it came from a shell, and rows from
+    # before this field read as None too. It is what lets the person a key
+    # acts as see that someone else made it.
+    created_by: int | None = None
 
     @property
     def revoked(self) -> bool:
@@ -135,6 +173,7 @@ class APIKey:
             "revoked_at": to_iso(self.revoked_at),
             "deleted_at": to_iso(self.deleted_at),
             "deleted_by": self.deleted_by,
+            "created_by": self.created_by,
         }
 
     @classmethod
@@ -151,6 +190,7 @@ class APIKey:
             revoked_at=from_iso(record.get("revoked_at")),
             deleted_at=from_iso(record.get("deleted_at")),
             deleted_by=record.get("deleted_by"),
+            created_by=record.get("created_by"),
         )
 
 
@@ -190,7 +230,24 @@ def narrow_role(account_role: str, key_role: str) -> str:
     return ROLE_USER
 
 
-def issue_api_key(store: Store, user_id: int, name: str, role: str, ttl_seconds: int) -> tuple[str, APIKey]:
+def issue_api_key_for(store: Store, actor_id: int, user_id: int, name: str, role: str, ttl_seconds: int) -> tuple[str, APIKey]:
+    """An admin minting a key that acts as someone else, so it follows the
+    ladder deleting an account does, for the same reason -- acting as an
+    account is as much power over it as removing it:
+
+    - nobody mints for the owner (APIKeyForOwnerError) -- a shell still can,
+      through issue_api_key;
+    - only the owner mints for another admin (APIKeyForAdminError).
+
+    Your own account is simply your own key. The rules are checked inside the
+    issuing transaction, so ownership cannot move between the check and the
+    key."""
+    if actor_id == user_id:
+        return issue_api_key(store, user_id, name, role, ttl_seconds)
+    return issue_api_key(store, user_id, name, role, ttl_seconds, created_by=actor_id)
+
+
+def issue_api_key(store: Store, user_id: int, name: str, role: str, ttl_seconds: int, created_by: int | None = None) -> tuple[str, APIKey]:
     """Returns (credential, key). The credential exists exactly once, here: it
     is never stored and cannot be recovered -- if it is lost, revoke the key
     and mint another.
@@ -217,6 +274,7 @@ def issue_api_key(store: Store, user_id: int, name: str, role: str, ttl_seconds:
         secret_hash=encryption.sha256_hex(secret),
         created_at=now,
         expires_at=now + timedelta(seconds=ttl_seconds) if ttl_seconds > 0 else None,
+        created_by=created_by,
     )
 
     # The owner check, the quota check, and the insert share one transaction.
@@ -228,6 +286,12 @@ def issue_api_key(store: Store, user_id: int, name: str, role: str, ttl_seconds:
         if owner_record is None:
             raise APIKeyOwnerError(user_id)
         owner = User.from_record(owner_record)
+        if created_by is not None:
+            owner_id = owner_id_tx(tx)
+            if owner_id == user_id:
+                raise APIKeyForOwnerError()
+            if owner.is_admin and created_by != owner_id:
+                raise APIKeyForAdminError()
         if owner.disabled:
             raise APIKeyDisabledError()
         if role == ROLE_ADMIN and not owner.is_admin:
@@ -305,12 +369,12 @@ def get_api_key(store: Store, key_id: str) -> APIKey | None:
 
 
 def list_api_keys(store: Store) -> list[APIKey]:
-    """Every key, oldest first, leaving out deleted ones. Only the admin
+    """Every key, newest first, leaving out deleted ones. Only the admin
     endpoint and the CLI use it; a user asking for "my keys" goes through
     list_api_keys_for_user."""
     keys = [APIKey.from_record(record) for _, record in store.all(BUCKET_API_KEYS)]
     keys = [key for key in keys if not key.deleted]
-    return sorted(keys, key=lambda key: key.created_at)
+    return sorted(keys, key=lambda key: key.created_at, reverse=True)
 
 
 def list_api_keys_for_user(store: Store, user_id: int) -> list[APIKey]:
@@ -336,6 +400,63 @@ def revoke_api_key(store: Store, key_id: str) -> APIKey | None:
 
     record = store.update_value(BUCKET_API_KEYS, key_id, mutate)
     return None if record is None else APIKey.from_record(record)
+
+
+def rename_api_key(store: Store, key_id: str, name: str, expect: str | None = None) -> bool:
+    """Change a key's label, which is all a name is: nothing about what the
+    key may do hangs off it, so a dead key can be renamed too. False if there
+    is no such key or it is deleted.
+
+    expect, when given, is the name the caller believes is stored, as in
+    users.rename_user: RenameConflictError if it is not, which keeps an undo
+    from overwriting a rename made somewhere else."""
+    found = False
+
+    def mutate(record: Record) -> None:
+        nonlocal found
+        if record.get("deleted_at") is not None:
+            return
+        found = True
+        if expect is not None and record["name"] != expect.strip():
+            raise RenameConflictError(record["name"])
+        record["name"] = name.strip()
+
+    return store.update_value(BUCKET_API_KEYS, key_id, mutate) is not None and found
+
+
+def set_api_key_expiry(store: Store, key_id: str, actor_id: int, ttl_seconds: int) -> APIKey | None:
+    """Give a live key a new expiry, counted from now; a ttl of zero means it
+    never expires, as when issuing one. None if there is no such key or it is
+    deleted.
+
+    A dead key stays dead (APIKeyDeadError). Reviving an expired key here
+    would turn an edit into a way round the expiry, and a revoked one would
+    break the promise that revoking is final: a new key is the way back.
+
+    actor_id is who is asking. Keeping someone else's key alive is as much
+    power over that account as minting one for it, so it follows the same
+    ladder as issue_api_key_for: nobody touches the owner's keys, and only the
+    owner touches another admin's. Otherwise an admin holding a stolen key
+    could keep it going."""
+    with store.transaction() as tx:
+        record = tx.get(BUCKET_API_KEYS, key_id)
+        if record is None:
+            return None
+        key = APIKey.from_record(record)
+        if key.deleted:
+            return None
+        if not key.live:
+            raise APIKeyDeadError()
+        if actor_id != key.user_id:
+            owner_id = owner_id_tx(tx)
+            if owner_id == key.user_id:
+                raise APIKeyExpiryOwnerError()
+            holder = tx.get(BUCKET_USERS, key.user_id)
+            if holder is not None and User.from_record(holder).is_admin and actor_id != owner_id:
+                raise APIKeyExpiryAdminError()
+        key.expires_at = utc_now() + timedelta(seconds=ttl_seconds) if ttl_seconds > 0 else None
+        tx.put(BUCKET_API_KEYS, key_id, key.to_record())
+    return key
 
 
 def delete_api_key(store: Store, key_id: str, actor_id: int | None) -> bool:

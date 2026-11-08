@@ -6,10 +6,10 @@ const Pin = {
 
   init( me ) {
     this.me = me;
-    if ( me.account_role === "admin" || me.auth !== "session" ) return;
+    if ( me.account_role === "admin" || me.auth !== "session" || me.invite_links_enabled === false ) return;
     Dom.show( Dom.get( "pin-panel" ) , true );
-    Dom.get( "pin-form" ).addEventListener( "submit" , this.onSave.bind( this ) );
-    Dom.get( "pin-clear-button" ).addEventListener( "click" , this.onClear.bind( this ) );
+    Dom.onSubmit( Dom.get( "pin-form" ) , this.onSave.bind( this ) );
+    Dom.onPress( Dom.get( "pin-clear-button" ) , this.onClear.bind( this ) );
     this.render();
   },
 
@@ -26,18 +26,19 @@ const Pin = {
   },
 
   async onClear() {
-    await this.save( "" );
+    if ( !( await Dom.confirm( I18n.get( "pin.clear_confirm" ) ) ) ) return;
+    await this.save( "" , "pin.cleared" );
   },
 
-  async save( pin ) {
+  async save( pin , done = "ui.saved" ) {
     try {
       const result = await Api.setPin( pin );
       this.me.has_pin = result.has_pin;
       Dom.get( "pin-value" ).value = "";
       this.render();
-      Dom.toast( I18n.get( "ui.saved" ) , "ok" );
+      Dom.toast( I18n.get( done ) , "ok" );
     } catch ( error ) {
-      App.showError( error.message );
+      App.showFieldError( error.message , { bad_pin: "pin-value" } );
     }
   },
 };

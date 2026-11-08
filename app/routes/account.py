@@ -10,9 +10,15 @@ from starlette.responses import JSONResponse, Response
 from app.core.config import Config
 from app.core.db import Store
 from app.core.encryption import BadKeyError, CipherTextError
+from app.core.logs import KIND_AUTH
 from app.core.security import Actor, actor_from, check_csrf, clear_session_cookie, decrypt_cookie
-from app.models import login_tokens, pins, sessions, users
+from app.models import login_tokens, sessions, users
+from app.models import passwords
+from app.models import pins
+from app.models import two_factor
+from app.routes.admin import link_options, link_response
 from app.routes.helpers import bad_request, conflict, forbidden, get_config, get_store, read_json, run, server_error
+from app.routes.logs import audit
 
 
 async def me(request: Request) -> Response:
@@ -26,10 +32,10 @@ async def me(request: Request) -> Response:
     rare caller that needs to tell the two apart. Reporting the account's role
     as "role" would have a client believe it has permissions the server will
     refuse to act on."""
-    return JSONResponse(await run(me_row, get_store(request), get_config(request), actor_from(request)))
+    return JSONResponse(await run(me_row, get_store(request), get_config(request), actor_from(request), request.app.state.version))
 
 
-def me_row(store: Store, cfg: Config, actor: Actor) -> dict[str, Any]:
+def me_row(store: Store, cfg: Config, actor: Actor, version: str) -> dict[str, Any]:
     """me's answer, shared with the MCP whoami tool so the two cannot describe
     the same caller differently."""
     # is_owner tells the UI which account-management buttons to offer; the
@@ -42,9 +48,23 @@ def me_row(store: Store, cfg: Config, actor: Actor) -> dict[str, Any]:
         "role": actor.role,
         "account_role": actor.user.role,
         "is_owner": actor.user.id == owner_id,
+        "login_link": login_tokens.live_login_link(store, actor.user.id),
+        "maintenance": cfg.maintenance,
+        "version": version,
+        "announcement": cfg.announcement,
         "has_pin": pins.has_pin(actor.user),
+        "username": actor.user.username,
+        "has_password": passwords.has_password(actor.user),
+        "password_blocked": actor.user.password_blocked,
+        "two_factor": two_factor.is_on(actor.user),
+        "passwords_enabled": cfg.passwords_enabled,
+        "two_factor_enabled": cfg.two_factor_enabled,
         "auth": actor.method,
         "api_keys_enabled": cfg.api_keys_enabled,
+        "invite_links_enabled": cfg.invite_links_enabled,
+        # Whether track.js sends anything, and whether it sends clicks.
+        "logs_enabled": cfg.logs.enabled,
+        "logs_ui_clicks": cfg.logs.enabled and cfg.logs.ui_clicks,
     }
     # Only a session has a CSRF token. A key-authenticated request has no
     # ambient credential to protect, so there is nothing to hand back -- see
@@ -77,7 +97,8 @@ async def rename(request: Request) -> Response:
     except users.RenameConflictError as refusal:
         return conflict(str(refusal), display_name=refusal.current)
     if not renamed:
-        return server_error()
+        return server_error(request, "rename: the signed-in account has no record")
+    audit(request, KIND_AUTH, "renamed own account", {"name": display_name.strip()})
     return JSONResponse({"ok": True, "display_name": display_name.strip()})
 
 
@@ -94,18 +115,19 @@ async def set_pin(request: Request) -> Response:
         return bad_request("bad_pin")
     try:
         if not await run(pins.set_user_pin, get_store(request), actor_from(request).user.id, pin):
-            return server_error()
+            return server_error(request, "set pin: the signed-in account has no record")
     except pins.BadPinError:
         return bad_request("bad_pin")
+    audit(request, KIND_AUTH, "pin changed", {"has_pin": pin != ""})
     return JSONResponse({"ok": True, "has_pin": pin != ""})
 
 
 async def create_my_login_link(request: Request) -> Response:
-    """Mint a one-time login link for the caller's own account: the way to
-    sign in on another device without asking an admin. It is
-    admin.reissue_login pointed at yourself, so it has the same effect: any
-    unused link the account had stops working, and existing sessions stay
-    signed in.
+    """Mint a login link for the caller's own account: the way to sign in on
+    another device without asking an admin. Once by default, or reusable,
+    like admin.reissue_login -- it is reissue_login pointed at yourself, so it
+    has the same effect: any link the account could still use stops working,
+    and existing sessions stay signed in.
 
     Session only (see routes/__init__.py): a login link becomes a session, so
     an API key that could call this could turn itself into one."""
@@ -114,11 +136,24 @@ async def create_my_login_link(request: Request) -> Response:
         return bad_request("malformed request body")
     if not check_csrf(request, body.get("csrf_token")):
         return forbidden("invalid csrf token")
-    store, cfg = get_store(request), get_config(request)
-    credential = await run(
-        login_tokens.issue_login_token, store, actor_from(request).user.id, cfg.login_token_ttl_seconds
-    )
-    return JSONResponse({"login_path": f"/login/{credential}", "expires_in_seconds": cfg.login_token_ttl_seconds})
+    options = link_options(request, body)
+    if options is None:
+        return bad_request(str(login_tokens.BadLoginLinkError()))
+    credential, info = await run(login_tokens.issue_login_link, get_store(request), actor_from(request).user.id, options)
+    audit(request, KIND_AUTH, "own login link created", {"max_uses": info["max_uses"], "expires_at": info["expires_at"]})
+    return JSONResponse(link_response(credential, info))
+
+
+async def cancel_my_login_link(request: Request) -> Response:
+    """Stop the caller's own live login link working."""
+    body = await read_json(request)
+    if body is None:
+        return bad_request("malformed request body")
+    if not check_csrf(request, body.get("csrf_token")):
+        return forbidden("invalid csrf token")
+    removed = await run(login_tokens.cancel_login_link, get_store(request), actor_from(request).user.id)
+    audit(request, KIND_AUTH, "own login link cancelled", {"removed": removed})
+    return JSONResponse({"ok": True, "removed": removed})
 
 
 async def logout(request: Request) -> Response:
@@ -138,6 +173,7 @@ async def logout(request: Request) -> Response:
         return bad_request("malformed request body")
     if not check_csrf(request, body.get("csrf_token")):
         return forbidden("invalid csrf token")
+    audit(request, KIND_AUTH, "signed out")
     await destroy_cookie_session(request)
     response = JSONResponse({"ok": True})
     clear_session_cookie(response, get_config(request))

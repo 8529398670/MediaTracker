@@ -122,7 +122,7 @@ class Server:
         if method == "ping":
             return {}
         if method == "tools/list":
-            return {"tools": [tool.listing() for tool in self.registry.visible(actor)]}
+            return {"tools": [tool.listing() for tool in self.registry.visible(actor, request.app.state.settings.get())]}
         if method == "tools/call":
             return await self._call(request, actor, params)
         raise RpcError(METHOD_NOT_FOUND, f"method not found: {method}")
@@ -131,7 +131,7 @@ class Server:
         """The client's revision if we know it, otherwise our newest, and the
         client decides whether it can live with that."""
         asked = params.get("protocolVersion")
-        cfg = request.app.state.config
+        cfg = request.app.state.settings.get()
         return {
             "protocolVersion": asked if asked in SUPPORTED_VERSIONS else SUPPORTED_VERSIONS[0],
             # listChanged False: the tool list is fixed at startup. It differs
@@ -150,12 +150,12 @@ class Server:
         # An admin tool asked for by a user-scoped key answers exactly like a
         # tool that does not exist: it was never listed to that key, and
         # saying "forbidden" would only confirm the name.
-        tool = self.registry.get(name, actor)
+        tool = self.registry.get(name, actor, request.app.state.settings.get())
         if tool is None:
             raise RpcError(INVALID_PARAMS, f"unknown tool: {name}")
 
         state = request.app.state
-        call = Call(actor=actor, store=state.store, config=state.config, request=request, args=args)
+        call = Call(actor=actor, store=state.store, config=state.settings.get(), request=request, args=args)
         try:
             # Tools are synchronous and touch SQLite -- the threadpool rule.
             value = await run_in_threadpool(tool.call, call)

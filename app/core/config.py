@@ -15,6 +15,14 @@ ships with the code, documents every key, and is what `config init` writes out.
 A config.yaml is decoded on top of it, strictly: an unknown key is an error,
 because a typo that is silently ignored is a setting that silently is not
 applied.
+
+The secret key is not in config.yaml. It is in secret.key beside it (see
+config_secret.py), which is what lets config.yaml be edited while the server
+runs -- from the owner's Settings screen or by hand -- without either path
+ever touching the key. config_live.py holds the running configuration and
+applies those edits; yaml_edit.py rewrites single values in place so the
+file's comments survive; config_schema.py reads which keys can change live
+from the tags in defaults.yaml.
 """
 from __future__ import annotations
 
@@ -22,7 +30,7 @@ import ipaddress
 import os
 import re
 from urllib.parse import urlsplit
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +44,10 @@ from app.core.layout import PINNED, in_container
 # than a setting because it is how config.yaml itself is found.
 APP_SLUG = "media-tracker"
 
+# What everything but the rotation itself says when one was left half way
+# inside the container.
+ROTATION_PENDING_MESSAGE = "a key rotation was cut short -- run docker/rotate-key.sh on the host to finish it"
+
 # Filenames this app uses. Everything it persists lives under the app
 # directory -- see default_app_dir for why.
 # The folder of a source checkout that holds config.yaml, config.example.yaml,
@@ -44,7 +56,16 @@ CONFIG_DIR_NAME = "config"
 CONFIG_FILE_NAME = "config.yaml"
 DATABASE_FILE_NAME = "app.db"
 STORAGE_DIR_NAME = "storage"
+LOGS_DIR_NAME = "logs"
+BACKUPS_DIR_NAME = "backups"
+# Held by the running server. See app/core/server_lock.py.
+SERVER_LOCK_NAME = "server.lock"
 LANGUAGE_FILE_NAME = "language.yaml"
+# Beside config.yaml. See config_secret.secret_path_for.
+SECRET_FILE_NAME = "secret.key"
+# The previous config.yaml, kept in the app directory whenever the container
+# rewrites its mounted copy in place. See config_live.write_config_file.
+BACKUP_FILE_NAME = "config.yaml.bak"
 
 # The folder holding app/ -- the project root in a checkout, /app in the image.
 CODE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -60,6 +81,17 @@ EXAMPLE_FILE_NAME = "config.example.yaml"
 class ConfigError(Exception):
     """config.yaml is missing, malformed, or holds a value that would fail
     later in a confusing way. The message is meant to be shown as-is."""
+
+
+class ValidationError(ConfigError):
+    """Everything wrong with a config.yaml at once. Each problem starts with
+    the key it is about ("server.port must be ..."), which is how the
+    Settings screen puts it under the right field."""
+
+    def __init__(self, problems: list[str], label: str = "") -> None:
+        self.problems = list(problems)
+        text = "; ".join(self.problems)
+        super().__init__(f"{label}: {text}" if label else text)
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +118,6 @@ class ServerSection:
     app_dir: str
     static_dir: str
     language_file: str
-    secret_key: str
     encrypt_at_rest: bool
     secure_cookies: bool
     cookie_name: str
@@ -96,15 +127,42 @@ class ServerSection:
     body_limit_bytes: int
     rate_limit_max: int
     rate_limit_window_seconds: int
+    rate_limit_signin_max: int
     mcp: bool
+    maintenance: str
+    announcement: str
+    # Deprecated: the key lives in secret.key. This is read only so that a
+    # config.yaml from before the move can be migrated
+    # (config_secret.migrate_legacy_secret); defaults.yaml has no such key,
+    # so nothing else ever sees it.
+    secret_key: str = ""
 
 
 @dataclass
 class AuthSection:
     session_ttl_seconds: int
+    session_max_age_seconds: int
     login_token_ttl_seconds: int
+    multi_use_login_token_ttl_seconds: int
     api_keys: bool
     api_key_ttl_seconds: int
+    passwords: bool
+    two_factor: bool
+    invite_links: bool
+
+
+@dataclass
+class LogsSection:
+    enabled: bool
+    retention_days: int
+    max_total_mb: int
+    max_file_mb: int
+    compress_after_days: int
+    static_assets: bool
+    ui_clicks: bool
+    echo: bool
+
+
 
 
 @dataclass
@@ -161,8 +219,13 @@ class File:
     images: ImagesSection
     library: LibrarySection
     jobs: JobsSection
+    logs: LogsSection
     docker: DockerSection
 
+
+# Fields that may be absent from defaults.yaml: kept only so an older
+# config.yaml still decodes.
+DEPRECATED = {"server": {"secret_key"}}
 
 SECTIONS: dict[str, type] = {
     "app": AppSection,
@@ -172,6 +235,7 @@ SECTIONS: dict[str, type] = {
     "images": ImagesSection,
     "library": LibrarySection,
     "jobs": JobsSection,
+    "logs": LogsSection,
     "docker": DockerSection,
 }
 
@@ -179,6 +243,33 @@ SECTIONS: dict[str, type] = {
 # ---------------------------------------------------------------------------
 # the resolved configuration the server runs on
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LogsConfig:
+    """config.yaml's logs section, resolved: sizes in bytes, and the directory
+    the day files go in (<app_dir>/logs, created 0700 by load). See
+    app/core/logs.py."""
+
+    enabled: bool = True
+    dir: Path = Path(LOGS_DIR_NAME)
+    retention_days: int = 30
+    max_total_bytes: int = 500 * 1024 * 1024
+    max_file_bytes: int = 50 * 1024 * 1024
+    compress_after_days: int = 1
+    static_assets: bool = False
+    ui_clicks: bool = True
+    echo: bool = True
+
+
+@dataclass(frozen=True)
+class BackupsConfig:
+    """config.yaml's backups section, resolved. dir is where every backup
+    goes unless `manage backup --out` says otherwise (<app_dir>/backups,
+    created 0700 the first time something is written there). See
+    app/core/backup.py."""
+
+    dir: Path = Path(BACKUPS_DIR_NAME)
 
 
 @dataclass(frozen=True)
@@ -200,15 +291,14 @@ class Config:
     url: str
     url_source: str
 
-    # The config.yaml this was loaded from. It also holds the secret key,
-    # which is why it is reported wherever backups are mentioned.
+    # The config.yaml this was loaded from.
     config_file: Path
-    # True when this run wrote config_file because none existed. The startup
-    # log says so, since a fresh key was generated.
+    # True when this run wrote config_file because none existed.
     config_created: bool
-    # Non-empty when config_file is readable by other users. A warning rather
-    # than an error so a misconfigured mode never stops a server that was
-    # working, but it does get logged on every start.
+    # Non-empty when secret.key is readable by other users, or config.yaml
+    # writable by them. A warning rather than an error so a misconfigured
+    # mode never stops a server that was working, but it does get logged on
+    # every start.
     config_warning: str
 
     # The one directory this application owns: the database and any uploaded
@@ -217,9 +307,9 @@ class Config:
     # from.
     app_dir: Path
     database_path: Path
-    # For application files -- uploads, exports, generated artifacts. Nothing
-    # in the base template writes here; it exists so that features added
-    # later have an obvious, backed-up place to put files instead of
+    # For application files -- exports, generated artifacts. Finished uploads
+    # are in storage/files (see files.dir); the rest exists so that features
+    # added later have an obvious, backed-up place to put files instead of
     # inventing one.
     storage_dir: Path
 
@@ -239,7 +329,11 @@ class Config:
     cookie_name: str
 
     session_ttl_seconds: int
+    session_max_age_seconds: int
     login_token_ttl_seconds: int
+    # The default expiry of a link that works more than once (see
+    # login_tokens.resolve_link).
+    multi_use_login_token_ttl_seconds: int
 
     # Whether the Authorization: Bearer header is believed at all, and whether
     # the endpoints that mint keys exist. Off stops existing keys from
@@ -250,6 +344,15 @@ class Config:
     # forgotten key eventually stops being a live credential.
     api_key_ttl_seconds: int
 
+    # Whether a password is believed at all, and whether an account can set
+    # one. Off keeps the hashes, so switching it back on restores them.
+    passwords_enabled: bool
+    # Whether 2FA is offered and asked for. Off keeps the secrets, the same way.
+    two_factor_enabled: bool
+    # Whether /join and every invite route answer, and whether a PIN can be
+    # set. Off keeps the links and PINs, the same way.
+    invite_links_enabled: bool
+
     # Encrypts session cookie payloads and, when encrypt_at_rest is on, every
     # record written to the database. Losing it means losing the data.
     secret_key: str = field(repr=False)
@@ -257,6 +360,8 @@ class Config:
 
     rate_limit_max: int = 120
     rate_limit_window_seconds: int = 60
+    # The separate budget for signing in and joining.
+    rate_limit_signin_max: int = 60
     body_limit_bytes: int = 1048576
 
     # proxy_header is believed only when trust_proxy is on *and* the
@@ -267,6 +372,11 @@ class Config:
     trust_proxy: bool = False
     trusted_proxies: tuple[str, ...] = ()
     proxy_header: str = "X-Forwarded-For"
+
+    # server.maintenance: see app/core/maintenance.py.
+    maintenance: str = "none"
+    # server.announcement: one line on every signed-in page.
+    announcement: str = ""
 
     # Whether POST /mcp exists. It answers only API keys, so with
     # api_keys_enabled off it is not registered either.
@@ -280,6 +390,32 @@ class Config:
     images: ImagesSection = field(default_factory=lambda: ImagesSection(256, 4000, []))
     library: LibrarySection = field(default_factory=lambda: LibrarySection(30, 20000))
     jobs: JobsSection = field(default_factory=lambda: JobsSection(24, 24, True))
+
+
+    # The activity log's settings; see app/core/logs.py.
+    logs: LogsConfig = field(default_factory=LogsConfig)
+
+    # The scheduled backup's settings; see app/core/backup.py.
+    backups: BackupsConfig = field(default_factory=BackupsConfig)
+
+    # secret.key, beside config_file: the one file besides the app directory
+    # that a backup must include. secret_created is true when this run
+    # generated the key, secret_migrated when it moved server.secret_key out
+    # of config.yaml into it. The startup log says so either way.
+    secret_file: Path = Path(SECRET_FILE_NAME)
+    secret_created: bool = False
+    secret_migrated: bool = False
+
+    # rotation_finished is true when this load completed a key rotation that
+    # had been cut short. rotation_pending is the same discovery inside the
+    # container, which cannot complete one: docker/rotate-key.sh does, on the
+    # host. See config_secret.py.
+    rotation_finished: bool = False
+    rotation_pending: bool = False
+
+    # What this was built from, for config_live.Holder.
+    file: Any = field(default=None, repr=False, compare=False)
+    raw: str = field(default="", repr=False, compare=False)
 
     @property
     def listen_address(self) -> str:
@@ -440,7 +576,7 @@ def _build(values: dict[str, dict[str, Any]]) -> File:
     sections = {}
     for name, schema in SECTIONS.items():
         given = values.get(name, {})
-        missing = [f.name for f in fields(schema) if f.name not in given]
+        missing = [f.name for f in fields(schema) if f.name not in given and f.name not in DEPRECATED.get(name, set())]
         if missing:
             raise ConfigError(f"defaults.yaml is missing {', '.join(f'{name}.{key}' for key in missing)}")
         sections[name] = schema(**given)
@@ -456,16 +592,22 @@ def defaults() -> File:
         raise ConfigError(f"the shipped defaults.yaml is invalid: {error}") from None
 
 
-def parse(raw: str, label: str) -> File:
-    """Decode a config.yaml over the defaults and validate the result. It does
-    not require a secret key; load() and `config check` do."""
+def decode_over_defaults(raw: str, label: str) -> File:
+    """parse() without validate(): the file's values over the defaults,
+    strictly decoded. The secret-key migration uses it because moving the key
+    must not depend on every other setting being right."""
     merged = decode_strict(DEFAULTS_PATH.read_text(encoding="utf-8"), "defaults.yaml")
     for section, values in decode_strict(raw, label).items():
         merged.setdefault(section, {}).update(values)
-    file = _build(merged)
+    return _build(merged)
+
+
+def parse(raw: str, label: str) -> File:
+    """Decode a config.yaml over the defaults and validate the result."""
+    file = decode_over_defaults(raw, label)
     problems = validate(file)
     if problems:
-        raise ConfigError(f"{label}: " + "; ".join(problems))
+        raise ValidationError(problems, label)
     return file
 
 
@@ -581,6 +723,9 @@ def validate(file: File) -> list[str]:
     check(server.body_limit_bytes > 0, "server.body_limit_bytes must be positive")
     check(server.rate_limit_max > 0, "server.rate_limit_max must be positive")
     check(server.rate_limit_window_seconds > 0, "server.rate_limit_window_seconds must be positive")
+    check(server.rate_limit_signin_max > 0, "server.rate_limit_signin_max must be positive")
+    check(server.maintenance in ("none", "read_only", "full"), "server.maintenance must be none, read_only or full")
+    check(len(server.announcement) <= 500, "server.announcement must be 500 characters or fewer")
 
     providers = file.providers
     check(1 <= providers.timeout_seconds <= 120, "providers.timeout_seconds must be 1-120")
@@ -599,8 +744,21 @@ def validate(file: File) -> list[str]:
 
     auth = file.auth
     check(auth.session_ttl_seconds > 0, "auth.session_ttl_seconds must be positive")
+    check(
+        auth.session_max_age_seconds >= auth.session_ttl_seconds,
+        "auth.session_max_age_seconds must be at least auth.session_ttl_seconds",
+    )
     check(auth.login_token_ttl_seconds > 0, "auth.login_token_ttl_seconds must be positive")
+    check(auth.multi_use_login_token_ttl_seconds > 0, "auth.multi_use_login_token_ttl_seconds must be positive")
     check(auth.api_key_ttl_seconds > 0, "auth.api_key_ttl_seconds must be positive")
+
+    logs = file.logs
+    check(1 <= logs.retention_days <= 3650, f"logs.retention_days must be 1-3650, got {logs.retention_days}")
+    check(logs.max_total_mb >= 1, "logs.max_total_mb must be positive")
+    check(1 <= logs.max_file_mb <= logs.max_total_mb, "logs.max_file_mb must be positive and no more than logs.max_total_mb")
+    check(logs.compress_after_days >= 0, "logs.compress_after_days must be 0 (never) or more")
+
+
 
     docker = file.docker
     check(bool(_IMAGE.match(docker.image)), f"docker.image {docker.image!r} is not a valid lowercase image name")
@@ -617,71 +775,76 @@ def validate(file: File) -> list[str]:
     return problems
 
 
-def check_secret_key(file: File, path: Path) -> None:
+def check_secret_key(key: str, label: str) -> None:
     """Separate from validate() because only a process that will actually use
-    the key needs one.
+    the key needs one. label says where the key came from, for the message.
 
-    An empty key is refused rather than filled in. A file that already exists
-    was created with a key, so an empty one means it was removed -- and
+    An empty key is refused rather than filled in. A secret.key that exists
+    was written with a key, so an empty one means it was emptied -- and
     quietly generating a replacement would make every existing record
     permanently unreadable."""
-    key = file.server.secret_key.strip()
+    key = key.strip()
     if key == "":
         raise ConfigError(
-            f"server.secret_key is empty in {path}\n"
+            f"{label} is empty\n"
             "  If this app already has data, put back the key it was written with -- a new key cannot read it.\n"
-            "  For a fresh install, generate one with: openssl rand -hex 32"
+            "  For a fresh install, delete the empty file and the server writes a new one."
         )
     if not _SECRET.match(key):
-        raise ConfigError(f"server.secret_key in {path} must be 64 hex characters (32 bytes), got {len(key)} characters")
+        raise ConfigError(f"{label} must hold 64 hex characters (32 bytes), got {len(key)} characters")
 
 
-def permission_warning(path: Path) -> str:
-    """Flag a config.yaml anyone on the machine can read. The file holds the
-    secret key, so that is everyone's copy of it."""
+def permission_warning(config_path: Path, secret_path: Path) -> str:
+    """Flag a secret.key other users can read or anyone but its owner can
+    change, and a config.yaml anyone on the machine can write -- the server
+    applies an edit to that within seconds. Group read on secret.key is
+    allowed: it is how the container's user reads it (see docker/run.sh)."""
     if os.name == "nt":
         return ""
+    problems = []
     try:
-        mode = path.stat().st_mode & 0o777
+        mode = secret_path.stat().st_mode & 0o777
+        if mode & 0o027:
+            problems.append(f"{secret_path} is open to other users (mode {mode:04o}) and holds the secret key -- chmod 600 it")
     except OSError:
-        return ""
-    if mode & 0o004:
-        return f"{path} is readable by every user (mode {mode:04o}) and holds the secret key -- chmod 600 it"
-    return ""
+        pass
+    try:
+        mode = config_path.stat().st_mode & 0o777
+        if mode & 0o002:
+            problems.append(f"{config_path} is writable by every user (mode {mode:04o}), and the server applies edits to it -- chmod 600 it")
+    except OSError:
+        pass
+    return "; ".join(problems)
 
 
 # ---------------------------------------------------------------------------
 # creating a config.yaml
 # ---------------------------------------------------------------------------
 
-_SECRET_KEY_LINE = re.compile(r'^(\s*secret_key:\s*)""', re.MULTILINE)
+_SECRET_KEY_IN_DEFAULTS = re.compile(r"^\s*secret_key:", re.MULTILINE)
+
+
+def _defaults_without_secret() -> str:
+    """defaults.yaml, checked to hold no key: every config.yaml and the
+    committed example are copies of it."""
+    text = DEFAULTS_PATH.read_text(encoding="utf-8")
+    if _SECRET_KEY_IN_DEFAULTS.search(text):
+        raise ConfigError("defaults.yaml must not contain server.secret_key -- the key lives in secret.key")
+    return text
 
 
 def new_file_content() -> str:
-    """defaults.yaml with a freshly generated secret key -- the whole file,
-    comments included, so the result documents itself."""
-    from app.core import encryption  # imported here so `health` stays light
-
-    text = DEFAULTS_PATH.read_text(encoding="utf-8")
-    matches = _SECRET_KEY_LINE.findall(text)
-    if len(matches) != 1:
-        raise ConfigError(f'defaults.yaml must contain exactly one `secret_key: ""` line, found {len(matches)}')
-    key = encryption.generate_key_hex()
-    return _SECRET_KEY_LINE.sub(lambda match: f'{match.group(1)}"{key}"', text)
+    """defaults.yaml as it is -- the whole file, comments included, so the
+    result documents itself. It holds no secret: that is written to
+    secret.key separately."""
+    return _defaults_without_secret()
 
 
 def example_file_content() -> str:
-    """defaults.yaml with a header explaining how to copy it into place, and
-    the secret key left empty. Generated rather than kept by hand so that it
-    cannot drift from the defaults it documents, and the empty key is
-    deliberate: a key in a committed file is everyone's key. A copy that never
-    gets one fails at startup with the line to run (see check_secret_key)
-    instead of running on a shared key."""
-    text = DEFAULTS_PATH.read_text(encoding="utf-8")
-    matches = _SECRET_KEY_LINE.findall(text)
-    if len(matches) != 1:
-        raise ConfigError(f'defaults.yaml must contain exactly one `secret_key: ""` line, found {len(matches)}')
-    return EXAMPLE_HEADER_PATH.read_text(encoding="utf-8") + text
+    """defaults.yaml with a header explaining how to copy it into place.
+    Generated rather than kept by hand so that it cannot drift from the
+    defaults it documents."""
+    return EXAMPLE_HEADER_PATH.read_text(encoding="utf-8") + _defaults_without_secret()
 
 
 def write_example(path: Path) -> None:
@@ -693,28 +856,46 @@ def write_example(path: Path) -> None:
         raise ConfigError(f"could not write {path}: {error.strerror}") from None
 
 
-def write_new(path: Path) -> None:
-    """Create path from new_file_content(), refusing to overwrite: an existing
-    config.yaml holds a key that existing data depends on."""
+def write_new(path: Path) -> bool:
+    """Create path from new_file_content(), refusing to overwrite: an
+    existing config.yaml is someone's settings. A secret.key is written
+    beside it unless one is already there -- an existing key is what existing
+    data depends on, so it is never replaced. Returns whether it wrote one."""
+    from app.core import config_secret
+
     content = new_file_content()
     try:
-        # 0700 because the secret key lives in here.
+        # 0700 because secret.key lives in here too.
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except OSError as error:
         raise ConfigError(f"could not create {path}: {error.strerror}") from None
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(content)
+    secret_path = config_secret.secret_path_for(path)
+    if secret_path.is_file():
+        return False
+    config_secret.write_secret(secret_path, config_secret.generate_secret())
+    return True
 
 
 # ---------------------------------------------------------------------------
 
 
 def load() -> Config:
-    """Find config.yaml (creating it with a fresh key if there is none),
-    validate it, and make sure the app directory exists. The server and the
-    manage CLI both start here."""
+    """Find config.yaml (creating it, and secret.key, if there is none), move
+    a secret key out of an older config.yaml (see
+    config_secret.resolve_secret), validate it, and make sure the app
+    directory exists. The server and the manage CLI both start here."""
     path, exists = locate()
+    return load_path(path, exists)
+
+
+def load_path(path: Path, exists: bool) -> Config:
+    """load() for a config.yaml whose path is already known: the one locate()
+    found, or a test's."""
+    from app.core import config_secret
+
     created = False
     if not exists:
         if in_container():
@@ -723,25 +904,70 @@ def load() -> Config:
         created = True
 
     file = read_file(path)
-    check_secret_key(file, path)
-
     paths = resolve_paths(file, path)
-    for directory, purpose in ((paths.app_dir, "app directory"), (paths.app_dir / STORAGE_DIR_NAME, "storage directory")):
+
+    # A key rotation cut short: the data may already be on the new key, so
+    # this has to finish before the key is read. Inside the container
+    # secret.key cannot be written, so it is left for docker/rotate-key.sh.
+    rotation_pending = False
+    rotation_finished = False
+    if config_secret.rotation_pending(paths.app_dir):
+        if in_container():
+            rotation_pending = True
+        else:
+            try:
+                config_secret.finish_rotation(paths.app_dir, paths.database_path, path)
+            except OSError as error:
+                raise ConfigError(f"could not finish an interrupted key rotation: {error}") from None
+            rotation_finished = True
+
+    secret = config_secret.resolve_secret(file, path, paths.database_path)
+    if secret.rewrote:
+        # The migration took the key's line out of config.yaml: build from
+        # the file as it now is, which is also what the Holder starts from.
+        file = read_file(path)
+    raw = path.read_bytes().decode("utf-8")
+
+    for directory, purpose in (
+        (paths.app_dir, "app directory"),
+        (paths.app_dir / STORAGE_DIR_NAME, "storage directory"),
+        (paths.app_dir / LOGS_DIR_NAME, "logs directory"),
+    ):
         try:
             # 0700 because the database lives in here.
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         except OSError as error:
             raise ConfigError(f"could not create {purpose} {str(directory)!r}: {error.strerror}") from None
-    url, url_source = server_url(file)
 
+    secret_path = config_secret.secret_path_for(path)
+    warning = "; ".join(part for part in (permission_warning(path, secret_path), secret.warning) if part)
+    return replace(
+        build_config(file, path, paths, secret.key),
+        config_created=created,
+        config_warning=warning,
+        secret_created=secret.created,
+        secret_migrated=secret.migrated,
+        rotation_pending=rotation_pending,
+        rotation_finished=rotation_finished,
+        raw=raw,
+    )
+
+
+def build_config(file: File, path: Path, paths: "Paths", secret_key: str) -> Config:
+    """config.yaml resolved into the Config the server runs on. It creates
+    nothing, which is what lets the Holder rebuild the live part of it on
+    every edit (see config_live.live_config)."""
+    from app.core import config_secret
+
+    url, url_source = server_url(file)
     return Config(
         project_name=file.app.name,
         project_dir=paths.project_dir,
         url=url,
         url_source=url_source,
         config_file=path,
-        config_created=created,
-        config_warning=permission_warning(path),
+        config_created=False,
+        config_warning="",
         app_dir=paths.app_dir,
         database_path=paths.database_path,
         storage_dir=paths.app_dir / STORAGE_DIR_NAME,
@@ -752,13 +978,19 @@ def load() -> Config:
         secure_cookies=file.server.secure_cookies,
         cookie_name=file.server.cookie_name,
         session_ttl_seconds=file.auth.session_ttl_seconds,
+        session_max_age_seconds=file.auth.session_max_age_seconds,
         login_token_ttl_seconds=file.auth.login_token_ttl_seconds,
+        multi_use_login_token_ttl_seconds=file.auth.multi_use_login_token_ttl_seconds,
         api_keys_enabled=file.auth.api_keys,
+        passwords_enabled=file.auth.passwords,
+        two_factor_enabled=file.auth.two_factor,
+        invite_links_enabled=file.auth.invite_links,
         api_key_ttl_seconds=file.auth.api_key_ttl_seconds,
-        secret_key=file.server.secret_key.strip(),
+        secret_key=secret_key,
         encrypt_at_rest=file.server.encrypt_at_rest,
         rate_limit_max=file.server.rate_limit_max,
         rate_limit_window_seconds=file.server.rate_limit_window_seconds,
+        rate_limit_signin_max=file.server.rate_limit_signin_max,
         body_limit_bytes=file.server.body_limit_bytes,
         trust_proxy=file.server.trust_proxy,
         trusted_proxies=tuple(entry.strip() for entry in file.server.trusted_proxies),
@@ -768,6 +1000,24 @@ def load() -> Config:
         images=file.images,
         library=file.library,
         jobs=file.jobs,
+        maintenance=file.server.maintenance,
+        announcement=file.server.announcement,
+        logs=LogsConfig(
+            enabled=file.logs.enabled,
+            dir=paths.app_dir / LOGS_DIR_NAME,
+            retention_days=file.logs.retention_days,
+            max_total_bytes=file.logs.max_total_mb * 1024 * 1024,
+            max_file_bytes=file.logs.max_file_mb * 1024 * 1024,
+            compress_after_days=file.logs.compress_after_days,
+            static_assets=file.logs.static_assets,
+            ui_clicks=file.logs.ui_clicks,
+            echo=file.logs.echo,
+        ),
+        backups=BackupsConfig(
+            dir=paths.app_dir / BACKUPS_DIR_NAME,
+        ),
+        secret_file=config_secret.secret_path_for(path),
+        file=file,
     )
 
 

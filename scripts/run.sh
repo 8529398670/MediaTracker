@@ -4,6 +4,10 @@
 #   scripts/run.sh                    create/update .venv if needed, stop the
 #                                     copy this checkout started last, start a
 #                                     fresh one
+#   scripts/run.sh stop               stop the copy this checkout started
+#                                     (in this terminal, another, or the
+#                                     background one login.sh --background
+#                                     starts)
 #   scripts/run.sh manage <command>   run an admin command against it
 #   scripts/run.sh <anything else>    same: passed straight to `python -m app`
 #
@@ -36,6 +40,16 @@ cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
 source scripts/lib.sh
 
+if [ "${1:-}" = "stop" ] && [ $# -eq 1 ]; then
+  if [ -z "$( our_server_pid )" ]; then
+    echo "No server started by this checkout is running."
+  else
+    stop_our_server
+    echo "Stopped."
+  fi
+  exit 0
+fi
+
 # This happens before anything is stopped, so a failed install leaves the
 # server that was already running untouched.
 ensure_venv
@@ -43,6 +57,10 @@ ensure_venv
 if [ $# -gt 0 ]; then
   exec "$PYTHON" -m app "$@"
 fi
+
+# A config.yaml from before secret.key existed has the key inside it. Move it
+# out now, before anything starts, so the terminal says so. Silent otherwise.
+"$PYTHON" -m app config migrate --file ./config/config.yaml
 
 read_server_config
 
@@ -55,8 +73,9 @@ if [ "$config_exists" != "true" ]; then
   "$PYTHON" -m app config init --file ./config/config.yaml >/dev/null
   read_server_config
   echo "First run: wrote ${config_file}"
-  echo "  (mode 0600, with a new secret key -- back it up with the database; it is"
-  echo "  the only thing that can read it)."
+  echo "  and ${secret_file}"
+  echo "  (both mode 0600; secret.key holds a new key -- back it up with the"
+  echo "  database, it is the only thing that can read it)."
   echo ""
   echo "It will serve ${url}"
   echo "  (from ${url_source})."
@@ -69,27 +88,22 @@ if [ "$config_exists" != "true" ]; then
     echo "    secure_cookies: true   ->   secure_cookies: false"
   fi
   echo ""
-  echo "Then run scripts/run.sh again."
+  echo "Most settings can be changed later while the server runs, from the owner's"
+  echo "Settings screen or by editing config.yaml. Then run scripts/run.sh again."
   exit 0
 fi
 
-# Stop the copy this checkout started last.
-OLD_PID="$( our_server_pid )"
-if [ -n "$OLD_PID" ]; then
-  echo "Stopping the server this checkout started (pid ${OLD_PID}, running since $( ps -p "$OLD_PID" -o lstart= 2>/dev/null | sed 's/  */ /g' ))..."
-  kill -TERM "$OLD_PID" 2>/dev/null || true
-  # uvicorn shuts down gracefully within 10 seconds (app/main.py). Past
-  # that, something is stuck, and waiting longer will not unstick it.
-  for _ in $( seq 1 60 ); do
-    kill -0 "$OLD_PID" 2>/dev/null || break
-    sleep 0.25
-  done
-  if kill -0 "$OLD_PID" 2>/dev/null; then
-    echo "It did not exit in 15 seconds; killing it."
-    kill -KILL "$OLD_PID" 2>/dev/null || true
-  fi
+# A config.yaml copied from config.example.yaml comes without a key. The
+# server writes one on its first start, but only while there is no database
+# -- a new key cannot read an old one.
+if [ "$secret_exists" != "true" ] && [ "$database_exists" = "true" ]; then
+  echo "ERROR: ${secret_file} is missing, and ${database} exists." >&2
+  echo "       Restore secret.key from your backup: a new key cannot read the database." >&2
+  exit 1
 fi
-rm -f "$PID_FILE"
+
+# Stop the copy this checkout started last.
+stop_our_server
 
 # Anything still on the port is not ours, and uvicorn would only die on
 # "address already in use" after printing a banner that says it started.
@@ -136,7 +150,8 @@ cat <<NOTE
 Starting media-tracker with $( "$PYTHON" --version 2>&1 ) from .venv
   url       ${url}
             from ${url_source}
-  config    ${config_file}
+  config    ${config_file}  (edits apply while it runs)
+  secret    ${secret_file}
   app dir   ${app_dir}
   database  ${database}  (${DB_NOTE})
   static    ${STATIC_NOTE}

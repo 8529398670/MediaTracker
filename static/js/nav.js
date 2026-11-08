@@ -65,7 +65,7 @@ const Nav = {
   render() {
     const name = this.current();
     const changed = name !== this.shown;
-    this.shown = name;
+    if ( changed ) Track.nav( name );
     Dom.all( ".view" ).forEach( function ( view ) {
       view.classList.toggle( "view-active" , view.getAttribute( "data-view" ) === name );
     } );
@@ -76,6 +76,24 @@ const Nav = {
       else link.removeAttribute( "aria-current" );
     } );
     if ( changed ) window.scrollTo( 0 , 0 );
+    this.announce( name );
+  },
+
+  // Changing screen reloads nothing, so nothing tells a screen reader or the
+  // browser's tab that anything happened. The title names the screen, and the
+  // focus moves to its heading, except on load, when it belongs to the page.
+  announce( name ) {
+    // Recorded first: render() compares against it to scroll only on a real
+    // change of screen, even for a screen with no heading.
+    const moved = this.shown !== undefined && this.shown !== name;
+    this.shown = name;
+    const heading = document.querySelector( '.view[data-view="' + name + '"] h2' );
+    if ( !heading ) return;
+    const title = I18n.get( "nav.page_title" );
+    if ( title !== "" ) document.title = title.replace( "{screen}" , heading.textContent ).replace( "{app}" , I18n.get( "app.title" ) );
+    if ( !moved ) return;
+    heading.setAttribute( "tabindex" , "-1" );
+    heading.focus( { preventScroll: true } );
   },
 
   // The menu button: on a wide screen it folds the sidebar column away and

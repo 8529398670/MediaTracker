@@ -18,14 +18,18 @@ RUN pip install --no-cache-dir --only-binary=:all: --prefix=/install -r requirem
 # --- runtime stage ---------------------------------------------------------
 FROM python:3.14-alpine AS runtime
 
+# ca-certificates is the only package added: webhooks call out over HTTPS, and
+# without it that fails with an opaque certificate error.
+#
 # The uid/gid are fixed at 10001 rather than left to Alpine's system range.
-# docker/run.sh grants this user the host's data directory and this group read
-# access to config.yaml; a number in the low hundreds is likely to belong to a
+# docker/run.sh grants this user the host's data directory, and this group
+# read-write access to config.yaml and read access to secret.key; a number in the low hundreds is likely to belong to a
 # real account on a Linux host, and that account would get the same access.
 #
 # pip is removed: nothing installs packages at runtime, and a package manager
 # is one more tool for anyone who gets code execution in here.
-RUN addgroup -S -g 10001 app \
+RUN apk add --no-cache ca-certificates \
+ && addgroup -S -g 10001 app \
  && adduser -S -u 10001 -G app -h /app -s /sbin/nologin app \
  && python -m pip uninstall --yes --quiet pip
 
@@ -34,9 +38,10 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY app ./app
 COPY static ./static
-# The language file and the defaults the app reads; never config.yaml, which
-# .dockerignore keeps out of the build context entirely.
+# The language file and the defaults the app reads; never config.yaml or
+# secret.key, which .dockerignore keeps out of the build context entirely.
 COPY config/language.yaml config/defaults.yaml config/example_header.yaml ./config/
+COPY config/openapi.json ./config/
 
 # Version metadata, passed by docker/lib.sh so that
 # `docker exec <name> python -m app version` says which build is running.
@@ -46,8 +51,9 @@ ARG BUILD_DATE=unknown
 
 # Three things, all only ever done here:
 #
-#   layout_pinned.py   the image's fixed layout -- config at /app/config/config.yaml,
-#                      state in /app/data, listen on 0.0.0.0. This is what
+#   layout_pinned.py   the image's fixed layout -- config at /app/config/config.yaml
+#                      with secret.key beside it, state in /app/data, listen
+#                      on 0.0.0.0. This is what
 #                      replaces ENV, and why `docker exec <name> python -m app
 #                      manage ...` needs nothing extra (app/core/layout.py).
 #   build_info.py      VERSION/COMMIT/BUILD_DATE for the version command. The
@@ -60,11 +66,15 @@ RUN cp app/core/layout_container.py app/core/layout_pinned.py \
       "$VERSION" "$COMMIT" "$BUILD_DATE" \
  && python -m compileall -q app
 
-# There is no ENV here and no config.yaml in the image
-# (.dockerignore keeps it out -- it holds the secret key, and
-# an image layer is forever). docker/run.sh mounts the project's
-# config/config.yaml at /app/config/config.yaml at run time, so one image
-# serves any deployment and a config change needs a restart, not a rebuild.
+# There is no ENV here, and no config.yaml or secret.key in the image
+# (.dockerignore keeps them out -- an image layer is forever, and a key in
+# one is everyone's). docker/run.sh mounts the project's config/config.yaml
+# (writable) and config/secret.key (read-only) into /app/config at run time,
+# so one image serves any deployment. Most settings apply while it runs --
+# from the owner's Settings screen, or by editing config.yaml on the host;
+# the rest need a restart, never a rebuild. /app/config stays root's, which
+# is why the container rewrites config.yaml in place rather than by renaming
+# a new file over it (see app/core/config_live.write_config_file).
 #
 # To run the shipped UI with different wording, put a language.yaml in the
 # data directory (/app/data/language.yaml); it wins over the bundled one.

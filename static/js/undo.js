@@ -128,6 +128,7 @@ const Undo = {
     try {
       if ( action.screen && this.hasNav() && Nav.current() !== action.screen ) Nav.show( action.screen );
       await action[ direction ]();
+      if ( typeof Track !== "undefined" ) Track.undo( direction , action.label );
       action.merge = null;
       to.push( action );
       this.offer( this.message( messageKey , action.label ) , opposite );

@@ -1,6 +1,12 @@
-# Runtime state -- never commit these. config/config.yaml holds the secret key;
-# the bare name also catches a stray copy anywhere else.
+# Runtime state -- never commit these. config/secret.key is the key that reads
+# the database; config/config.yaml is this deployment's settings. The bare
+# names also catch a stray copy anywhere else.
 config.yaml
+secret.key
+# A key rotation's new key, and every key it has retired.
+secret.key.*
+config.yaml.bak
+.config.yaml.*.tmp
 data/
 .claude/
 *.db
@@ -34,7 +40,8 @@ dist/
 htmlcov/
 .ipynb_checkpoints/
 
-# scripts/run.sh's pid file.
+# scripts/run.sh's pid file, and the log of the background server
+# scripts/login.sh --background starts.
 .run/
 
 # Logs and stray temp files.
