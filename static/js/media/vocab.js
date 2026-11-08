@@ -46,6 +46,7 @@ const Vocab = {
     rate: { kind: "state" , icon: "star" , activeIcon: "star-fill" , tone: "warning" },
     imdb: { kind: "link" , icon: "ticket-perforated" },
     parents: { kind: "link" , icon: "shield-exclamation" },
+    plot: { kind: "link" , icon: "card-text" },
     wiki: { kind: "link" , icon: "wikipedia" },
     appletv: { kind: "link" , icon: "apple" },
     justwatch: { kind: "link" , icon: "display" },
@@ -58,21 +59,35 @@ const Vocab = {
     skip: { kind: "action" , icon: "eye-slash" , tone: "secondary" },
   },
 
-  // Always on the face of every card, after Watched (which sits on the
-  // poster's corner in the grid). Everything else waits behind More.
+  // Every link a card can carry on its face, in the order Account lists
+  // the ones not chosen.
+  LINK_BUTTONS: [ "appletv" , "trailer" , "imdb" , "parents" , "plot" , "wiki" , "justwatch" ],
+
+  // On the face of every card, after Watched (which sits on the poster's
+  // corner in the grid), unless the person chose others (Account, Prefs
+  // ui.card_links). Everything else waits behind More.
   MAIN_BUTTONS: [ "appletv" , "trailer" , "imdb" ],
+
+  mainButtons() {
+    const saved = Prefs.ui( "card_links" , null );
+    const list = Array.isArray( saved ) ? saved : this.MAIN_BUTTONS;
+    return list.filter( ( id , at ) => this.LINK_BUTTONS.indexOf( id ) >= 0 && list.indexOf( id ) === at );
+  },
 
   // The buttons at the top of a title's Details (which More opens), in this
   // order: the face's links, then the rest of them, then my state.
-  DETAILS_BUTTONS: [ "appletv" , "trailer" , "imdb" , "parents" , "wiki" , "justwatch" , "watched" , "playlist" , "love" ],
+  detailsButtons() {
+    const main = this.mainButtons();
+    return main.concat( this.LINK_BUTTONS.filter( ( id ) => main.indexOf( id ) < 0 ) , [ "watched" , "playlist" , "love" ] );
+  },
 
   // The order a Discover card's own More row lists its buttons in.
-  MORE_ORDER: [ "parents" , "add" , "seen" , "skip" ],
+  MORE_ORDER: [ "parents" , "plot" , "add" , "seen" , "skip" ],
 
   // The details buttons offered per screen in the customizer.
   SCREEN_BUTTONS: {
-    library: [ "watched" , "playlist" , "watching" , "drop" , "love" , "rate" , "parents" , "wiki" , "justwatch" , "edit" ],
-    discover: [ "add" , "seen" , "skip" , "parents" , "wiki" , "justwatch" , "edit" ],
+    library: [ "watched" , "playlist" , "watching" , "drop" , "love" , "rate" , "parents" , "plot" , "wiki" , "justwatch" , "edit" ],
+    discover: [ "add" , "seen" , "skip" , "parents" , "plot" , "wiki" , "justwatch" , "edit" ],
   },
 
   DEFAULT_CARD: {
@@ -103,6 +118,7 @@ const Vocab = {
     switch ( button ) {
       case "imdb": return title.imdb_id ? "https://www.imdb.com/title/" + title.imdb_id + "/" : "https://www.imdb.com/find/?q=" + q;
       case "parents": return title.imdb_id ? "https://www.imdb.com/title/" + title.imdb_id + "/parentalguide" : "";
+      case "plot": return title.imdb_id ? "https://www.imdb.com/title/" + title.imdb_id + "/plotsummary" : "";
       case "wiki": return title.wiki_url || "https://en.wikipedia.org/w/index.php?search=" + q;
       case "appletv": return this.appleTv( "https://tv.apple.com/us/" + ( title.apple_tv || "search?term=" + encodeURIComponent( title.title ) ) );
       case "justwatch": return "https://www.justwatch.com/us/search?q=" + encodeURIComponent( title.title );
@@ -133,7 +149,7 @@ const Vocab = {
   // A link that goes straight to the title, rather than to a search.
   direct( button , title ) {
     switch ( button ) {
-      case "imdb": case "parents": return Boolean( title.imdb_id );
+      case "imdb": case "parents": case "plot": return Boolean( title.imdb_id );
       case "wiki": return Boolean( title.wiki_url );
       case "appletv": return Boolean( title.apple_tv );
       default: return false;

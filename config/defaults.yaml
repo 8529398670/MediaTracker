@@ -279,7 +279,7 @@ docker:
   restart: unless-stopped          # no | always | unless-stopped | on-failure[:N]
 
   # Blast-radius limits. Raise them deliberately for real load.
-  memory: 384m
+  memory: 512m
   cpus: "1"
   pids_limit: 128
   tmpfs_size: 16m                  # the only writable path besides data_dir

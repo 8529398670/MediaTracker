@@ -65,11 +65,11 @@ const Card = {
       article.appendChild( this.buttonRow( "card-footer media-actions" , [ "restore" ] , row ) );
       return article;
     }
-    // The face: Watched, the three links and More. More opens the title's
-    // Details, which carries every other button (Vocab.DETAILS_BUTTONS). A
+    // The face: Watched, the chosen links and More. More opens the title's
+    // Details, which carries every other button (Vocab.detailsButtons). A
     // Discover film not in the library has no Details, so its More opens a
     // row of its own buttons on the card instead.
-    const footer = this.buttonRow( "card-footer media-actions" , Vocab.MAIN_BUTTONS , row );
+    const footer = this.buttonRow( "card-footer media-actions" , Vocab.mainButtons() , row );
     const faceWatch = this.watchButton( row , "media-watch-face" );
     if ( faceWatch ) footer.insertBefore( faceWatch , footer.firstChild );
     article.appendChild( footer );
@@ -82,8 +82,9 @@ const Card = {
     const toggle = this.makeButton( "expand" , open ? "chevron-up" : "chevron-down" , I18n.get( open ? "card.less" : "card.more" ) , "btn-outline-secondary media-toggle" ,
       { "data-action": "expand" , "aria-expanded": String( open ) , title: I18n.get( open ? "card.less" : "card.more" ) } );
     footer.appendChild( toggle );
-    const more = card.buttons.filter( ( id ) => Vocab.MAIN_BUTTONS.indexOf( id ) < 0 );
-    if ( more.indexOf( "parents" ) < 0 ) more.push( "parents" );
+    const main = Vocab.mainButtons();
+    const more = card.buttons.filter( ( id ) => main.indexOf( id ) < 0 );
+    if ( more.indexOf( "parents" ) < 0 && main.indexOf( "parents" ) < 0 ) more.push( "parents" );
     const rank = ( id ) => { const at = Vocab.MORE_ORDER.indexOf( id ); return at < 0 ? Vocab.MORE_ORDER.length : at; };
     more.sort( ( a , b ) => rank( a ) - rank( b ) );
     const details = this.buttonRow( "media-more media-actions" , more , row );

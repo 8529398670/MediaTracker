@@ -159,8 +159,9 @@ const PlaylistsScreen = {
     // Size and what each card shows are the person's own library choices.
     const card = Object.assign( {} , Prefs.card( "library" ) );
     card.layout = card.layout === "compact" ? "compact" : "list";
-    // Where Apple TV links open is drawn into each row too.
-    const look = JSON.stringify( card ) + Prefs.ui( "appletv_app" , true );
+    // Where Apple TV links open, and which links a card has, are drawn
+    // into each row too.
+    const look = JSON.stringify( card ) + Prefs.ui( "appletv_app" , true ) + Vocab.mainButtons().join( "," );
     if ( this.rowsFor !== playlist.id + look ) {
       Dom.clear( box );
       this.rows.clear();

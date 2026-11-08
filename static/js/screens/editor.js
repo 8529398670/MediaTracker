@@ -107,7 +107,7 @@ const Editor = {
     if ( t.certification ) facts.push( t.certification );
     if ( this.row.score ) facts.push( "IMDb " + Vocab.score( this.row.score[ 0 ] ) + " (" + Vocab.votes( this.row.score[ 1 ] ) + ")" );
     const links = Dom.el( "div" , { class: "media-actions editor-buttons border-0 p-0 mt-2" } );
-    Vocab.DETAILS_BUTTONS.forEach( ( id ) => {
+    Vocab.detailsButtons().forEach( ( id ) => {
       const button = Card.button( id , this.row );
       if ( button ) links.appendChild( button );
     } );

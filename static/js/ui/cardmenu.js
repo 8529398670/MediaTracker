@@ -6,8 +6,8 @@
 // On a library card Skip means "not for me" (status dropped); on a Discover
 // film it is Discover's own Skip, which hides the film just for you.
 const CardMenu = {
-  LIBRARY: [ "watched" , "love" , "skip" , "-" , "parents" , "justwatch" , "wiki" , "imdb" , "-" , "edit" ],
-  DISCOVER: [ "add" , "seen" , "skip" , "-" , "parents" , "justwatch" , "wiki" , "imdb" ],
+  LIBRARY: [ "watched" , "love" , "skip" , "-" , "parents" , "plot" , "justwatch" , "wiki" , "imdb" , "-" , "edit" ],
+  DISCOVER: [ "add" , "seen" , "skip" , "-" , "parents" , "plot" , "justwatch" , "wiki" , "imdb" ],
 
   node: null,
 

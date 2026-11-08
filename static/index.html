@@ -561,6 +561,15 @@
 
             <hr />
 
+            <!-- Which links sit on every card's face, in order; saved on the
+                 account (Prefs ui.card_links). See App.initCardLinks. -->
+            <h3 class="h6" data-i18n="account.card_links_heading"></h3>
+            <p class="small text-body-secondary" data-i18n="account.card_links_description"></p>
+            <ul id="card-links" class="list-group mb-2"></ul>
+            <button id="card-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.card_links_reset"></button>
+
+            <hr />
+
             <!-- A login link for your own account, to sign in on another device.
                  Any signed-in user may mint one; see Api.createMyLoginLink. -->
             <h3 class="h6" data-i18n="account.device_heading"></h3>

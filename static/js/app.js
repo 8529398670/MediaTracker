@@ -194,6 +194,7 @@ const App = {
       this.showError( error.message );
     }
     this.initAppleTv();
+    this.initCardLinks();
     Acting.init( me );
     await Playlists.init();
     await LibraryScreen.init( me );
@@ -264,6 +265,67 @@ const App = {
         redo: () => apply( on ),
       } );
     } );
+  },
+
+  // Which links sit on every card's face, and in what order: chosen ones
+  // first with up/down buttons (a phone can't drag), then the rest.
+  initCardLinks() {
+    const box = Dom.get( "card-links" );
+    const apply = ( list ) => {
+      Prefs.setUi( "card_links" , list );
+      render();
+      LibraryScreen.render();
+      if ( DiscoverScreen.meta ) DiscoverScreen.render();
+      PlaylistsScreen.render();
+    };
+    const change = ( list ) => {
+      const before = Vocab.mainButtons();
+      apply( list );
+      Undo.record( {
+        label: I18n.get( "account.card_links_saved" ),
+        toast: true,
+        undo: () => apply( before ),
+        redo: () => apply( list ),
+      } );
+    };
+    const render = () => {
+      Dom.clear( box );
+      const chosen = Vocab.mainButtons();
+      const rest = Vocab.LINK_BUTTONS.filter( ( id ) => chosen.indexOf( id ) < 0 );
+      chosen.concat( rest ).forEach( ( id ) => {
+        const at = chosen.indexOf( id );
+        const on = at >= 0;
+        const check = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , id: "card-link-" + id } } );
+        check.checked = on;
+        check.addEventListener( "change" , () => {
+          change( check.checked ? chosen.concat( [ id ] ) : chosen.filter( ( each ) => each !== id ) );
+        } );
+        const mover = ( direction , icon ) => Dom.el( "button" , {
+          class: "btn btn-sm btn-outline-secondary",
+          attrs: { type: "button" , "aria-label": I18n.get( "customize.move_" + direction ) , title: I18n.get( "customize.move_" + direction ) },
+          children: [ Card.icon( icon ) ],
+          on: { click: () => {
+            const to = direction === "up" ? at - 1 : at + 1;
+            if ( to < 0 || to >= chosen.length ) return;
+            const list = chosen.slice();
+            list.splice( to , 0 , list.splice( at , 1 )[ 0 ] );
+            change( list );
+          } },
+        } );
+        box.appendChild( Dom.el( "li" , { class: "list-group-item choice" + ( on ? "" : " is-off" ) , children: [
+          Dom.el( "div" , { class: "form-check mb-0 flex-grow-1" , children: [
+            check,
+            Dom.el( "label" , { class: "form-check-label" , attrs: { for: "card-link-" + id } , children: [
+              Card.icon( Vocab.BUTTONS[ id ].icon ),
+              Dom.el( "span" , { text: " " + I18n.get( "card.button_" + id ) } ),
+            ] } ),
+          ] } ),
+          on ? Dom.el( "div" , { class: "btn-group" , children: [ mover( "up" , "arrow-up" ) , mover( "down" , "arrow-down" ) ] } ) : Dom.el( "span" ),
+        ] } ) );
+      } );
+    };
+    Dom.get( "card-links-reset" ).addEventListener( "click" , () => change( Vocab.MAIN_BUTTONS.slice() ) );
+    render();
   },
 
   async onRename( event ) {

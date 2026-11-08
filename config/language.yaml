@@ -264,6 +264,10 @@ account:
   appletv_description: "On a Mac, iPhone or iPad, Apple TV links open in the TV app: the title itself when Apple TV's id for it is known, otherwise a search for it. Turn this off to open tv.apple.com in the browser instead. Saved on your account."
   appletv_on: "Apple TV links open the TV app"
   appletv_off: "Apple TV links open tv.apple.com"
+  card_links_heading: "Card links"
+  card_links_description: "The links on the front of every card, in this order. Tick the ones you want and move them up or down; the rest stay in Details. Saved on your account."
+  card_links_reset: "Back to Apple TV, Trailer, IMDb"
+  card_links_saved: "Card links changed"
 
 # Where this account is signed in, on the Account screen (static/js/sessions.js).
 sessions:
@@ -851,6 +855,7 @@ card:
   button_rated: "★ {rating}"
   button_imdb: "IMDb"
   button_parents: "Parents guide"
+  button_plot: "Plot"
   button_wiki: "Wikipedia"
   button_appletv: "Apple TV"
   button_justwatch: "Just Watch"
@@ -872,6 +877,7 @@ card:
   button_help_playlist: "Put it in one of your playlists, or a new one."
   button_help_drop: "Not interested: marks it not for me."
   button_help_parents: "IMDb's parents guide (needs an IMDb link)."
+  button_help_plot: "IMDb's plot summary (needs an IMDb link)."
   button_help_justwatch: "Which streaming service has it."
 
 customize:
