@@ -61,6 +61,25 @@ class RouteTest(unittest.TestCase):
         status, body = self.client.request("GET", "/api/me", self.mom_key)
         self.assertEqual((body["can_show_others"], body["default_subject"]), (False, None))
 
+    def test_a_locked_user_stays_on_whom_the_admin_chose(self) -> None:
+        store = self.client.store
+        users.set_showing(store, self.mom.id, True, self.admin.id, True)
+        # No ?user= is the chosen person, not her own lists.
+        self.assertEqual(self.client.request("POST", f"/api/state/{self.title_id}", self.mom_key, {"set": {"status": "watched"}})[0], 200)
+        self.assertEqual(user_state.get_state(store, self.admin.id, self.title_id)["status"], "watched")
+        self.assertEqual(self.client.request("GET", f"/api/library?user={self.admin.id}", self.mom_key)[0], 200)
+        self.assertEqual(self.client.request("GET", f"/api/library?user={self.mom.id}", self.mom_key)[0], 403)
+        status, body = self.client.request("GET", "/api/me", self.mom_key)
+        self.assertTrue(body["showing_locked"])
+        # An admin is never locked, even with the flag set.
+        users.set_showing(store, self.admin.id, True, self.mom.id, True)
+        self.assertEqual(self.client.request("GET", "/api/library", self.admin_key)[1]["states"][self.title_id]["status"], "watched")
+        self.assertFalse(self.client.request("GET", "/api/me", self.admin_key)[1]["showing_locked"])
+        # Locked to her own lists: she can't switch to anyone.
+        users.set_showing(store, self.mom.id, True, None, True)
+        self.assertEqual(self.client.request("GET", f"/api/library?user={self.admin.id}", self.mom_key)[0], 403)
+        self.assertEqual(self.client.request("GET", "/api/library", self.mom_key)[1]["states"][self.title_id]["status"], "queue")
+
     def test_undo_with_a_stale_expect_is_a_409(self) -> None:
         self.client.request("POST", f"/api/state/{self.title_id}", self.mom_key, {"set": {"rating": 8}})
         status, body = self.client.request("POST", f"/api/state/{self.title_id}", self.mom_key, {"set": {"rating": None}, "expect": {"rating": 5}})

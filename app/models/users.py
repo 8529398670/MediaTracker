@@ -78,6 +78,9 @@ class User:
     # app/routes/subject.py.
     can_show_others: bool = False
     default_subject: int | None = None
+    # The admin's lock on that choice: the account always sees default_subject
+    # (its own lists if None) and cannot switch. Ignored for admins.
+    showing_locked: bool = False
 
     @property
     def disabled(self) -> bool:
@@ -104,6 +107,7 @@ class User:
             "recovery_hashes": self.recovery_hashes,
             "can_show_others": self.can_show_others,
             "default_subject": self.default_subject,
+            "showing_locked": self.showing_locked,
         }
 
     @classmethod
@@ -124,6 +128,7 @@ class User:
             recovery_hashes=record.get("recovery_hashes", []),
             can_show_others=record.get("can_show_others", False),
             default_subject=record.get("default_subject"),
+            showing_locked=record.get("showing_locked", False),
         )
 
 
@@ -132,16 +137,25 @@ def may_act_for_others(user: User) -> bool:
     return user.is_admin or user.can_show_others
 
 
+def locked_subject(user: User) -> int | None:
+    """Whose lists an account an admin has locked must see, or None when it
+    may choose (admins are never locked)."""
+    if user.is_admin or not user.showing_locked:
+        return None
+    return user.default_subject if user.default_subject is not None else user.id
+
+
 class NoSuchSubjectError(Exception):
     """set_showing was asked to start an account on someone who is not there."""
 
 
-def set_showing(store: Store, user_id: int, allowed: bool, default_subject: int | None) -> User | None:
+def set_showing(store: Store, user_id: int, allowed: bool, default_subject: int | None, locked: bool = False) -> User | None:
     """Grant or take away the Showing picker, and say whose lists the account
     starts on; None if there is no such account. Starting on someone else
     needs the picker (the server would refuse ?user= otherwise), so choosing
     someone grants it. Taking the picker away with no one chosen forgets the
-    starting person, and starting on yourself is stored as None."""
+    starting person, and starting on yourself is stored as None. locked keeps
+    the account on that person: it cannot switch the picker."""
     with store.transaction() as tx:
         record = tx.get(BUCKET_USERS, user_id)
         if record is None:
@@ -154,6 +168,8 @@ def set_showing(store: Store, user_id: int, allowed: bool, default_subject: int 
             raise NoSuchSubjectError()
         record["can_show_others"] = bool(allowed)
         record["default_subject"] = default_subject
+        # Without Showing and with no one chosen there is nothing to lock.
+        record["showing_locked"] = bool(locked) and (allowed or default_subject is not None)
         tx.put(BUCKET_USERS, user_id, record)
         return User.from_record(record)
 

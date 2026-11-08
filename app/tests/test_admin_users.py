@@ -76,6 +76,21 @@ class EditUsersTest(RoutesTestCase):
         status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=False, default_subject=None)
         self.assertEqual((status, reply["can_show_others"], reply["default_subject"]), (200, False, None))
 
+    def test_locking_showing(self) -> None:
+        self.assertEqual(self.post(self.owner_cookie, self.user.id, "showing", can_show_others=True, default_subject=None, showing_locked="yes")[0], 400)
+        self.assertEqual(self.post(self.user_cookie, self.user.id, "showing", can_show_others=True, default_subject=None, showing_locked=True)[0], 403)
+        status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=True, default_subject=self.owner.id, showing_locked=True)
+        self.assertEqual((status, reply["showing_locked"]), (200, True))
+        row = next(row for row in self.call("GET", "/api/admin/users?q=", cookie=self.owner_cookie)[1]["users"] if row["id"] == self.user.id)
+        self.assertTrue(row["showing_locked"])
+        self.assertTrue(self.call("GET", "/api/me", cookie=self.user_cookie)[1]["showing_locked"])
+        # Left out, the lock comes off.
+        status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=True, default_subject=self.owner.id)
+        self.assertEqual((status, reply["showing_locked"]), (200, False))
+        # Nothing to lock without Showing and no one chosen.
+        status, reply = self.post(self.owner_cookie, self.user.id, "showing", can_show_others=False, default_subject=None, showing_locked=True)
+        self.assertEqual((status, reply["showing_locked"]), (200, False))
+
     def test_asking_for_the_role_they_have_changes_nothing(self) -> None:
         self.assertEqual(self.post(self.owner_cookie, self.user.id, "role", role="user")[0], 200)
         self.assertEqual(self.call("GET", "/api/me", cookie=self.user_cookie)[0], 200)

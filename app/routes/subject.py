@@ -22,6 +22,9 @@ async def subject_from(request: Request) -> int | Response:
     """The user id this request acts for, or the refusal to send back."""
     actor = actor_from(request)
     raw = request.query_params.get("user", "")
+    locked = users.locked_subject(actor.user)
+    if locked is not None:
+        return await _locked_subject(request, actor.user.id, locked, raw)
     if raw == "" or raw == str(actor.user.id):
         return actor.user.id
     wanted = parse_id(raw)
@@ -33,3 +36,14 @@ async def subject_from(request: Request) -> int | Response:
     if user is None:
         return not_found("no such user")
     return user.id
+
+
+async def _locked_subject(request: Request, own_id: int, locked: int, raw: str) -> int | Response:
+    """An admin has fixed whose lists this account sees. No ?user= means that
+    person, so an old tab cannot write to the wrong lists; naming anyone else
+    is refused. If that person's account is gone, it falls back to its own."""
+    if locked != own_id and await run(users.get_user, get_store(request), locked) is None:
+        locked = own_id
+    if raw != "" and raw != str(locked):
+        return forbidden("an admin has set whose lists you see")
+    return locked

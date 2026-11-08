@@ -391,8 +391,11 @@ admin:
   starts_on_label: "Starts on"
   starts_on_help: "Whose lists they see when they sign in. Choosing someone also turns on Showing. They can still switch."
   starts_on_own: "Their own"
+  showing_lock_label: "Don't let them change it"
+  showing_lock_help: "Keeps them on the person chosen under Starts on (their own lists if none). Their picker is shown but locked."
   showing_badge: "Showing"
   showing_badge_on: "Showing: {name}"
+  showing_badge_locked: "locked"
   showing_changed_toast: "Showing updated for {name}"
   showing_undo: "Showing change"
   disable_button: "Disable"
@@ -681,6 +684,7 @@ acting:
   me: "{name} (me)"
   description: "Whose queue, ratings and hearts the library shows and changes. Card layout, filters and saved views stay your own. An admin decides who has this and whose lists you start on."
   now: "Now showing {name}'s lists. Changes go to their queue, ratings and hearts."
+  locked: "An admin has set this, so it can't be changed."
 
 library:
   scope_all: "All types"

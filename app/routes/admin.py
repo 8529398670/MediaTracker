@@ -56,6 +56,7 @@ def user_rows(store: Store, query: str = "") -> list[dict[str, Any]]:
             "two_factor": two_factor.is_on(u),
             "login_link": links.get(u.id),
             "can_show_others": u.can_show_others,
+            "showing_locked": u.showing_locked,
             "default_subject": u.default_subject,
         }
         for u in users.list_users(store)
@@ -291,14 +292,17 @@ async def set_user_showing(request: Request) -> Response:
     raw = body.get("default_subject")
     if raw is not None and (not isinstance(raw, int) or isinstance(raw, bool)):
         return bad_request("default_subject must be a user id or null")
+    locked = body.get("showing_locked", False)
+    if not isinstance(locked, bool):
+        return bad_request("showing_locked must be true or false")
     try:
-        user = await run(users.set_showing, get_store(request), user_id, allowed, raw)
+        user = await run(users.set_showing, get_store(request), user_id, allowed, raw, locked)
     except users.NoSuchSubjectError:
         return not_found("no such user to start on")
     if user is None:
         return not_found("no such user")
-    audit(request, KIND_ADMIN, "user showing changed", {"user_id": user_id, "can_show_others": user.can_show_others, "default_subject": user.default_subject})
-    return JSONResponse({"ok": True, "can_show_others": user.can_show_others, "default_subject": user.default_subject})
+    audit(request, KIND_ADMIN, "user showing changed", {"user_id": user_id, "can_show_others": user.can_show_others, "default_subject": user.default_subject, "showing_locked": user.showing_locked})
+    return JSONResponse({"ok": True, "can_show_others": user.can_show_others, "default_subject": user.default_subject, "showing_locked": user.showing_locked})
 
 
 async def delete_user(request: Request) -> Response:

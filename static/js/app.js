@@ -607,7 +607,7 @@ const App = {
         class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( "admin.showing_button" ),
         on: { click: async function () {
-          const before = { allowed: Boolean( user.can_show_others ) , subject: user.default_subject == null ? null : user.default_subject };
+          const before = { allowed: Boolean( user.can_show_others ) , subject: user.default_subject == null ? null : user.default_subject , locked: Boolean( user.showing_locked ) };
           const people = ( Library.people || [] ).filter( ( person ) => person.id !== user.id );
           const after = await Dom.form( {
             title: I18n.fill( "admin.showing_heading" , { name: user.display_name } ),
@@ -616,17 +616,20 @@ const App = {
               { name: "subject" , type: "select" , label: I18n.get( "admin.starts_on_label" ) , value: before.subject == null ? "" : String( before.subject ) ,
                 help: I18n.get( "admin.starts_on_help" ) ,
                 options: [ { value: "" , label: I18n.get( "admin.starts_on_own" ) } ].concat( people.map( ( person ) => ( { value: String( person.id ) , label: person.display_name } ) ) ) },
+              { name: "locked" , type: "checkbox" , label: I18n.get( "admin.showing_lock_label" ) , value: before.locked , help: I18n.get( "admin.showing_lock_help" ) },
             ],
             save: async ( values ) => {
               // Starting on someone else needs Showing, so choosing someone grants it.
               const subject = values.subject !== "" ? Number( values.subject ) : null;
-              const wanted = { allowed: values.allowed || subject !== null , subject: subject };
-              await Api.setUserShowing( user.id , wanted.allowed , wanted.subject );
+              const allowed = values.allowed || subject !== null;
+              // Nothing to lock without Showing and with no one chosen (the server agrees).
+              const wanted = { allowed: allowed , subject: subject , locked: Boolean( values.locked ) && ( allowed || subject !== null ) };
+              await Api.setUserShowing( user.id , wanted.allowed , wanted.subject , wanted.locked );
               return wanted;
             },
           } );
           if ( !after ) return;
-          const apply = async ( state ) => { await Api.setUserShowing( user.id , state.allowed , state.subject ); await App.refreshUsers(); };
+          const apply = async ( state ) => { await Api.setUserShowing( user.id , state.allowed , state.subject , state.locked ); await App.refreshUsers(); };
           await App.refreshUsers();
           Undo.record( {
             label: I18n.get( "admin.showing_undo" ),
@@ -723,7 +726,8 @@ const App = {
       if ( user.two_factor ) status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( I18n.get( "admin.two_factor_badge" ) , "secondary" ) ] } ) );
       if ( user.role !== "admin" && user.can_show_others ) {
         const start = ( Library.people || [] ).find( ( person ) => person.id === user.default_subject );
-        const words = start ? I18n.fill( "admin.showing_badge_on" , { name: start.display_name } ) : I18n.get( "admin.showing_badge" );
+        let words = start ? I18n.fill( "admin.showing_badge_on" , { name: start.display_name } ) : I18n.get( "admin.showing_badge" );
+        if ( user.showing_locked ) words += " · " + I18n.get( "admin.showing_badge_locked" );
         status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( words , "info" ) ] } ) );
       }
       if ( user.login_link ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , text: LoginLinks.live( user.login_link , "live" ) } ) );

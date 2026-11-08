@@ -4,7 +4,8 @@
 // sent as ?user=<id>); the server refuses anyone without the grant. An admin
 // can also say whose lists a user starts on (me.default_subject), which
 // start() sets before the first library load. While it is
-// set to someone else, the picker on the Account screen is highlighted.
+// set to someone else, the picker on the Account screen is highlighted. An
+// admin can also lock it (me.showing_locked), and then it cannot be changed.
 //
 // Card layout, filters and saved views stay the admin's own: only the state
 // on the titles is the other person's. Undo history is cleared on a switch,
@@ -17,11 +18,19 @@ const Acting = {
     if ( me.can_show_others && me.default_subject != null && me.default_subject !== me.id ) Api.subject = me.default_subject;
   },
 
+  // An admin can lock the choice: the picker still says whose lists these
+  // are, but cannot be changed (the server refuses anyone else anyway).
+  locked() {
+    return Boolean( this.me && this.me.showing_locked );
+  },
+
   init( me ) {
     this.me = me;
     if ( !me.can_show_others ) return;
     const select = Dom.get( "acting-select" );
     Dom.show( Dom.get( "acting" ) , true );
+    select.disabled = this.locked();
+    Dom.show( Dom.get( "acting-locked" ) , this.locked() );
     this.fill( select );
     select.addEventListener( "change" , () => this.switchTo( Number( select.value ) ) );
     Library.on( ( change ) => { if ( change.kind === "load" ) this.fill( select ); } );
@@ -40,6 +49,7 @@ const Acting = {
   },
 
   async switchTo( userId ) {
+    if ( this.locked() ) return;
     Api.subject = userId === this.me.id ? null : userId;
     Undo.clear();
     await Library.load();

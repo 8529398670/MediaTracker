@@ -52,6 +52,8 @@ def me_row(store: Store, cfg: Config, actor: Actor, version: str) -> dict[str, A
         # reports what it may actually do, like "role".
         "can_show_others": actor.is_admin or actor.user.can_show_others,
         "default_subject": actor.user.default_subject,
+        # An admin's lock on that choice: the picker cannot be changed.
+        "showing_locked": users.locked_subject(actor.user) is not None,
         "is_owner": actor.user.id == owner_id,
         "login_link": login_tokens.live_login_link(store, actor.user.id),
         "maintenance": cfg.maintenance,

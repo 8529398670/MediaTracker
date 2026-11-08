@@ -45,6 +45,13 @@ def _args(call: Call, required: dict[str, type], optional: dict[str, type]) -> d
 
 
 def _subject(call: Call, given: int | None) -> int:
+    locked = users.locked_subject(call.actor.user)
+    if locked is not None:
+        if locked != call.actor.user.id and users.get_user(call.store, locked) is None:
+            locked = call.actor.user.id
+        if given is not None and given != locked:
+            raise Refusal("an admin has set whose lists you see")
+        return locked
     if given is None or given == call.actor.user.id:
         return call.actor.user.id
     if not (call.actor.is_admin or call.actor.user.can_show_others):
