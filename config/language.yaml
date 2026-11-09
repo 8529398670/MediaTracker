@@ -1123,7 +1123,7 @@ porting:
   format_auto: "Work it out"
   format_outline: "List / outline"
   paste: "Or paste it here"
-  placeholder: "# Watched\n- The Little Mermaid (1989)\n# TV shows\n- Fleabag"
+  placeholder: "# Watched\n- The Little Mermaid (1989)\n# TV shows\n- Yellow Submarine"
   read: "Read it"
   summary: "{n} titles read; {dupes} are already in the library."
   already: "Already here: {title}"
