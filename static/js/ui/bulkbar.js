@@ -17,13 +17,13 @@ const BulkBar = {
       bar._wired = true;
       bar.addEventListener( "click" , ( event ) => {
         const button = event.target.closest( "[data-bulk]" );
-        if ( button ) this.run( button.getAttribute( "data-bulk" ) , button.getAttribute( "data-value" ) );
+        if ( button ) Dom.steady( button , () => this.run( button.getAttribute( "data-bulk" ) , button.getAttribute( "data-value" ) ) );
       } );
-      Dom.get( "bulk-all" ).addEventListener( "click" , () => {
+      Dom.onPress( Dom.get( "bulk-all" ) , () => {
         ( LibraryScreen.result ? LibraryScreen.result.rows : [] ).forEach( ( row ) => LibraryScreen.selected.add( row.t.id ) );
         LibraryScreen.render();
       } );
-      Dom.get( "bulk-none" ).addEventListener( "click" , () => { LibraryScreen.selected.clear(); LibraryScreen.render(); } );
+      Dom.onPress( Dom.get( "bulk-none" ) , () => { LibraryScreen.selected.clear(); LibraryScreen.render(); } );
       Dom.get( "bulk-done" ).addEventListener( "click" , () => LibraryScreen.setSelecting( false ) );
     }
     const lists = Dom.get( "bulk-playlists" );

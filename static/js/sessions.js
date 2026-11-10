@@ -1,6 +1,10 @@
-// "Where you're signed in", on the Account screen: every device with a live
-// session on this account, and a way to sign one out from here. app.js calls
-// Sessions.init() once it knows who is signed in.
+// "Where you're signed in", a card on the Account screen: every device with a
+// live session on this account, and a way to sign one out from here. app.js
+// calls Sessions.init() once it knows who is signed in.
+//
+// The card folds away (<details id="sessions-card">) and starts shut. Open or
+// shut is remembered in this browser, and the list is only fetched while it is
+// open, so the Account screen costs no request for it until someone looks.
 //
 // Signing a device out is never undoable: it is the button for a lost phone,
 // and an undo would let the session back in. So it asks first, like revoking an
@@ -8,13 +12,41 @@
 const Sessions = {
   // Whose devices an admin has open under the Users table.
   shownFor: null,
+  // Open or shut, per browser, like the sidebar.
+  storageKey: "sessions-open",
 
   async init() {
     Dom.onPress( Dom.get( "sessions-revoke-others" ) , () => this.onRevokeOthers() );
+    const card = Dom.get( "sessions-card" );
+    card.open = this.savedOpen();
+    // Opening it here fires a toggle too, later; only a real change counts,
+    // or the list would load twice.
+    let open = card.open;
+    card.addEventListener( "toggle" , () => {
+      if ( card.open === open ) return;
+      open = card.open;
+      this.saveOpen( open );
+      if ( open ) this.refresh();
+    } );
     window.addEventListener( "hashchange" , () => {
       if ( Nav.current() === "account" ) this.refresh();
     } );
     await this.refresh();
+  },
+
+  savedOpen() {
+    try {
+      return window.localStorage.getItem( this.storageKey ) === "1";
+    } catch ( error ) {
+      return false;
+    }
+  },
+
+  saveOpen( open ) {
+    try {
+      if ( open ) window.localStorage.setItem( this.storageKey , "1" );
+      else window.localStorage.removeItem( this.storageKey );
+    } catch ( error ) { /* storage blocked: it just is not remembered */ }
   },
 
   // A short name out of a User-Agent header. It only has to help someone tell
@@ -106,7 +138,9 @@ const Sessions = {
     } catch ( error ) { App.showError( error.message ); }
   },
 
+  // Nothing while the card is shut: opening it calls this again.
   async refresh() {
+    if ( !Dom.get( "sessions-card" ).open ) return;
     const body = Dom.get( "sessions-table" ).querySelector( "tbody" );
     const page = await Pager.load( "sessions-table" , "sessions" , ( offset ) => Api.sessions( offset ) , ( session ) => {
       body.appendChild( this.row( session , async () => {
@@ -142,7 +176,7 @@ const Sessions = {
         await this.showFor( user );
       } ) );
     } );
-    Dom.get( "user-sessions" ).scrollIntoView( { block: "nearest" } );
+    Dom.reveal( Dom.get( "user-sessions" ) );
   },
 
   closeFor() {

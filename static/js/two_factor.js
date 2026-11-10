@@ -1,5 +1,5 @@
 // Two-factor sign-in: the step that asks for a code during any sign-in, and
-// the panel where a person turns it on or off. The server decides when a code
+// the card on the Account screen where a person turns it on or off. The server decides when a code
 // is needed; a sign-in call answers { two_factor: true, challenge } instead of
 // signing in, and that is the only signal this file acts on.
 const TwoFactor = {

@@ -23,7 +23,7 @@ const Card = {
     if ( s.heart ) classes.push( "is-loved" );
     if ( t.deleted_at ) classes.push( "is-deleted" );
     if ( settings.selected ) classes.push( "is-selected" );
-    const article = Dom.el( "article" , { class: classes.join( " " ) , attrs: { "data-id": t.id } } );
+    const article = Dom.el( "article" , { class: classes.join( " " ) , attrs: { "data-id": t.id , "data-key": "card-" + t.id } } );
 
     if ( settings.selecting ) {
       const box = Dom.el( "input" , { class: "form-check-input media-select" , attrs: { type: "checkbox" , "aria-label": I18n.fill( "card.select" , { title: t.title } ) } } );

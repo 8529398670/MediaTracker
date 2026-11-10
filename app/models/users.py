@@ -29,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 from datetime import datetime
+from typing import Any
 
 from app.core.db import BUCKET_META, BUCKET_USERS, Record, Store, Transaction
 from app.models import from_iso, to_iso, utc_now
@@ -81,6 +82,10 @@ class User:
     # The admin's lock on that choice: the account always sees default_subject
     # (its own lists if None) and cannot switch. Ignored for admins.
     showing_locked: bool = False
+    # This person's own list on the Appearance screen; None follows the app's
+    # defaults. theme_id is the one they use. See app/models/themes.py.
+    themes: list[dict[str, Any]] | None = None
+    theme_id: str = ""
 
     @property
     def disabled(self) -> bool:
@@ -108,6 +113,8 @@ class User:
             "can_show_others": self.can_show_others,
             "default_subject": self.default_subject,
             "showing_locked": self.showing_locked,
+            "themes": self.themes,
+            "theme_id": self.theme_id,
         }
 
     @classmethod
@@ -129,6 +136,8 @@ class User:
             can_show_others=record.get("can_show_others", False),
             default_subject=record.get("default_subject"),
             showing_locked=record.get("showing_locked", False),
+            themes=record.get("themes"),
+            theme_id=record.get("theme_id", ""),
         )
 
 

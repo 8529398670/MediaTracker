@@ -165,7 +165,7 @@ const App = {
     Dom.show( Dom.get( "app-nav" ) , true );
     Undo.bindButtons( Dom.get( "undo-button" ) , Dom.get( "redo-button" ) );
     this.labelAccount();
-    Theme.render( Dom.get( "theme-picker" ) );
+    ThemeEditor.init( me );
     Dom.get( "display-name" ).value = me.display_name;
 
     Dom.onSubmit( Dom.get( "rename-form" ) , this.onRename.bind( this ) );
@@ -484,7 +484,7 @@ const App = {
     Qr.hide( Dom.get( "login-link-qr" ) );
     Dom.show( box , true );
     // The row that asked for it may be a long way down the Users table.
-    box.scrollIntoView( { block: "nearest" } );
+    Dom.reveal( box );
   },
 
   async onCopyLink() {
@@ -768,7 +768,7 @@ const App = {
     // It stays until it is closed or replaced: it may hold a reference to quote.
     Dom.show( banner , true );
     // It sits at the top of the screen, which may be scrolled well past.
-    banner.scrollIntoView( { block: "nearest" } );
+    Dom.reveal( banner );
   },
 
   // A refusal about one field goes beside that field, and anything else to the

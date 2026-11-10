@@ -75,6 +75,7 @@ const LibraryScreen = {
     this.query = parsed.query;
     if ( scopeChanged ) {
       this.selected.clear();
+      Dom.movedOnPurpose();
       window.scrollTo( 0 , 0 );
     }
     if ( !quiet && Nav.screen() !== "library" ) return;
@@ -219,12 +220,19 @@ const LibraryScreen = {
 
   renderGrid( result ) {
     const token = ++this.renderToken;
-    const scrollY = window.scrollY;
     const grid = this.grid;
-    Dom.clear( grid );
+    // Built off the page and put in with Dom.swap; the grid keeps its height
+    // (Dom.hold) until the last chunk is in, so the page never shrinks under
+    // the reader while the cards arrive.
+    if ( this.releaseGrid ) this.releaseGrid();
+    const release = Dom.hold( grid );
+    this.releaseGrid = release;
+    const nodes = [];
     const empty = Dom.get( "library-empty" );
     Dom.show( empty , result.rows.length === 0 );
     if ( !result.rows.length ) {
+      Dom.swap( grid );
+      release();
       Dom.text( Dom.get( "library-empty-text" ) , I18n.get( result.pool.length ? "library.empty_filtered" : "library.empty_" + this.query.list ) );
       Dom.show( Dom.get( "library-empty-clear" ) , !Query.isDefault( this.query ) );
       return;
@@ -237,14 +245,14 @@ const LibraryScreen = {
         const closed = collapsed.has( group.key );
         const header = Dom.el( "button" , {
           class: "group-header",
-          attrs: { type: "button" , "aria-expanded": String( !closed ) },
+          attrs: { type: "button" , "aria-expanded": String( !closed ) , "data-key": "group-" + group.key },
           children: [ Card.icon( closed ? "chevron-right" : "chevron-down" ) , Dom.el( "span" , { class: "group-name" , text: this.groupLabel( group ) } ) , Dom.el( "span" , { class: "badge rounded-pill text-bg-light" , text: String( group.rows.length ) } ) ],
           on: { click: () => { this.setCollapsed( group.key , !closed ); this.renderGrid( this.result ); } },
         } );
-        grid.appendChild( header );
+        nodes.push( header );
         if ( closed ) return;
       }
-      grid.appendChild( container );
+      nodes.push( container );
       group.rows.forEach( ( row ) => work.push( [ container , row ] ) );
     } );
     const options = ( row ) => ( { selecting: this.selecting , selected: this.selected.has( row.t.id ) } );
@@ -257,11 +265,14 @@ const LibraryScreen = {
         const node = Card.build( work[ i ][ 1 ] , this.card , options( work[ i ][ 1 ] ) );
         work[ i ][ 0 ].appendChild( node );
       }
+      if ( start === 0 ) Dom.swap( grid , ...nodes );
       if ( end < work.length ) window.requestAnimationFrame( () => step( end ) );
-      else if ( scrollY ) window.scrollTo( 0 , scrollY );
+      else if ( this.releaseGrid === release ) {
+        this.releaseGrid = null;
+        release();
+      }
     };
     step( 0 );
-    if ( scrollY ) window.scrollTo( 0 , scrollY );
   },
 
   // One card changed: redraw just it. If it no longer belongs here (marked
@@ -282,7 +293,10 @@ const LibraryScreen = {
     if ( !this.matches( row ) ) {
       node.classList.add( "is-leaving" );
       window.clearTimeout( this.leaving );
-      this.leaving = window.setTimeout( () => this.render() , 2500 );
+      this.leaving = window.setTimeout( () => {
+        const next = node.isConnected ? ( node.nextElementSibling || node.previousElementSibling || node.parentElement ) : null;
+        Dom.steady( next , () => this.render() );
+      } , 2500 );
     }
   },
 
@@ -318,10 +332,10 @@ const LibraryScreen = {
     sheet.addEventListener( "show.bs.offcanvas" , () => { this.sheetOpen = true; this.renderSheet(); } );
     sheet.addEventListener( "hidden.bs.offcanvas" , () => { this.sheetOpen = false; } );
     Dom.all( "[data-layout]" ).forEach( ( button ) => {
-      button.addEventListener( "click" , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-layout" ) } ) ) );
+      Dom.onPress( button , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-layout" ) } ) ) );
     } );
     Dom.get( "customize-button" ).addEventListener( "click" , () => Customizer.open( "library" ) );
-    Dom.get( "select-button" ).addEventListener( "click" , () => this.setSelecting( !this.selecting ) );
+    Dom.onPress( Dom.get( "select-button" ) , () => this.setSelecting( !this.selecting ) );
     Dom.get( "library-empty-clear" ).addEventListener( "click" , () => this.setQuery( Query.defaults( this.query.list ) ) );
     Dom.get( "filter-sheet-clear" ).addEventListener( "click" , () => {
       const next = Query.clone( this.query );

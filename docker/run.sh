@@ -90,7 +90,11 @@ mkdir -p "$DATA_DIR"
 DOCKER_LAST=".run/docker.last"
 if [ -f "$DOCKER_LAST" ] && [ "$( cat "$DOCKER_LAST" )" != "$DOCKER_SETTINGS" ]; then
   echo "docker: settings changed since the last run (config/config.yaml):"
-  diff <( cat "$DOCKER_LAST" ) <( printf '%s\n' "$DOCKER_SETTINGS" ) | sed -n 's/^< /  was  /p; s/^> /  now  /p'
+  # diff exits 1 when its inputs differ, which they always do here. Under
+  # pipefail that would end the script silently, before the container is
+  # replaced, so the notice is made unable to fail.
+  diff <( cat "$DOCKER_LAST" ) <( printf '%s\n' "$DOCKER_SETTINGS" ) \
+    | sed -n 's/^< /  was  /p; s/^> /  now  /p' || true
   echo ""
 fi
 
@@ -180,9 +184,15 @@ fi
 # whatever the host says. Get this wrong and the container starts, fails to
 # create app.db, and crash-loops on "permission denied" -- a slow thing to
 # diagnose from the outside, so it is worth settling here.
-touch "${DATA_DIR}/${DATA_MARKER}"
+#
+# The marker is written twice, and either may fail. After a first run on Linux
+# data/ and the marker belong to the container's user, so the host user can no
+# longer touch them -- root in the container does it instead. On colima's sshfs
+# mounts root in the container cannot write, but the host user still owns the
+# directory, so the host-side touch works. The write probe below decides.
+touch "${DATA_DIR}/${DATA_MARKER}" 2>/dev/null || true
 docker run --rm --user 0:0 -v "${DATA_DIR}:/data" \
-  --entrypoint sh "$IMAGE_ID" -c "chown -R ${APP_UID}:${APP_GID} /data" >/dev/null 2>&1 || true
+  --entrypoint sh "$IMAGE_ID" -c "touch '/data/${DATA_MARKER}'; chown -R ${APP_UID}:${APP_GID} /data" >/dev/null 2>&1 || true
 
 if ! docker run --rm --user "${APP_UID}:${APP_GID}" -v "${DATA_DIR}:/data" \
      --entrypoint sh "$IMAGE_ID" -c 'touch /data/.probe' >/dev/null 2>&1; then

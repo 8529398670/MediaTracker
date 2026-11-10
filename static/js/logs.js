@@ -1,5 +1,7 @@
 // The Logs screen (owner only): everything the server and the browsers have
-// logged, one collapsible block per day, newest first. app.js calls
+// logged. One day shows at a time, today unless another is picked on the
+// calendar, which marks the days that have entries (or, while searching,
+// matches). app.js calls
 // Logs.init( me ) for admins; only the owner gets past the first line, and
 // the server answers anyone else's call with a 404 regardless.
 //
@@ -25,9 +27,14 @@ const Logs = {
   liveSource: null,
   liveTimer: null,
   liveLast: 0,
-  // Which days are open, kept across a refresh; null until the first one,
-  // which opens the newest day.
-  openDays: null,
+  // The day shown and the month the calendar shows, as UTC dates like the
+  // files' names ("2026-11-09", "2026-11"). followToday is true until someone
+  // picks a day, so the day shown moves on at midnight UTC.
+  shown: "",
+  month: "",
+  followToday: true,
+  // The last listing, by date.
+  days: new Map(),
 
   async init( me ) {
     if ( !me.is_owner || !me.logs_enabled ) return;
@@ -40,6 +47,11 @@ const Logs = {
     Dom.get( "logs-live" ).addEventListener( "click" , () => this.toggleLive() );
     Dom.onPress( Dom.get( "logs-prune" ) , () => this.onPrune() );
     window.addEventListener( "hashchange" , () => this.followScreen() );
+    Dom.get( "logs-cal-prev" ).addEventListener( "click" , () => this.shiftMonth( -1 ) );
+    Dom.get( "logs-cal-next" ).addEventListener( "click" , () => this.shiftMonth( 1 ) );
+    Dom.get( "logs-cal-today" ).addEventListener( "click" , () => this.pick( this.today() , true ) );
+    this.shown = this.today();
+    this.month = this.shown.slice( 0 , 7 );
     this.renderKinds();
     await this.refresh();
   },
@@ -49,10 +61,10 @@ const Logs = {
     return Dom.el( "td" , { class: "text-nowrap" , text: entry.ip || "" } );
   },
 
-  // A new search starts with the newest matching day open again.
+  // A new search moves to the newest matching day, unless the day shown has
+  // matches of its own.
   search() {
-    this.openDays = null;
-    return this.refresh();
+    return this.refresh( true );
   },
 
   query() {
@@ -61,26 +73,36 @@ const Logs = {
     return [ typed , kinds.length ? "kind:" + kinds.join( "," ) : "" ].filter( Boolean ).join( " " );
   },
 
+  // Made once: a press flips its own button, so the button under the pointer
+  // is never taken away and put back (which loses the keyboard's place, and
+  // the browser's hold on where the page was).
   renderKinds() {
     const holder = Dom.get( "logs-kinds" );
-    Dom.clear( holder );
-    this.kinds.forEach( ( kind ) => {
+    Dom.swap( holder , ...this.kinds.map( ( kind ) => Dom.el( "button" , {
+      class: "btn btn-sm",
+      text: I18n.get( "logs.kind_" + kind ) || kind,
+      attrs: { type: "button" , "data-key": "log-kind-" + kind },
+      on: { click: () => {
+        if ( this.selected.has( kind ) ) this.selected.delete( kind );
+        else this.selected.add( kind );
+        this.paintKinds();
+        return this.search();
+      } },
+    } ) ) );
+    this.paintKinds();
+  },
+
+  paintKinds() {
+    this.kinds.forEach( ( kind , index ) => {
+      const button = Dom.get( "logs-kinds" ).children[ index ];
       const on = this.selected.has( kind );
-      holder.appendChild( Dom.el( "button" , {
-        class: "btn btn-sm " + ( on ? "btn-primary" : "btn-outline-secondary" ),
-        text: I18n.get( "logs.kind_" + kind ) || kind,
-        attrs: { type: "button" , "aria-pressed": String( on ) },
-        on: { click: () => {
-          if ( on ) this.selected.delete( kind );
-          else this.selected.add( kind );
-          this.renderKinds();
-          this.search();
-        } },
-      } ) );
+      button.classList.toggle( "btn-primary" , on );
+      button.classList.toggle( "btn-outline-secondary" , !on );
+      button.setAttribute( "aria-pressed" , String( on ) );
     } );
   },
 
-  async refresh() {
+  async refresh( jump = false ) {
     let listing;
     try {
       listing = await Api.logDays( this.query() );
@@ -89,19 +111,112 @@ const Logs = {
       return;
     }
     this.renderSettings( listing );
+    this.days = new Map( listing.days.map( ( day ) => [ day.date , day ] ) );
 
-    const container = Dom.get( "logs-days" );
-    if ( this.openDays === null ) {
-      this.openDays = new Set( listing.days.length ? [ listing.days[ 0 ].date ] : [] );
-    } else {
-      this.openDays = new Set( Dom.all( "details.log-day[open]" , container ).map( ( day ) => day.getAttribute( "data-date" ) ) );
+    const today = this.today();
+    if ( this.followToday && this.shown !== today ) {
+      this.shown = today;
+      this.month = today.slice( 0 , 7 );
+    }
+    const searching = this.query() !== "";
+    if ( jump && searching && listing.days.length > 0 && !this.days.has( this.shown ) ) {
+      this.shown = listing.days[ 0 ].date;
+      this.month = this.shown.slice( 0 , 7 );
+      this.followToday = this.shown === today;
     }
 
-    Dom.clear( container );
+    const nothing = searching && listing.days.length === 0;
     const empty = Dom.get( "logs-empty" );
-    Dom.text( empty , I18n.get( this.query() ? "logs.no_matches" : "logs.empty" ) );
-    Dom.show( empty , listing.days.length === 0 );
-    listing.days.forEach( ( day ) => container.appendChild( this.dayBlock( day ) ) );
+    Dom.text( empty , I18n.get( "logs.no_matches" ) );
+    Dom.show( empty , nothing );
+    Dom.show( Dom.get( "logs-day" ) , !nothing );
+    this.renderCalendar();
+    await this.renderDay();
+  },
+
+  // Shows date: the calendar moves to its month. focus is for a pick made on
+  // the calendar, so the keyboard stays where it was.
+  async pick( date , focus ) {
+    this.shown = date;
+    this.month = date.slice( 0 , 7 );
+    this.followToday = date === this.today();
+    Dom.show( Dom.get( "logs-day" ) , true );
+    this.renderCalendar();
+    if ( focus ) {
+      const cell = Dom.get( "logs-cal-grid" ).querySelector( "[aria-pressed=\"true\"]" );
+      if ( cell ) cell.focus( { preventScroll: true } );
+    }
+    await this.renderDay();
+  },
+
+  shiftMonth( step ) {
+    const [ year , month ] = this.month.split( "-" ).map( Number );
+    this.month = new Date( Date.UTC( year , month - 1 + step , 1 ) ).toISOString().slice( 0 , 7 );
+    this.renderCalendar();
+  },
+
+  // The day shown, folded or not as it was if it is the same day. The new day
+  // is built and its first page read before it replaces the old one, so the
+  // page never shrinks to nothing while it waits. Only the latest call lands.
+  async renderDay() {
+    const holder = Dom.get( "logs-day" );
+    const old = holder.querySelector( "details.log-day" );
+    const open = old && old.getAttribute( "data-date" ) === this.shown ? old.open : true;
+    const searching = this.query() !== "";
+    const day = this.days.get( this.shown ) || {
+      date: this.shown, bytes: 0, entries: 0, errors: 0, compressed: false,
+      matches: searching ? 0 : undefined, missing: true,
+    };
+    const turn = this.dayTurn = ( this.dayTurn || 0 ) + 1;
+    const block = await this.dayBlock( day , open );
+    if ( turn !== this.dayTurn ) return;
+    Dom.swap( holder , block );
+  },
+
+  // A month of buttons, one per date. A date with entries (or matches, while
+  // searching) can be picked, and so can today; the rest are disabled. Months
+  // before the oldest day or after this one are out of reach.
+  renderCalendar() {
+    const today = this.today();
+    const searching = this.query() !== "";
+    const dates = Array.from( this.days.keys() ).sort();
+    const oldest = dates.length ? dates[ 0 ].slice( 0 , 7 ) : today.slice( 0 , 7 );
+    const newest = [ today.slice( 0 , 7 ) , dates.length ? dates[ dates.length - 1 ].slice( 0 , 7 ) : "" ].sort()[ 1 ];
+    const [ year , month ] = this.month.split( "-" ).map( Number );
+    const first = new Date( Date.UTC( year , month - 1 , 1 ) );
+    const length = new Date( Date.UTC( year , month , 0 ) ).getUTCDate();
+
+    Dom.text( Dom.get( "logs-cal-title" ) , first.toLocaleDateString( undefined , { month: "long" , year: "numeric" , timeZone: "UTC" } ) );
+    Dom.get( "logs-cal-prev" ).disabled = this.month <= oldest;
+    Dom.get( "logs-cal-next" ).disabled = this.month >= newest;
+
+    const cells = [];
+    // 2026-01-04 was a Sunday; the week starts there.
+    for ( let weekday = 0 ; weekday < 7 ; weekday += 1 ) {
+      const name = new Date( Date.UTC( 2026 , 0 , 4 + weekday ) ).toLocaleDateString( undefined , { weekday: "narrow" , timeZone: "UTC" } );
+      cells.push( Dom.el( "span" , { class: "log-cal-weekday" , text: name , attrs: { "aria-hidden": "true" } } ) );
+    }
+    for ( let blank = 0 ; blank < first.getUTCDay() ; blank += 1 ) cells.push( Dom.el( "span" ) );
+    for ( let number = 1 ; number <= length ; number += 1 ) {
+      const date = this.month + "-" + String( number ).padStart( 2 , "0" );
+      const day = this.days.get( date );
+      const count = day ? ( searching ? day.matches : day.entries ) : 0;
+      const label = I18n.get( searching ? "logs.day_matches" : "logs.day_button" )
+        .replace( "{date}" , () => this.dayLabel( date ) )
+        .replace( "{count}" , Number( count || 0 ).toLocaleString() );
+      const cell = Dom.el( "button" , {
+        class: "log-cal-day" + ( day ? " has-logs" : "" ) + ( date === today ? " is-today" : "" ),
+        attrs: { type: "button" , "data-key": "log-cal-" + date , "aria-pressed": String( date === this.shown ) , "aria-label": label , title: label },
+        children: [
+          Dom.el( "span" , { text: String( number ) } ),
+          day && day.errors > 0 ? Dom.el( "span" , { class: "log-cal-dot" , attrs: { "aria-hidden": "true" } } ) : null,
+        ].filter( Boolean ),
+        on: { click: () => this.pick( date , true ) },
+      } );
+      cell.disabled = !day && date !== today;
+      cells.push( cell );
+    }
+    Dom.swap( Dom.get( "logs-cal-grid" ) , ...cells );
   },
 
   renderSettings( listing ) {
@@ -140,7 +255,7 @@ const Logs = {
     return I18n.get( key ).replace( "{count}" , Number( value || 0 ).toLocaleString() );
   },
 
-  dayBlock( day ) {
+  daySummary( day ) {
     const meta = [
       day.matches !== undefined ? this.count( "logs.matches" , day.matches ) : this.count( "logs.entries" , day.entries ),
       this.size( day.bytes ),
@@ -152,9 +267,24 @@ const Logs = {
       Dom.el( "span" , { class: "log-day-meta" , text: meta.filter( Boolean ).join( " · " ) } ),
       day.errors > 0 ? Dom.badge( this.count( "logs.errors" , day.errors ) , "danger" ) : null,
     ].filter( Boolean ) } );
+    return summary;
+  },
+
+  // A day, with its first page already in if it is open.
+  async dayBlock( day , open ) {
+    const summary = this.daySummary( day );
 
     // Download and delete sit inside the opened day rather than on the
     // summary line, where a click would also fold the day.
+    if ( day.missing ) {
+      const body = Dom.el( "div" , { class: "log-day-body" , children: [
+        Dom.el( "p" , { class: "text-body-secondary mb-0" , text: I18n.get( day.matches === undefined ? "logs.day_empty" : "logs.no_matches" ) } ),
+      ] } );
+      const block = Dom.el( "details" , { class: "log-day" , attrs: { "data-date": day.date } , children: [ summary , body ] } );
+      block.open = open;
+      return block;
+    }
+
     const download = Dom.el( "a" , {
       class: "btn btn-sm btn-outline-secondary",
       text: I18n.get( "logs.download_button" ),
@@ -170,13 +300,19 @@ const Logs = {
     ] } );
 
     const block = Dom.el( "details" , { class: "log-day" , attrs: { "data-date": day.date } , children: [ summary , body ] } );
+    if ( open ) {
+      block._loaded = true;
+      await this.loadDay( block , body , day.date , null );
+    }
+    // Folded and then opened: the rows come in under the summary, which is
+    // where the reader is looking, so nothing above them moves.
     block.addEventListener( "toggle" , () => {
       if ( block.open && !block._loaded ) {
         block._loaded = true;
         this.loadDay( block , body , day.date , null );
       }
     } );
-    if ( this.openDays.has( day.date ) ) block.open = true;
+    block.open = open;
     return block;
   },
 
@@ -241,15 +377,19 @@ const Logs = {
     return entry.msg || "";
   },
 
-  // A row, and under it the whole entry as JSON, shown by clicking the row.
   appendEntry( rows , entry ) {
+    rows.append( ...this.entryRows( entry ) );
+  },
+
+  // A row, and under it the whole entry as JSON, shown by clicking the row.
+  entryRows( entry ) {
     const json = Dom.el( "pre" , { class: "log-json" , text: JSON.stringify( entry , null , 2 ) } );
     const detail = Dom.el( "tr" , { class: "log-detail" , attrs: { hidden: "" } , children: [
       Dom.el( "td" , { attrs: { colspan: "5" } , children: [ json ] } ),
     ] } );
     const row = Dom.el( "tr" , {
       class: "log-row",
-      attrs: { tabindex: "0" , "aria-expanded": "false" },
+      attrs: { tabindex: "0" , "aria-expanded": "false" , "data-pos": String( entry.pos ) , "data-key": "log-" + entry.pos },
       children: [
         Dom.el( "td" , { class: "text-nowrap" , text: new Date( entry.ts ).toLocaleTimeString() } ),
         Dom.el( "td" , { children: [ Dom.badge( I18n.get( "logs.kind_" + entry.kind ) || entry.kind , this.tone( entry ) ) ] } ),
@@ -271,8 +411,7 @@ const Logs = {
         toggle();
       }
     } );
-    rows.appendChild( row );
-    rows.appendChild( detail );
+    return [ row , detail ];
   },
 
   // Live: the server says when there is something new, and the list is read
@@ -332,12 +471,47 @@ const Logs = {
     this.liveTimer = window.setTimeout( () => {
       this.liveTimer = null;
       this.liveLast = Date.now();
-      if ( Dom.all( "#logs-days .log-detail:not([hidden])" ).length > 0 ) {
+      if ( Dom.all( "#logs-day .log-detail:not([hidden])" ).length > 0 ) {
         this.onChanged();
         return;
       }
-      this.refresh();
+      this.liveRead();
     } , wait );
+  },
+
+  // What Live does with a change: today's open day gets only the entries newer
+  // than its top row, added above it, and the rows already there (with any
+  // "Load more" pages) stay as they are. The calendar and the day's counts are
+  // brought up to date in place. Anything else is a full refresh.
+  async liveRead() {
+    const block = Dom.get( "logs-day" ).querySelector( "details.log-day" );
+    const rows = block && block.open && block._loaded && block.getAttribute( "data-date" ) === this.shown ? block.querySelector( ".log-table tbody" ) : null;
+    const top = rows && rows.querySelector( "tr.log-row" );
+    if ( !top || this.shown !== this.today() ) return this.refresh();
+    const newest = Number( top.getAttribute( "data-pos" ) );
+    let listing;
+    let page;
+    try {
+      [ listing , page ] = await Promise.all( [ Api.logDays( this.query() ) , Api.logDay( this.shown , this.query() , null ) ] );
+    } catch ( error ) {
+      return;
+    }
+    const fresh = page.entries.filter( ( entry ) => entry.pos > newest );
+    // A whole page of new ones may have skipped some: start over.
+    if ( fresh.length === page.entries.length && page.next !== null && page.next !== undefined ) return this.refresh();
+    this.renderSettings( listing );
+    this.days = new Map( listing.days.map( ( day ) => [ day.date , day ] ) );
+    this.renderCalendar();
+    const day = this.days.get( this.shown );
+    if ( day ) block.querySelector( "summary" ).replaceWith( this.daySummary( day ) );
+    if ( fresh.length === 0 ) return;
+    // Someone watching the top of the list sees the new rows arrive; someone
+    // reading further down keeps the row they are on where it is.
+    const table = rows.closest( "table" );
+    const anchor = table.getBoundingClientRect().top >= 0
+      ? table
+      : Array.from( rows.rows ).find( ( row ) => !row.hidden && row.getBoundingClientRect().bottom > 0 ) || table;
+    Dom.steady( anchor , () => rows.prepend( ...fresh.flatMap( ( entry ) => this.entryRows( entry ) ) ) );
   },
 
   async onPrune() {
@@ -360,6 +534,7 @@ const Logs = {
     if ( !( await Dom.confirm( question ) ) ) return;
     try {
       await Api.deleteLogDay( date );
+      this.followToday = true;
       await this.refresh();
       Dom.toast( I18n.get( "logs.deleted" ).replace( "{date}" , () => this.dayLabel( date ) ) , "ok" );
     } catch ( error ) {

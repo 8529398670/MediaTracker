@@ -88,10 +88,6 @@
           <!-- Account: its second line names who is signed in (App.labelAccount). -->
           <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="nav-link-text"><span data-i18n="nav.account"></span><span id="sidebar-user" class="nav-link-sub"></span></span></a>
           <a class="nav-link" href="#appearance" data-nav="appearance"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.appearance"></span></a>
-          <a class="nav-link" href="#pin" data-nav="pin"><i class="bi bi-key" aria-hidden="true"></i><span data-i18n="nav.pin"></span></a>
-          <a class="nav-link" href="#password" data-nav="password"><i class="bi bi-lock" aria-hidden="true"></i><span data-i18n="nav.password"></span></a>
-          <a class="nav-link" href="#two-factor" data-nav="two-factor"><i class="bi bi-shield-lock" aria-hidden="true"></i><span data-i18n="nav.two_factor"></span></a>
-          <a class="nav-link" href="#api-keys" data-nav="api-keys"><i class="bi bi-code-square" aria-hidden="true"></i><span data-i18n="nav.api_keys"></span></a>
 
           <div id="sidebar-admin" class="sidebar-group" hidden>
             <h3 class="sidebar-heading" data-i18n="nav.admin_heading"></h3>
@@ -226,6 +222,12 @@
         </div>
       </section>
 
+      <!--
+        Every signed-in screen is a <section class="view"> holding its heading
+        and a stack of cards, one card per job: a form that makes something
+        and the list it adds to are two cards, so each has its own edge. A
+        screen that does one thing is one card.
+      -->
       <section id="signed-in" hidden>
         <!--
           The library: one scope and list at a time, with a query that lives in
@@ -385,38 +387,40 @@
         </section>
 
         <!-- Adding titles: paste, look up, check, add. See screens/add.js. -->
-        <section class="card view" data-view="add" id="add-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="add.heading"></h2>
-            <p class="text-body-secondary" data-i18n="add.description"></p>
-            <form id="add-form" autocomplete="off">
-              <label for="add-text" class="visually-hidden" data-i18n="add.heading"></label>
-              <textarea id="add-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:add.placeholder"></textarea>
-              <div class="row g-2 align-items-end">
-                <div class="col-6 col-md-3">
-                  <label for="add-type" class="form-label small" data-i18n="add.type"></label>
-                  <select id="add-type" class="form-select"></select>
+        <section class="view" data-view="add" id="add-panel" hidden>
+          <h2 class="view-title" data-i18n="add.heading"></h2>
+          <p class="view-description" data-i18n="add.description"></p>
+          <section class="card">
+            <div class="card-body">
+              <form id="add-form" autocomplete="off">
+                <label for="add-text" class="visually-hidden" data-i18n="add.heading"></label>
+                <textarea id="add-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:add.placeholder"></textarea>
+                <div class="row g-2 align-items-end">
+                  <div class="col-6 col-md-3">
+                    <label for="add-type" class="form-label small" data-i18n="add.type"></label>
+                    <select id="add-type" class="form-select"></select>
+                  </div>
+                  <div class="col-6 col-md-3">
+                    <label for="add-status" class="form-label small" data-i18n="add.status"></label>
+                    <select id="add-status" class="form-select">
+                      <option value="" data-i18n="add.status_none"></option>
+                      <option value="watched" data-i18n="status.watched"></option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-md-6 d-flex gap-2 flex-wrap">
+                    <button id="add-lookup" class="btn btn-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> <span data-i18n="add.lookup"></span></button>
+                    <button id="add-plain" class="btn btn-outline-secondary" type="button" data-i18n="add.plain"></button>
+                  </div>
                 </div>
-                <div class="col-6 col-md-3">
-                  <label for="add-status" class="form-label small" data-i18n="add.status"></label>
-                  <select id="add-status" class="form-select">
-                    <option value="" data-i18n="add.status_none"></option>
-                    <option value="watched" data-i18n="status.watched"></option>
-                  </select>
-                </div>
-                <div class="col-12 col-md-6 d-flex gap-2 flex-wrap">
-                  <button id="add-lookup" class="btn btn-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> <span data-i18n="add.lookup"></span></button>
-                  <button id="add-plain" class="btn btn-outline-secondary" type="button" data-i18n="add.plain"></button>
-                </div>
+              </form>
+              <p id="add-progress" class="small text-body-secondary mt-2 mb-0"></p>
+              <div id="add-results" class="list-group mt-3"></div>
+              <div id="add-actions" class="d-flex gap-2 mt-3" hidden>
+                <button id="add-confirm" class="btn btn-success" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span id="add-confirm-label"></span></button>
+                <button id="add-clear" class="btn btn-outline-secondary" type="button" data-i18n="add.clear"></button>
               </div>
-            </form>
-            <p id="add-progress" class="small text-body-secondary mt-2 mb-0"></p>
-            <div id="add-results" class="list-group mt-3"></div>
-            <div id="add-actions" class="d-flex gap-2 mt-3" hidden>
-              <button id="add-confirm" class="btn btn-success" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span id="add-confirm-label"></span></button>
-              <button id="add-clear" class="btn btn-outline-secondary" type="button" data-i18n="add.clear"></button>
             </div>
-          </div>
+          </section>
         </section>
 
         <!--
@@ -454,444 +458,506 @@
         </section>
 
         <!-- The same work added twice; see screens/dupes.js. -->
-        <section class="card view" data-view="dupes" id="dupes-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="dupes.heading"></h2>
-            <p class="text-body-secondary" data-i18n="dupes.description"></p>
-            <p id="dupes-summary" class="fw-semibold"></p>
-            <div id="dupes-list" class="list-group"></div>
-          </div>
+        <section class="view" data-view="dupes" id="dupes-panel" hidden>
+          <h2 class="view-title" data-i18n="dupes.heading"></h2>
+          <p class="view-description" data-i18n="dupes.description"></p>
+          <section class="card">
+            <div class="card-body">
+              <p id="dupes-summary" class="fw-semibold"></p>
+              <div id="dupes-list" class="list-group"></div>
+            </div>
+          </section>
         </section>
 
         <!-- Import and export; see screens/porting.js. -->
-        <section class="card view" data-view="porting" id="porting-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="porting.import_heading"></h2>
-            <p class="text-body-secondary" data-i18n="porting.import_description"></p>
-            <div class="row g-2 align-items-end mb-2">
-              <div class="col-md"><label for="import-file" class="form-label small" data-i18n="porting.file"></label><input id="import-file" class="form-control" type="file" accept=".md,.txt,.csv,.json,text/plain,text/markdown,text/csv,application/json" /></div>
-              <div class="col-md-3"><label for="import-format" class="form-label small" data-i18n="porting.format"></label>
-                <select id="import-format" class="form-select">
-                  <option value="auto" data-i18n="porting.format_auto"></option>
-                  <option value="outline" data-i18n="porting.format_outline"></option>
-                  <option value="csv">CSV</option>
-                  <option value="json">JSON</option>
-                </select>
+        <section class="view" data-view="porting" id="porting-panel" hidden>
+          <h2 class="view-title" data-i18n="nav.porting"></h2>
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="porting.import_heading"></h3>
+              <p class="text-body-secondary" data-i18n="porting.import_description"></p>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-md"><label for="import-file" class="form-label small" data-i18n="porting.file"></label><input id="import-file" class="form-control" type="file" accept=".md,.txt,.csv,.json,text/plain,text/markdown,text/csv,application/json" /></div>
+                <div class="col-md-3"><label for="import-format" class="form-label small" data-i18n="porting.format"></label>
+                  <select id="import-format" class="form-select">
+                    <option value="auto" data-i18n="porting.format_auto"></option>
+                    <option value="outline" data-i18n="porting.format_outline"></option>
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </div>
+              </div>
+              <label for="import-text" class="form-label small" data-i18n="porting.paste"></label>
+              <textarea id="import-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:porting.placeholder"></textarea>
+              <button id="import-read" class="btn btn-outline-primary" type="button" data-i18n="porting.read"></button>
+              <div id="import-preview" class="mt-3" hidden>
+                <p id="import-summary" class="fw-semibold"></p>
+                <div class="form-check mb-2"><input id="import-skip" class="form-check-input" type="checkbox" checked /><label for="import-skip" class="form-check-label" data-i18n="porting.skip_dupes"></label></div>
+                <button id="import-go" class="btn btn-success mb-3" type="button" data-i18n="porting.import"></button>
+                <div class="table-responsive import-table-wrap">
+                  <table id="import-table" class="table table-sm">
+                    <thead><tr><th data-i18n="editor.title"></th><th data-i18n="editor.year"></th><th data-i18n="editor.type"></th><th data-i18n="editor.status"></th><th data-i18n="editor.tags"></th><th></th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
               </div>
             </div>
-            <label for="import-text" class="form-label small" data-i18n="porting.paste"></label>
-            <textarea id="import-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:porting.placeholder"></textarea>
-            <button id="import-read" class="btn btn-outline-primary" type="button" data-i18n="porting.read"></button>
-            <div id="import-preview" class="mt-3" hidden>
-              <p id="import-summary" class="fw-semibold"></p>
-              <div class="form-check mb-2"><input id="import-skip" class="form-check-input" type="checkbox" checked /><label for="import-skip" class="form-check-label" data-i18n="porting.skip_dupes"></label></div>
-              <button id="import-go" class="btn btn-success mb-3" type="button" data-i18n="porting.import"></button>
-              <div class="table-responsive import-table-wrap">
-                <table id="import-table" class="table table-sm">
-                  <thead><tr><th data-i18n="editor.title"></th><th data-i18n="editor.year"></th><th data-i18n="editor.type"></th><th data-i18n="editor.status"></th><th data-i18n="editor.tags"></th><th></th></tr></thead>
+          </section>
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="porting.export_heading"></h3>
+              <p class="text-body-secondary" data-i18n="porting.export_description"></p>
+              <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-outline-secondary" href="#" data-export="json"><i class="bi bi-filetype-json" aria-hidden="true"></i> JSON</a>
+                <a class="btn btn-outline-secondary" href="#" data-export="csv"><i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV</a>
+                <a class="btn btn-outline-secondary" href="#" data-export="md"><i class="bi bi-markdown" aria-hidden="true"></i> Markdown</a>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- The library's types; see screens/types.js. -->
+        <section class="view" data-view="types" id="types-panel" hidden>
+          <h2 class="view-title" data-i18n="types.heading"></h2>
+          <p class="view-description" data-i18n="types.description"></p>
+          <section class="card">
+            <div class="card-body">
+              <div class="table-responsive">
+                <table id="types-table" class="table align-middle">
+                  <thead><tr><th></th><th data-i18n="types.label"></th><th data-i18n="types.icon"></th><th data-i18n="types.lookup"></th><th data-i18n="types.count"></th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <form id="type-form" class="row g-2 align-items-end" autocomplete="off">
+                <div class="col-md"><label for="type-label" class="form-label small" data-i18n="types.new_label"></label><input id="type-label" class="form-control" maxlength="40" required /></div>
+                <div class="col-md"><label for="type-icon" class="form-label small" data-i18n="types.icon"></label><input id="type-icon" class="form-control" maxlength="40" placeholder="collection" /></div>
+                <div class="col-md"><label for="type-lookup" class="form-label small" data-i18n="types.lookup"></label><select id="type-lookup" class="form-select"></select></div>
+                <div class="col-md-auto"><button class="btn btn-primary" type="submit" data-i18n="types.add"></button></div>
+              </form>
+              <p class="small text-body-secondary mt-2 mb-0" data-i18n="types.icon_help"></p>
+            </div>
+          </section>
+        </section>
+
+        <!-- Background work; see screens/jobs.js. -->
+        <section class="view" data-view="jobs" id="jobs-panel" hidden>
+          <h2 class="view-title" data-i18n="jobs.heading"></h2>
+          <p class="view-description" data-i18n="jobs.description"></p>
+          <section class="card">
+            <div class="card-body">
+              <p id="jobs-offline" class="alert alert-warning" data-i18n="jobs.offline" hidden></p>
+              <ul id="jobs-list" class="list-group mb-3"></ul>
+              <p id="jobs-images" class="small text-body-secondary mb-0"></p>
+            </div>
+          </section>
+        </section>
+
+        <!-- Everything about you: who you are, how you sign in, and what can
+             act as you. A feature's card stays hidden until its own JS shows it. -->
+        <section class="view" data-view="account" id="account-panel">
+          <h2 class="view-title" data-i18n="account.heading"></h2>
+
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="account.profile_heading"></h3>
+              <form id="rename-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="display-name" class="form-label" data-i18n="account.display_name_label"></label>
+                  <input id="display-name" class="form-control" name="display_name" maxlength="80" required
+                         data-i18n-attr="placeholder:account.display_name_placeholder" />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="account.save_button"></button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <!-- Admins only: whose queue, ratings and hearts the library shows
+               and changes. See static/js/media/acting.js. -->
+          <section id="acting" class="card acting" hidden>
+            <div class="card-body">
+              <h3 class="card-title"><label for="acting-select" data-i18n="acting.label"></label></h3>
+              <select id="acting-select" class="form-select"></select>
+              <p id="acting-locked" class="small text-warning-emphasis mt-2" data-i18n="acting.locked" hidden></p>
+              <p class="small text-body-secondary mt-2 mb-0" data-i18n="acting.description"></p>
+            </div>
+          </section>
+
+          <!-- Where Apple TV links open; saved on the account (Prefs ui.appletv_app). -->
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="account.appletv_heading"></h3>
+              <div class="form-check form-switch">
+                <input id="appletv-app" class="form-check-input" type="checkbox" role="switch" />
+                <label for="appletv-app" class="form-check-label" data-i18n="account.appletv_label"></label>
+              </div>
+              <p class="small text-body-secondary mb-0" data-i18n="account.appletv_description"></p>
+            </div>
+          </section>
+
+          <!-- Which links sit on every card's face, in order; saved on the
+               account (Prefs ui.card_links). See App.initCardLinks. -->
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="account.card_links_heading"></h3>
+              <p class="small text-body-secondary" data-i18n="account.card_links_description"></p>
+              <ul id="card-links" class="list-group mb-2"></ul>
+              <button id="card-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.card_links_reset"></button>
+            </div>
+          </section>
+
+          <!-- Which links a card's right-click (or long-press) menu lists
+               after Watched, Love and Skip, in order; saved on the account
+               (Prefs ui.menu_links). See App.initMenuLinks. -->
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="account.menu_links_heading"></h3>
+              <p class="small text-body-secondary" data-i18n="account.menu_links_description"></p>
+              <ul id="menu-links" class="list-group mb-2"></ul>
+              <button id="menu-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.menu_links_reset"></button>
+            </div>
+          </section>
+
+          <!-- A login link for your own account, to sign in on another device.
+               Any signed-in user may mint one; see Api.createMyLoginLink. -->
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="account.device_heading"></h3>
+              <p class="text-body-secondary" data-i18n="account.device_description"></p>
+              <!-- The link you could still use, if any, and a way to stop it. -->
+              <div id="my-live-link" class="d-flex flex-wrap align-items-center gap-2 mb-3" hidden>
+                <span id="my-live-link-text" class="text-body-secondary"></span>
+                <button id="my-link-cancel-button" class="btn btn-sm btn-outline-danger" data-i18n="login_links.cancel_button"></button>
+              </div>
+              <button id="my-link-button" class="btn btn-outline-secondary" data-i18n="account.device_button"></button>
+              <div id="my-link-box" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button type="button" class="btn-close" data-box-close="my-link-button" data-i18n-attr="aria-label:nav.close"></button>
+                <p id="my-link-notice" class="mb-2"></p>
+                <div class="link-box">
+                  <code id="my-link-value"></code>
+                  <button id="my-link-copy-button" class="btn btn-sm btn-outline-secondary" data-i18n="account.copy_button"></button>
+                  <button id="my-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
+                </div>
+                <canvas id="my-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
+              </div>
+            </div>
+          </section>
+
+          <!-- Only while the owner has auth.passwords on; see password.js. -->
+          <section class="card" id="password-panel" hidden>
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="password.heading"></h3>
+              <p class="text-body-secondary" data-i18n="password.description"></p>
+              <p><span id="password-status" class="badge text-bg-secondary"></span></p>
+              <form id="password-form">
+                <div class="mb-3">
+                  <label for="password-username" class="form-label" data-i18n="password.username_label"></label>
+                  <input id="password-username" class="form-control" name="username" autocomplete="username" autocapitalize="none" spellcheck="false"
+                         minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" required />
+                  <div class="form-text" data-i18n="password.username_help"></div>
+                </div>
+                <div class="mb-3">
+                  <label for="password-new" class="form-label" data-i18n="password.new_label"></label>
+                  <input id="password-new" class="form-control" name="new_password" type="password" autocomplete="new-password" required />
+                  <div class="form-text" data-i18n="password.new_help"></div>
+                </div>
+                <div class="mb-3">
+                  <label for="password-confirm" class="form-label" data-i18n="password.confirm_label"></label>
+                  <input id="password-confirm" class="form-control" name="confirm_password" type="password" autocomplete="new-password" required />
+                </div>
+                <div id="password-code-row" class="mb-3" hidden>
+                  <label for="password-code" class="form-label" data-i18n="two_factor.code_label"></label>
+                  <input id="password-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" />
+                </div>
+                <div class="row-actions">
+                  <button type="submit" class="btn btn-primary" data-i18n="password.save_button"></button>
+                  <button type="button" id="password-remove-button" class="btn btn-outline-danger" data-i18n="password.remove_button" hidden></button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <!-- Only for non-admin accounts; see pin.js. -->
+          <section class="card" id="pin-panel" hidden>
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="pin.heading"></h3>
+              <p class="text-body-secondary" data-i18n="pin.description"></p>
+              <p><span id="pin-status" class="badge text-bg-secondary"></span></p>
+              <form id="pin-form" autocomplete="off">
+                <div class="mb-3">
+                  <label for="pin-value" class="form-label" data-i18n="pin.label"></label>
+                  <input id="pin-value" class="form-control" name="pin" type="password" inputmode="numeric" minlength="4" maxlength="8"
+                         pattern="[0-9]{4,8}" required data-i18n-attr="placeholder:pin.placeholder" />
+                </div>
+                <div class="row-actions">
+                  <button type="submit" class="btn btn-primary" data-i18n="pin.save_button"></button>
+                  <button type="button" id="pin-clear-button" class="btn btn-outline-danger" data-i18n="pin.clear_button" hidden></button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <!-- Only while the owner has auth.two_factor on; see two_factor.js. -->
+          <section class="card" id="two-factor-panel" hidden>
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="two_factor.heading"></h3>
+              <p class="text-body-secondary" data-i18n="two_factor.description"></p>
+              <p><span id="two-factor-status" class="badge text-bg-secondary"></span></p>
+              <button id="two-factor-start-button" class="btn btn-primary" data-i18n="two_factor.start_button" hidden></button>
+
+              <div id="two-factor-setup" hidden>
+                <p data-i18n="two_factor.setup_scan"></p>
+                <canvas id="two-factor-qr" class="d-block img-fluid mb-3 border rounded" role="img" data-i18n-attr="aria-label:ui.qr_label"></canvas>
+                <p class="mb-1" data-i18n="two_factor.setup_manual"></p>
+                <div class="link-box mb-3">
+                  <code id="two-factor-secret"></code>
+                  <button id="two-factor-secret-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_secret_button"></button>
+                </div>
+                <form id="two-factor-confirm-form" autocomplete="off">
+                  <div class="mb-3">
+                    <label for="two-factor-code" class="form-label" data-i18n="two_factor.setup_code_label"></label>
+                    <input id="two-factor-code" class="form-control" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                  </div>
+                  <button type="submit" class="btn btn-primary" data-i18n="two_factor.confirm_button"></button>
+                </form>
+              </div>
+
+              <div id="two-factor-recovery" class="alert alert-info" hidden>
+                <p data-i18n="two_factor.recovery_notice"></p>
+                <pre id="two-factor-recovery-codes" class="mb-3"></pre>
+                <div class="row-actions">
+                  <button id="two-factor-recovery-copy" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_button"></button>
+                  <button id="two-factor-recovery-download" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.download_button"></button>
+                  <button id="two-factor-recovery-done" class="btn btn-sm btn-primary" data-i18n="two_factor.done_button"></button>
+                </div>
+              </div>
+
+              <form id="two-factor-disable-form" autocomplete="off" hidden>
+                <div class="mb-3">
+                  <label for="two-factor-disable-code" class="form-label" data-i18n="two_factor.code_label"></label>
+                  <input id="two-factor-disable-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" required />
+                </div>
+                <button type="submit" class="btn btn-outline-danger" data-i18n="two_factor.disable_button"></button>
+              </form>
+            </div>
+          </section>
+
+          <!--
+            API keys: the non-browser way in, for every signed-in user. The role
+            select is revealed only for an admin (see keys.js) because a key can
+            never carry more permission than the account that owns it.
+          -->
+          <section class="card" id="api-keys-panel" hidden>
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="api_keys.heading"></h3>
+              <p class="text-body-secondary" data-i18n="api_keys.description"></p>
+
+              <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="key-name" class="form-label" data-i18n="api_keys.name_label"></label>
+                  <input id="key-name" class="form-control" name="name" maxlength="80" required
+                         data-i18n-attr="placeholder:api_keys.name_placeholder" />
+                </div>
+                <div class="col-md" id="key-role-field" hidden>
+                  <label for="key-role" class="form-label" data-i18n="api_keys.role_label"></label>
+                  <select id="key-role" class="form-select" name="role">
+                    <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="admin" data-i18n="api_keys.role_admin"></option>
+                  </select>
+                </div>
+                <div class="col-md">
+                  <label for="key-days" class="form-label" data-i18n="api_keys.days_label"></label>
+                  <input id="key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
+                         data-i18n-attr="placeholder:api_keys.days_placeholder" />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="api_keys.create_button"></button>
+                </div>
+              </form>
+
+              <div id="key-secret-box" class="alert alert-info alert-dismissible mt-3" hidden>
+                <button type="button" class="btn-close" data-box-close="key-name" data-i18n-attr="aria-label:nav.close"></button>
+                <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
+                <div class="link-box">
+                  <code id="key-secret-value"></code>
+                  <button id="copy-key-button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+                </div>
+              </div>
+
+              <div class="mt-4" role="search">
+                <label for="keys-search" class="visually-hidden" data-i18n="api_keys.search_label"></label>
+                <input id="keys-search" class="form-control" type="search" autocomplete="off"
+                       data-i18n-attr="placeholder:api_keys.search_label" />
+              </div>
+              <div class="form-check mt-2">
+                <input id="keys-live-only" class="form-check-input" type="checkbox" />
+                <label for="keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
+              </div>
+
+              <div class="table-responsive mt-3">
+                <table id="keys-table" class="table table-hover align-middle mb-0" data-empty="api_keys.empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
+                      <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
+                      <th scope="col" data-i18n="api_keys.table_status"></th>
+                      <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
+                      <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
+                      <th scope="col" data-i18n="api_keys.table_actions"></th>
+                    </tr>
+                  </thead>
                   <tbody></tbody>
                 </table>
               </div>
             </div>
-            <hr />
-            <h2 class="h4" data-i18n="porting.export_heading"></h2>
-            <p class="text-body-secondary" data-i18n="porting.export_description"></p>
-            <div class="d-flex gap-2 flex-wrap">
-              <a class="btn btn-outline-secondary" href="#" data-export="json"><i class="bi bi-filetype-json" aria-hidden="true"></i> JSON</a>
-              <a class="btn btn-outline-secondary" href="#" data-export="csv"><i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV</a>
-              <a class="btn btn-outline-secondary" href="#" data-export="md"><i class="bi bi-markdown" aria-hidden="true"></i> Markdown</a>
+          </section>
+
+          <!-- Every device with a live session on this account; see sessions.js.
+               Folded away until opened, and remembered open or shut in this
+               browser. It is only fetched while open. -->
+          <details class="card card-collapse" id="sessions-card">
+            <summary class="card-header">
+              <h3 class="card-title" data-i18n="sessions.heading"></h3>
+            </summary>
+            <div class="card-body">
+              <p class="text-body-secondary" data-i18n="sessions.description"></p>
+              <div class="table-responsive">
+                <table id="sessions-table" class="table table-hover align-middle" data-empty="sessions.empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-i18n="sessions.table_device"></th>
+                      <th scope="col" data-i18n="sessions.table_ip"></th>
+                      <th scope="col" data-i18n="sessions.table_seen"></th>
+                      <th scope="col" data-i18n="sessions.table_signed_in"></th>
+                      <th scope="col" data-i18n="sessions.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <button id="sessions-revoke-others" class="btn btn-outline-danger" data-i18n="sessions.revoke_others_button" hidden></button>
+            </div>
+          </details>
+
+          <section class="card">
+            <div class="card-body d-flex flex-wrap align-items-center gap-3">
+              <p class="text-body-secondary mb-0 me-auto" data-i18n="account.logout_description"></p>
+              <button id="logout-button" class="btn btn-outline-danger" data-i18n="account.logout_button"></button>
+            </div>
+          </section>
+        </section>
+
+        <!-- Your themes, and for admins the defaults everyone starts from.
+             Drawn by themes_editor.js; see theme.js for where they are kept. -->
+        <section class="view" data-view="appearance" id="appearance">
+          <h2 class="view-title" data-i18n="theme.heading"></h2>
+          <ul class="nav nav-tabs mb-3" id="theme-tabs" role="tablist" hidden>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="theme-tab-mine" type="button" role="tab" data-bs-toggle="tab"
+                      data-bs-target="#theme-pane-mine" aria-controls="theme-pane-mine" aria-selected="true" data-i18n="theme.tab_mine"></button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="theme-tab-defaults" type="button" role="tab" data-bs-toggle="tab"
+                      data-bs-target="#theme-pane-defaults" aria-controls="theme-pane-defaults" aria-selected="false" data-i18n="theme.tab_defaults"></button>
+            </li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane show active" id="theme-pane-mine" role="tabpanel" aria-labelledby="theme-tab-mine">
+              <p class="text-body-secondary" data-i18n="theme.description"></p>
+              <div id="theme-editor-mine"></div>
+            </div>
+            <div class="tab-pane" id="theme-pane-defaults" role="tabpanel" aria-labelledby="theme-tab-defaults">
+              <p class="text-body-secondary" data-i18n="theme.defaults_description"></p>
+              <div id="theme-editor-defaults"></div>
             </div>
           </div>
         </section>
 
-        <!-- The library's types; see screens/types.js. -->
-        <section class="card view" data-view="types" id="types-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="types.heading"></h2>
-            <p class="text-body-secondary" data-i18n="types.description"></p>
-            <div class="table-responsive">
-              <table id="types-table" class="table align-middle">
-                <thead><tr><th></th><th data-i18n="types.label"></th><th data-i18n="types.icon"></th><th data-i18n="types.lookup"></th><th data-i18n="types.count"></th><th></th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <form id="type-form" class="row g-2 align-items-end" autocomplete="off">
-              <div class="col-md"><label for="type-label" class="form-label small" data-i18n="types.new_label"></label><input id="type-label" class="form-control" maxlength="40" required /></div>
-              <div class="col-md"><label for="type-icon" class="form-label small" data-i18n="types.icon"></label><input id="type-icon" class="form-control" maxlength="40" placeholder="collection" /></div>
-              <div class="col-md"><label for="type-lookup" class="form-label small" data-i18n="types.lookup"></label><select id="type-lookup" class="form-select"></select></div>
-              <div class="col-md-auto"><button class="btn btn-primary" type="submit" data-i18n="types.add"></button></div>
-            </form>
-            <p class="small text-body-secondary mt-2 mb-0" data-i18n="types.icon_help"></p>
-          </div>
-        </section>
+        <section class="view" data-view="users" id="admin-panel" hidden>
+          <h2 class="view-title" data-i18n="admin.heading"></h2>
+          <p class="view-description" data-i18n="admin.description"></p>
 
-        <!-- Background work; see screens/jobs.js. -->
-        <section class="card view" data-view="jobs" id="jobs-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="jobs.heading"></h2>
-            <p class="text-body-secondary" data-i18n="jobs.description"></p>
-            <p id="jobs-offline" class="alert alert-warning" data-i18n="jobs.offline" hidden></p>
-            <ul id="jobs-list" class="list-group mb-3"></ul>
-            <p id="jobs-images" class="small text-body-secondary mb-0"></p>
-          </div>
-        </section>
-
-        <section class="card view" data-view="account" id="account-panel">
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="account.heading"></h2>
-            <form id="rename-form" class="row g-3 align-items-end" autocomplete="off">
-              <div class="col-md">
-                <label for="display-name" class="form-label" data-i18n="account.display_name_label"></label>
-                <input id="display-name" class="form-control" name="display_name" maxlength="80" required
-                       data-i18n-attr="placeholder:account.display_name_placeholder" />
-              </div>
-              <div class="col-md-auto">
-                <button type="submit" class="btn btn-primary" data-i18n="account.save_button"></button>
-              </div>
-            </form>
-
-            <hr />
-
-            <!-- Admins only: whose queue, ratings and hearts the library shows
-                 and changes. See static/js/media/acting.js. -->
-            <div id="acting" class="acting" hidden>
-              <h3 class="h6"><label for="acting-select" data-i18n="acting.label"></label></h3>
-              <select id="acting-select" class="form-select"></select>
-              <p id="acting-locked" class="small text-warning-emphasis mt-2" data-i18n="acting.locked" hidden></p>
-              <p class="small text-body-secondary mt-2" data-i18n="acting.description"></p>
-              <hr />
-            </div>
-
-            <!-- Where Apple TV links open; saved on the account (Prefs ui.appletv_app). -->
-            <h3 class="h6" data-i18n="account.appletv_heading"></h3>
-            <div class="form-check form-switch">
-              <input id="appletv-app" class="form-check-input" type="checkbox" role="switch" />
-              <label for="appletv-app" class="form-check-label" data-i18n="account.appletv_label"></label>
-            </div>
-            <p class="small text-body-secondary" data-i18n="account.appletv_description"></p>
-
-            <hr />
-
-            <!-- Which links sit on every card's face, in order; saved on the
-                 account (Prefs ui.card_links). See App.initCardLinks. -->
-            <h3 class="h6" data-i18n="account.card_links_heading"></h3>
-            <p class="small text-body-secondary" data-i18n="account.card_links_description"></p>
-            <ul id="card-links" class="list-group mb-2"></ul>
-            <button id="card-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.card_links_reset"></button>
-
-            <hr />
-
-            <!-- Which links a card's right-click (or long-press) menu lists
-                 after Watched, Love and Skip, in order; saved on the account
-                 (Prefs ui.menu_links). See App.initMenuLinks. -->
-            <h3 class="h6" data-i18n="account.menu_links_heading"></h3>
-            <p class="small text-body-secondary" data-i18n="account.menu_links_description"></p>
-            <ul id="menu-links" class="list-group mb-2"></ul>
-            <button id="menu-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.menu_links_reset"></button>
-
-            <hr />
-
-            <!-- A login link for your own account, to sign in on another device.
-                 Any signed-in user may mint one; see Api.createMyLoginLink. -->
-            <h3 class="h6" data-i18n="account.device_heading"></h3>
-            <p class="text-body-secondary" data-i18n="account.device_description"></p>
-            <!-- The link you could still use, if any, and a way to stop it. -->
-            <div id="my-live-link" class="d-flex flex-wrap align-items-center gap-2 mb-3" hidden>
-              <span id="my-live-link-text" class="text-body-secondary"></span>
-              <button id="my-link-cancel-button" class="btn btn-sm btn-outline-danger" data-i18n="login_links.cancel_button"></button>
-            </div>
-            <button id="my-link-button" class="btn btn-outline-secondary" data-i18n="account.device_button"></button>
-            <div id="my-link-box" class="alert alert-info alert-dismissible mt-3" hidden>
-              <button type="button" class="btn-close" data-box-close="my-link-button" data-i18n-attr="aria-label:nav.close"></button>
-              <p id="my-link-notice" class="mb-2"></p>
-              <div class="link-box">
-                <code id="my-link-value"></code>
-                <button id="my-link-copy-button" class="btn btn-sm btn-outline-secondary" data-i18n="account.copy_button"></button>
-                <button id="my-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
-              </div>
-              <canvas id="my-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
-            </div>
-
-            <hr />
-
-            <!-- Every device with a live session on this account; see sessions.js. -->
-            <h3 class="h6" data-i18n="sessions.heading"></h3>
-            <p class="text-body-secondary" data-i18n="sessions.description"></p>
-            <div class="table-responsive">
-              <table id="sessions-table" class="table table-hover align-middle" data-empty="sessions.empty">
-                <thead>
-                  <tr>
-                    <th scope="col" data-i18n="sessions.table_device"></th>
-                    <th scope="col" data-i18n="sessions.table_ip"></th>
-                    <th scope="col" data-i18n="sessions.table_seen"></th>
-                    <th scope="col" data-i18n="sessions.table_signed_in"></th>
-                    <th scope="col" data-i18n="sessions.table_actions"></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <button id="sessions-revoke-others" class="btn btn-outline-danger" data-i18n="sessions.revoke_others_button" hidden></button>
-
-            <hr />
-
-            <button id="logout-button" class="btn btn-outline-danger" data-i18n="account.logout_button"></button>
-          </div>
-        </section>
-
-        <!-- Light, dark, or a ready-made theme; kept in this browser. See
-             theme.js. -->
-        <section class="card view" data-view="appearance" id="appearance">
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="theme.heading"></h2>
-            <p class="text-body-secondary" data-i18n="theme.description"></p>
-            <div id="theme-picker" class="theme-picker"></div>
-          </div>
-        </section>
-
-        <!-- Only for non-admin accounts; see pin.js. -->
-        <section class="card view" data-view="pin" id="pin-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="pin.heading"></h2>
-            <p class="text-body-secondary" data-i18n="pin.description"></p>
-            <p><span id="pin-status" class="badge text-bg-secondary"></span></p>
-            <form id="pin-form" autocomplete="off">
-              <div class="mb-3">
-                <label for="pin-value" class="form-label" data-i18n="pin.label"></label>
-                <input id="pin-value" class="form-control" name="pin" type="password" inputmode="numeric" minlength="4" maxlength="8"
-                       pattern="[0-9]{4,8}" required data-i18n-attr="placeholder:pin.placeholder" />
-              </div>
-              <div class="row-actions">
-                <button type="submit" class="btn btn-primary" data-i18n="pin.save_button"></button>
-                <button type="button" id="pin-clear-button" class="btn btn-outline-danger" data-i18n="pin.clear_button" hidden></button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- Only while the owner has auth.passwords on; see password.js. -->
-        <section class="card view" data-view="password" id="password-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="password.heading"></h2>
-            <p class="text-body-secondary" data-i18n="password.description"></p>
-            <p><span id="password-status" class="badge text-bg-secondary"></span></p>
-            <form id="password-form">
-              <div class="mb-3">
-                <label for="password-username" class="form-label" data-i18n="password.username_label"></label>
-                <input id="password-username" class="form-control" name="username" autocomplete="username" autocapitalize="none" spellcheck="false"
-                       minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" required />
-                <div class="form-text" data-i18n="password.username_help"></div>
-              </div>
-              <div class="mb-3">
-                <label for="password-new" class="form-label" data-i18n="password.new_label"></label>
-                <input id="password-new" class="form-control" name="new_password" type="password" autocomplete="new-password" required />
-                <div class="form-text" data-i18n="password.new_help"></div>
-              </div>
-              <div class="mb-3">
-                <label for="password-confirm" class="form-label" data-i18n="password.confirm_label"></label>
-                <input id="password-confirm" class="form-control" name="confirm_password" type="password" autocomplete="new-password" required />
-              </div>
-              <div id="password-code-row" class="mb-3" hidden>
-                <label for="password-code" class="form-label" data-i18n="two_factor.code_label"></label>
-                <input id="password-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" />
-              </div>
-              <div class="row-actions">
-                <button type="submit" class="btn btn-primary" data-i18n="password.save_button"></button>
-                <button type="button" id="password-remove-button" class="btn btn-outline-danger" data-i18n="password.remove_button" hidden></button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- Only while the owner has auth.two_factor on; see two_factor.js. -->
-        <section class="card view" data-view="two-factor" id="two-factor-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="two_factor.heading"></h2>
-            <p class="text-body-secondary" data-i18n="two_factor.description"></p>
-            <p><span id="two-factor-status" class="badge text-bg-secondary"></span></p>
-            <button id="two-factor-start-button" class="btn btn-primary" data-i18n="two_factor.start_button" hidden></button>
-
-            <div id="two-factor-setup" hidden>
-              <p data-i18n="two_factor.setup_scan"></p>
-              <canvas id="two-factor-qr" class="d-block img-fluid mb-3 border rounded" role="img" data-i18n-attr="aria-label:ui.qr_label"></canvas>
-              <p class="mb-1" data-i18n="two_factor.setup_manual"></p>
-              <div class="link-box mb-3">
-                <code id="two-factor-secret"></code>
-                <button id="two-factor-secret-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_secret_button"></button>
-              </div>
-              <form id="two-factor-confirm-form" autocomplete="off">
-                <div class="mb-3">
-                  <label for="two-factor-code" class="form-label" data-i18n="two_factor.setup_code_label"></label>
-                  <input id="two-factor-code" class="form-control" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="admin.create_heading"></h3>
+              <form id="create-user-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="new-name" class="form-label" data-i18n="admin.new_name_label"></label>
+                  <input id="new-name" class="form-control" name="display_name" maxlength="80" required
+                         data-i18n-attr="placeholder:admin.new_name_placeholder" />
                 </div>
-                <button type="submit" class="btn btn-primary" data-i18n="two_factor.confirm_button"></button>
+                <div class="col-md">
+                  <label for="new-role" class="form-label" data-i18n="admin.new_role_label"></label>
+                  <select id="new-role" class="form-select" name="role">
+                    <option value="user" data-i18n="admin.role_user"></option>
+                    <option value="admin" data-i18n="admin.role_admin"></option>
+                  </select>
+                </div>
+                <!-- How often and how long the link works; LoginLinks fills these. -->
+                <div class="col-md">
+                  <label for="new-uses" class="form-label" data-i18n="login_links.uses_label"></label>
+                  <select id="new-uses" class="form-select" name="uses"></select>
+                </div>
+                <div class="col-md">
+                  <label for="new-expires" class="form-label" data-i18n="login_links.expires_label"></label>
+                  <select id="new-expires" class="form-select" name="expires" aria-describedby="new-expires-help"></select>
+                </div>
+                <div id="new-expires-help" class="col-12 form-text mt-1 order-last" data-i18n="login_links.expires_help"></div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="admin.create_button"></button>
+                </div>
               </form>
-            </div>
 
-            <div id="two-factor-recovery" class="alert alert-info" hidden>
-              <p data-i18n="two_factor.recovery_notice"></p>
-              <pre id="two-factor-recovery-codes" class="mb-3"></pre>
-              <div class="row-actions">
-                <button id="two-factor-recovery-copy" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_button"></button>
-                <button id="two-factor-recovery-download" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.download_button"></button>
-                <button id="two-factor-recovery-done" class="btn btn-sm btn-primary" data-i18n="two_factor.done_button"></button>
+              <div id="login-link-box" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button type="button" class="btn-close" data-box-close="new-name" data-i18n-attr="aria-label:nav.close"></button>
+                <p id="login-link-for" class="fw-semibold mb-1"></p>
+                <p id="login-link-notice" class="mb-2"></p>
+                <div class="link-box">
+                  <code id="login-link-value"></code>
+                  <button id="copy-link-button" class="btn btn-sm btn-outline-secondary" data-i18n="admin.copy_button"></button>
+                  <button id="login-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
+                </div>
+                <canvas id="login-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
               </div>
             </div>
+          </section>
 
-            <form id="two-factor-disable-form" autocomplete="off" hidden>
-              <div class="mb-3">
-                <label for="two-factor-disable-code" class="form-label" data-i18n="two_factor.code_label"></label>
-                <input id="two-factor-disable-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" required />
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="admin.list_heading"></h3>
+              <div role="search">
+                <label for="users-search" class="visually-hidden" data-i18n="admin.search_label"></label>
+                <input id="users-search" class="form-control" type="search" autocomplete="off"
+                       data-i18n-attr="placeholder:admin.search_label" />
               </div>
-              <button type="submit" class="btn btn-outline-danger" data-i18n="two_factor.disable_button"></button>
-            </form>
-          </div>
-        </section>
 
-        <!--
-          API keys: the non-browser way in, for every signed-in user. The role
-          select is revealed only for an admin (see keys.js) because a key can
-          never carry more permission than the account that owns it.
-        -->
-        <section class="card view" data-view="api-keys" id="api-keys-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="api_keys.heading"></h2>
-            <p class="text-body-secondary" data-i18n="api_keys.description"></p>
-
-            <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
-              <div class="col-md">
-                <label for="key-name" class="form-label" data-i18n="api_keys.name_label"></label>
-                <input id="key-name" class="form-control" name="name" maxlength="80" required
-                       data-i18n-attr="placeholder:api_keys.name_placeholder" />
-              </div>
-              <div class="col-md" id="key-role-field" hidden>
-                <label for="key-role" class="form-label" data-i18n="api_keys.role_label"></label>
-                <select id="key-role" class="form-select" name="role">
-                  <option value="user" data-i18n="api_keys.role_user"></option>
-                  <option value="admin" data-i18n="api_keys.role_admin"></option>
-                </select>
-              </div>
-              <div class="col-md">
-                <label for="key-days" class="form-label" data-i18n="api_keys.days_label"></label>
-                <input id="key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
-                       data-i18n-attr="placeholder:api_keys.days_placeholder" />
-              </div>
-              <div class="col-md-auto">
-                <button type="submit" class="btn btn-primary" data-i18n="api_keys.create_button"></button>
-              </div>
-            </form>
-
-            <div id="key-secret-box" class="alert alert-info alert-dismissible mt-3" hidden>
-              <button type="button" class="btn-close" data-box-close="key-name" data-i18n-attr="aria-label:nav.close"></button>
-              <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
-              <div class="link-box">
-                <code id="key-secret-value"></code>
-                <button id="copy-key-button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+              <div class="table-responsive mt-3">
+                <table id="users-table" class="table table-hover align-middle mb-0" data-empty="admin.empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin.table_name"></button></th>
+                      <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="admin.table_role"></button></th>
+                      <th scope="col" data-sort="disabled"><button type="button" class="th-sort" data-i18n="admin.table_status"></button></th>
+                      <th scope="col" data-sort="created_at"><button type="button" class="th-sort" data-i18n="admin.table_created"></button></th>
+                      <th scope="col" data-i18n="admin.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
+          </section>
 
-            <div class="mt-4" role="search">
-              <label for="keys-search" class="visually-hidden" data-i18n="api_keys.search_label"></label>
-              <input id="keys-search" class="form-control" type="search" autocomplete="off"
-                     data-i18n-attr="placeholder:api_keys.search_label" />
-            </div>
-            <div class="form-check mt-2">
-              <input id="keys-live-only" class="form-check-input" type="checkbox" />
-              <label for="keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
-            </div>
-
-            <div class="table-responsive mt-3">
-              <table id="keys-table" class="table table-hover align-middle" data-empty="api_keys.empty">
-                <thead>
-                  <tr>
-                    <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
-                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
-                    <th scope="col" data-i18n="api_keys.table_status"></th>
-                    <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
-                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
-                    <th scope="col" data-i18n="api_keys.table_actions"></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="card view" data-view="users" id="admin-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="admin.heading"></h2>
-            <p class="text-body-secondary" data-i18n="admin.description"></p>
-
-            <form id="create-user-form" class="row g-3 align-items-end" autocomplete="off">
-              <div class="col-md">
-                <label for="new-name" class="form-label" data-i18n="admin.new_name_label"></label>
-                <input id="new-name" class="form-control" name="display_name" maxlength="80" required
-                       data-i18n-attr="placeholder:admin.new_name_placeholder" />
-              </div>
-              <div class="col-md">
-                <label for="new-role" class="form-label" data-i18n="admin.new_role_label"></label>
-                <select id="new-role" class="form-select" name="role">
-                  <option value="user" data-i18n="admin.role_user"></option>
-                  <option value="admin" data-i18n="admin.role_admin"></option>
-                </select>
-              </div>
-              <!-- How often and how long the link works; LoginLinks fills these. -->
-              <div class="col-md">
-                <label for="new-uses" class="form-label" data-i18n="login_links.uses_label"></label>
-                <select id="new-uses" class="form-select" name="uses"></select>
-              </div>
-              <div class="col-md">
-                <label for="new-expires" class="form-label" data-i18n="login_links.expires_label"></label>
-                <select id="new-expires" class="form-select" name="expires" aria-describedby="new-expires-help"></select>
-              </div>
-              <div id="new-expires-help" class="col-12 form-text mt-1 order-last" data-i18n="login_links.expires_help"></div>
-              <div class="col-md-auto">
-                <button type="submit" class="btn btn-primary" data-i18n="admin.create_button"></button>
-              </div>
-            </form>
-
-            <div id="login-link-box" class="alert alert-info alert-dismissible mt-3" hidden>
-              <button type="button" class="btn-close" data-box-close="new-name" data-i18n-attr="aria-label:nav.close"></button>
-              <p id="login-link-for" class="fw-semibold mb-1"></p>
-              <p id="login-link-notice" class="mb-2"></p>
-              <div class="link-box">
-                <code id="login-link-value"></code>
-                <button id="copy-link-button" class="btn btn-sm btn-outline-secondary" data-i18n="admin.copy_button"></button>
-                <button id="login-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
-              </div>
-              <canvas id="login-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
-            </div>
-
-            <div class="mt-4" role="search">
-              <label for="users-search" class="visually-hidden" data-i18n="admin.search_label"></label>
-              <input id="users-search" class="form-control" type="search" autocomplete="off"
-                     data-i18n-attr="placeholder:admin.search_label" />
-            </div>
-
-            <div class="table-responsive mt-3">
-              <table id="users-table" class="table table-hover align-middle" data-empty="admin.empty">
-                <thead>
-                  <tr>
-                    <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin.table_name"></button></th>
-                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="admin.table_role"></button></th>
-                    <th scope="col" data-sort="disabled"><button type="button" class="th-sort" data-i18n="admin.table_status"></button></th>
-                    <th scope="col" data-sort="created_at"><button type="button" class="th-sort" data-i18n="admin.table_created"></button></th>
-                    <th scope="col" data-i18n="admin.table_actions"></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-
-            <!-- One account's devices, from its Sessions button. See Sessions.showFor. -->
-            <div id="user-sessions" class="border rounded p-3 mt-4" hidden>
+          <!-- One account's devices, from its Sessions button. See Sessions.showFor. -->
+          <section id="user-sessions" class="card" hidden>
+            <div class="card-body">
               <div class="d-flex align-items-center justify-content-between gap-2">
-                <h3 id="user-sessions-heading" class="h6 mb-0"></h3>
+                <h3 id="user-sessions-heading" class="card-title mb-0"></h3>
                 <button id="user-sessions-close" type="button" class="btn-close" data-i18n-attr="aria-label:nav.close"></button>
               </div>
               <div class="table-responsive mt-2">
-                <table id="user-sessions-table" class="table table-hover align-middle" data-empty="sessions.user_empty">
+                <table id="user-sessions-table" class="table table-hover align-middle mb-0" data-empty="sessions.user_empty">
                   <thead>
                     <tr>
                       <th scope="col" data-i18n="sessions.table_device"></th>
@@ -905,198 +971,235 @@
                 </table>
               </div>
             </div>
-          </div>
+          </section>
         </section>
 
         <!-- One link a whole group can join through; see invites.js. -->
-        <section class="card view" data-view="invite-links" id="invite-links-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="invite_links.heading"></h2>
-            <p class="text-body-secondary" data-i18n="invite_links.description"></p>
+        <section class="view" data-view="invite-links" id="invite-links-panel" hidden>
+          <h2 class="view-title" data-i18n="invite_links.heading"></h2>
+          <p class="view-description" data-i18n="invite_links.description"></p>
 
-            <form id="create-invite-form" class="row g-3 align-items-end" autocomplete="off">
-              <div class="col-md">
-                <label for="invite-label" class="form-label" data-i18n="invite_links.label_label"></label>
-                <input id="invite-label" class="form-control" name="label" maxlength="80" required
-                       data-i18n-attr="placeholder:invite_links.label_placeholder" />
-              </div>
-              <div class="col-6 col-md">
-                <label for="invite-uses" class="form-label" data-i18n="invite_links.uses_label"></label>
-                <input id="invite-uses" class="form-control" name="max_uses" type="number" min="1" max="1000" value="10" required inputmode="numeric" />
-              </div>
-              <div class="col-6 col-md">
-                <label for="invite-days" class="form-label" data-i18n="invite_links.days_label"></label>
-                <input id="invite-days" class="form-control" name="days" type="number" min="1" max="365" value="30" required inputmode="numeric" />
-              </div>
-              <div class="col-md-auto">
-                <button type="submit" class="btn btn-primary" data-i18n="invite_links.create_button"></button>
-              </div>
-            </form>
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="invite_links.create_heading"></h3>
+              <form id="create-invite-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="invite-label" class="form-label" data-i18n="invite_links.label_label"></label>
+                  <input id="invite-label" class="form-control" name="label" maxlength="80" required
+                         data-i18n-attr="placeholder:invite_links.label_placeholder" />
+                </div>
+                <div class="col-6 col-md">
+                  <label for="invite-uses" class="form-label" data-i18n="invite_links.uses_label"></label>
+                  <input id="invite-uses" class="form-control" name="max_uses" type="number" min="1" max="1000" value="10" required inputmode="numeric" />
+                </div>
+                <div class="col-6 col-md">
+                  <label for="invite-days" class="form-label" data-i18n="invite_links.days_label"></label>
+                  <input id="invite-days" class="form-control" name="days" type="number" min="1" max="365" value="30" required inputmode="numeric" />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="invite_links.create_button"></button>
+                </div>
+              </form>
 
-            <div id="invite-link-box" class="alert alert-info alert-dismissible mt-3" hidden>
-              <button type="button" class="btn-close" data-box-close="invite-label" data-i18n-attr="aria-label:nav.close"></button>
-              <p class="mb-2" data-i18n="invite_links.link_notice"></p>
-              <div class="link-box">
-                <code id="invite-link-value"></code>
-                <button id="copy-invite-button" class="btn btn-sm btn-outline-secondary" data-i18n="invite_links.copy_button"></button>
-                <button id="invite-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
+              <div id="invite-link-box" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button type="button" class="btn-close" data-box-close="invite-label" data-i18n-attr="aria-label:nav.close"></button>
+                <p class="mb-2" data-i18n="invite_links.link_notice"></p>
+                <div class="link-box">
+                  <code id="invite-link-value"></code>
+                  <button id="copy-invite-button" class="btn btn-sm btn-outline-secondary" data-i18n="invite_links.copy_button"></button>
+                  <button id="invite-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
+                </div>
+                <canvas id="invite-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
               </div>
-              <canvas id="invite-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
             </div>
+          </section>
 
-            <div class="mt-4" role="search">
-              <label for="invites-search" class="visually-hidden" data-i18n="invite_links.search_label"></label>
-              <input id="invites-search" class="form-control" type="search" autocomplete="off"
-                     data-i18n-attr="placeholder:invite_links.search_label" />
-            </div>
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="invite_links.list_heading"></h3>
+              <div role="search">
+                <label for="invites-search" class="visually-hidden" data-i18n="invite_links.search_label"></label>
+                <input id="invites-search" class="form-control" type="search" autocomplete="off"
+                       data-i18n-attr="placeholder:invite_links.search_label" />
+              </div>
 
-            <div class="table-responsive mt-3">
-              <table id="invite-links-table" class="table table-hover align-middle" data-empty="invite_links.empty">
-                <thead>
-                  <tr>
-                    <th scope="col" data-sort="label"><button type="button" class="th-sort" data-i18n="invite_links.table_label"></button></th>
-                    <th scope="col" data-sort="used"><button type="button" class="th-sort" data-i18n="invite_links.table_joined"></button></th>
-                    <th scope="col" data-i18n="invite_links.table_status"></th>
-                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="invite_links.table_expires"></button></th>
-                    <th scope="col" data-i18n="invite_links.table_actions"></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
+              <div class="table-responsive mt-3">
+                <table id="invite-links-table" class="table table-hover align-middle mb-0" data-empty="invite_links.empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-sort="label"><button type="button" class="th-sort" data-i18n="invite_links.table_label"></button></th>
+                      <th scope="col" data-sort="used"><button type="button" class="th-sort" data-i18n="invite_links.table_joined"></button></th>
+                      <th scope="col" data-i18n="invite_links.table_status"></th>
+                      <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="invite_links.table_expires"></button></th>
+                      <th scope="col" data-i18n="invite_links.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </section>
         </section>
 
         <!-- Every key in the app, whoever owns it: the admin answer to "what
              has standing access", and where a lost laptop's key gets killed. -->
-        <section class="card view" data-view="all-keys" id="admin-keys-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="admin_keys.heading"></h2>
-            <p class="text-body-secondary" data-i18n="admin_keys.description"></p>
+        <section class="view" data-view="all-keys" id="admin-keys-panel" hidden>
+          <h2 class="view-title" data-i18n="admin_keys.heading"></h2>
+          <p class="view-description" data-i18n="admin_keys.description"></p>
 
-            <!-- A key that acts as someone else. keys.js fills the picker with
-                 only the accounts the server would allow. -->
-            <h3 class="h5" data-i18n="admin_keys.create_heading"></h3>
-            <p class="text-body-secondary" data-i18n="admin_keys.create_description"></p>
-            <form id="create-user-key-form" class="row g-3 align-items-end" autocomplete="off">
-              <div class="col-md">
-                <label for="user-key-user" class="form-label" data-i18n="admin_keys.user_label"></label>
-                <select id="user-key-user" class="form-select" name="user_id" required></select>
-              </div>
-              <div class="col-md">
-                <label for="user-key-name" class="form-label" data-i18n="api_keys.name_label"></label>
-                <input id="user-key-name" class="form-control" name="name" maxlength="80" required
-                       data-i18n-attr="placeholder:api_keys.name_placeholder" />
-              </div>
-              <div class="col-md">
-                <label for="user-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
-                <select id="user-key-role" class="form-select" name="role">
-                  <option value="user" data-i18n="api_keys.role_user"></option>
-                  <option value="admin" data-i18n="api_keys.role_admin"></option>
-                </select>
-              </div>
-              <div class="col-md">
-                <label for="user-key-days" class="form-label" data-i18n="api_keys.days_label"></label>
-                <input id="user-key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
-                       data-i18n-attr="placeholder:api_keys.days_placeholder" />
-              </div>
-              <div class="col-md-auto">
-                <button type="submit" class="btn btn-primary" data-i18n="api_keys.create_button"></button>
-              </div>
-            </form>
+          <!-- A key that acts as someone else. keys.js fills the picker with
+               only the accounts the server would allow. -->
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="admin_keys.create_heading"></h3>
+              <p class="text-body-secondary" data-i18n="admin_keys.create_description"></p>
+              <form id="create-user-key-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="user-key-user" class="form-label" data-i18n="admin_keys.user_label"></label>
+                  <select id="user-key-user" class="form-select" name="user_id" required></select>
+                </div>
+                <div class="col-md">
+                  <label for="user-key-name" class="form-label" data-i18n="api_keys.name_label"></label>
+                  <input id="user-key-name" class="form-control" name="name" maxlength="80" required
+                         data-i18n-attr="placeholder:api_keys.name_placeholder" />
+                </div>
+                <div class="col-md">
+                  <label for="user-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
+                  <select id="user-key-role" class="form-select" name="role">
+                    <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="admin" data-i18n="api_keys.role_admin"></option>
+                  </select>
+                </div>
+                <div class="col-md">
+                  <label for="user-key-days" class="form-label" data-i18n="api_keys.days_label"></label>
+                  <input id="user-key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
+                         data-i18n-attr="placeholder:api_keys.days_placeholder" />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="api_keys.create_button"></button>
+                </div>
+              </form>
 
-            <div id="user-key-secret-box" class="alert alert-info alert-dismissible mt-3" hidden>
-              <button type="button" class="btn-close" data-box-close="user-key-name" data-i18n-attr="aria-label:nav.close"></button>
-              <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
-              <div class="link-box">
-                <code id="user-key-secret-value"></code>
-                <button id="copy-user-key-button" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+              <div id="user-key-secret-box" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button type="button" class="btn-close" data-box-close="user-key-name" data-i18n-attr="aria-label:nav.close"></button>
+                <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
+                <div class="link-box">
+                  <code id="user-key-secret-value"></code>
+                  <button id="copy-user-key-button" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+                </div>
               </div>
             </div>
+          </section>
 
-            <div class="mt-3" role="search">
-              <label for="admin-keys-search" class="visually-hidden" data-i18n="api_keys.all_search_label"></label>
-              <input id="admin-keys-search" class="form-control" type="search" autocomplete="off"
-                     data-i18n-attr="placeholder:api_keys.all_search_label" />
-            </div>
-            <div class="form-check mt-2">
-              <input id="admin-keys-live-only" class="form-check-input" type="checkbox" />
-              <label for="admin-keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
-            </div>
+          <section class="card">
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="admin_keys.list_heading"></h3>
+              <div role="search">
+                <label for="admin-keys-search" class="visually-hidden" data-i18n="api_keys.all_search_label"></label>
+                <input id="admin-keys-search" class="form-control" type="search" autocomplete="off"
+                       data-i18n-attr="placeholder:api_keys.all_search_label" />
+              </div>
+              <div class="form-check mt-2">
+                <input id="admin-keys-live-only" class="form-check-input" type="checkbox" />
+                <label for="admin-keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
+              </div>
 
-            <div class="table-responsive mt-3">
-              <table id="admin-keys-table" class="table table-hover align-middle" data-empty="api_keys.all_empty">
-                <thead>
-                  <tr>
-                    <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin_keys.table_owner"></button></th>
-                    <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
-                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
-                    <th scope="col" data-i18n="api_keys.table_status"></th>
-                    <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
-                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
-                    <th scope="col" data-i18n="api_keys.table_actions"></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
+              <div class="table-responsive mt-3">
+                <table id="admin-keys-table" class="table table-hover align-middle mb-0" data-empty="api_keys.all_empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin_keys.table_owner"></button></th>
+                      <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
+                      <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
+                      <th scope="col" data-i18n="api_keys.table_status"></th>
+                      <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
+                      <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
+                      <th scope="col" data-i18n="api_keys.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </section>
         </section>
 
         <!-- The activity log, owner only; see logs.js. data-no-track keeps
              reading the log from writing to it (track.js). -->
-        <section class="card view" data-view="logs" id="logs-panel" data-no-track hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="logs.heading"></h2>
-            <p class="text-body-secondary" data-i18n="logs.description"></p>
+        <section class="view" data-view="logs" id="logs-panel" data-no-track hidden>
+          <h2 class="view-title" data-i18n="logs.heading"></h2>
+          <p class="view-description" data-i18n="logs.description"></p>
 
-            <form id="logs-search-form" class="row g-2 align-items-end" role="search" autocomplete="off">
-              <div class="col-md">
-                <label for="logs-query" class="form-label" data-i18n="logs.search_label"></label>
-                <input id="logs-query" class="form-control" type="search" name="q" maxlength="200"
-                       data-i18n-attr="placeholder:logs.search_placeholder" />
-              </div>
-              <div class="col-md-auto row-actions">
-                <button type="button" id="logs-live" class="btn btn-outline-secondary" aria-pressed="false">
-                  <i class="bi bi-broadcast" aria-hidden="true"></i> <span data-i18n="logs.live_button"></span>
-                </button>
-                <button type="button" id="logs-prune" class="btn btn-outline-secondary" data-i18n="logs.prune_button"></button>
-              </div>
-            </form>
-            <p class="form-text" data-i18n="logs.search_help"></p>
-            <div id="logs-kinds" class="row-actions mb-3" role="group" data-i18n-attr="aria-label:logs.kinds_label"></div>
+          <section class="card">
+            <div class="card-body">
+              <form id="logs-search-form" class="row g-2 align-items-end" role="search" autocomplete="off">
+                <div class="col-md">
+                  <label for="logs-query" class="form-label" data-i18n="logs.search_label"></label>
+                  <input id="logs-query" class="form-control" type="search" name="q" maxlength="200"
+                         data-i18n-attr="placeholder:logs.search_placeholder" />
+                </div>
+                <div class="col-md-auto row-actions">
+                  <button type="button" id="logs-live" class="btn btn-outline-secondary" aria-pressed="false">
+                    <i class="bi bi-broadcast" aria-hidden="true"></i> <span data-i18n="logs.live_button"></span>
+                  </button>
+                  <button type="button" id="logs-prune" class="btn btn-outline-secondary" data-i18n="logs.prune_button"></button>
+                </div>
+              </form>
+              <p class="form-text" data-i18n="logs.search_help"></p>
+              <div id="logs-kinds" class="row-actions" role="group" data-i18n-attr="aria-label:logs.kinds_label"></div>
+              <p id="logs-settings" class="small text-body-secondary mt-3 mb-0"></p>
+            </div>
+          </section>
 
-            <p id="logs-settings" class="small text-body-secondary"></p>
-            <p id="logs-empty" class="text-body-secondary" hidden></p>
-            <div id="logs-days" class="log-days"></div>
-          </div>
+          <section class="card">
+            <div class="card-body">
+              <!-- One day at a time; the calendar picks which. See logs.js. -->
+              <div class="log-calendar" role="group" data-i18n-attr="aria-label:logs.calendar_label">
+                <div class="log-cal-head">
+                  <button type="button" id="logs-cal-prev" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.prev_month,title:logs.prev_month">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                  </button>
+                  <span id="logs-cal-title" class="log-cal-title" aria-live="polite"></span>
+                  <button type="button" id="logs-cal-next" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.next_month,title:logs.next_month">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" id="logs-cal-today" class="btn btn-sm btn-outline-secondary ms-auto" data-i18n="logs.today_button"></button>
+                </div>
+                <div id="logs-cal-grid" class="log-cal-grid"></div>
+              </div>
+              <p id="logs-empty" class="text-body-secondary mb-0" hidden></p>
+              <div id="logs-day"></div>
+            </div>
+          </section>
         </section>
 
         <!-- Owner only: config.yaml, one field per setting. See js/settings.js. -->
-        <section class="card view" data-view="settings" id="settings-panel" hidden>
-          <div class="card-body">
-            <h2 class="h4 card-title" data-i18n="settings.heading"></h2>
-            <p class="text-body-secondary" data-i18n="settings.description"></p>
-            <p class="small text-body-secondary mb-1"><code id="settings-file"></code></p>
-            <p id="settings-secret" class="small text-body-secondary"></p>
+        <section class="view" data-view="settings" id="settings-panel" hidden>
+          <h2 class="view-title" data-i18n="settings.heading"></h2>
+          <p class="view-description" data-i18n="settings.description"></p>
+          <section class="card">
+            <div class="card-body">
+              <p class="small text-body-secondary mb-1"><code id="settings-file"></code></p>
+              <p id="settings-secret" class="small text-body-secondary"></p>
 
-            <div id="settings-invalid" class="alert alert-danger settings-help" role="alert" hidden></div>
-            <div id="settings-stale" class="alert alert-warning" role="alert" data-i18n="settings.stale" hidden></div>
-            <div id="settings-read-only" class="alert alert-secondary" role="status" data-i18n="settings.read_only" hidden></div>
+              <div id="settings-invalid" class="alert alert-danger settings-help" role="alert" hidden></div>
+              <div id="settings-stale" class="alert alert-warning" role="alert" data-i18n="settings.stale" hidden></div>
+              <div id="settings-read-only" class="alert alert-secondary" role="status" data-i18n="settings.read_only" hidden></div>
 
-            <form id="settings-form" autocomplete="off" novalidate>
-              <div id="settings-sections"></div>
-              <div id="settings-problems" class="alert alert-danger settings-help" role="alert" hidden></div>
-              <div id="settings-changed" class="alert alert-warning d-flex align-items-center gap-2" role="alert" hidden>
-                <span class="me-auto" data-i18n="settings.changed_on_disk"></span>
-              </div>
-              <div class="settings-actions row-actions">
-                <button type="submit" id="settings-save" class="btn btn-primary" data-i18n="settings.save_button" disabled></button>
-                <button type="button" id="settings-reload" class="btn btn-outline-secondary" data-i18n="settings.reload_button"></button>
-                <span id="settings-unsaved" class="small text-body-secondary"></span>
-              </div>
-            </form>
-          </div>
+              <form id="settings-form" autocomplete="off" novalidate>
+                <div id="settings-sections"></div>
+                <div id="settings-problems" class="alert alert-danger settings-help" role="alert" hidden></div>
+                <div id="settings-changed" class="alert alert-warning d-flex align-items-center gap-2" role="alert" hidden>
+                  <span class="me-auto" data-i18n="settings.changed_on_disk"></span>
+                </div>
+                <div class="settings-actions row-actions">
+                  <button type="submit" id="settings-save" class="btn btn-primary" data-i18n="settings.save_button" disabled></button>
+                  <button type="button" id="settings-reload" class="btn btn-outline-secondary" data-i18n="settings.reload_button"></button>
+                  <span id="settings-unsaved" class="small text-body-secondary"></span>
+                </div>
+              </form>
+            </div>
+          </section>
         </section>
       </section>
     </main>
@@ -1345,6 +1448,7 @@
   <script src="/js/invites.js"></script>
   <script src="/js/logs.js"></script>
   <script src="/js/settings.js"></script>
+  <script src="/js/themes_editor.js"></script>
   <script src="/js/fresh.js"></script>
   <script src="/js/app.js"></script>
 </body>

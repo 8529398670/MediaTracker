@@ -34,6 +34,12 @@ const CardMenu = {
       const row = options.row( article.getAttribute( "data-id" ) );
       return row && !row.t.deleted_at ? row : null;
     };
+    // What a menu item does, held still on its card (Dom.steady): the card,
+    // or the one drawn in its place, stays where it was on screen.
+    const steadyRun = ( node ) => {
+      const article = node.closest( ".media-card" );
+      return ( id , row ) => Dom.steady( article , () => options.run( id , row ) );
+    };
     let pressedAt = 0;
     container.addEventListener( "contextmenu" , ( event ) => {
       // Android fires this too at the end of a long press: already open.
@@ -41,7 +47,7 @@ const CardMenu = {
       const row = target( event.target );
       if ( !row ) return;
       event.preventDefault();
-      this.open( event.clientX , event.clientY , options.ids( row ) , row , options.run );
+      this.open( event.clientX , event.clientY , options.ids( row ) , row , steadyRun( event.target ) );
     } );
     // A long press opens the same menu on a phone, where iOS never sends
     // contextmenu. The tap that ends it must not also press what was under
@@ -67,7 +73,7 @@ const CardMenu = {
         pressedAt = Date.now();
         this.swallowClick();
         if ( navigator.vibrate ) navigator.vibrate( 10 );
-        this.open( at.x , at.y , options.ids( row ) , row , options.run );
+        this.open( at.x , at.y , options.ids( row ) , row , steadyRun( at.node ) );
       } , this.PRESS_MS );
     } );
     container.addEventListener( "pointermove" , ( event ) => {

@@ -42,10 +42,6 @@ nav:
   version: "Version {version}"
   account: "Account"
   appearance: "Appearance"
-  pin: "PIN"
-  password: "Password"
-  two_factor: "Two-factor"
-  api_keys: "API keys"
   admin_heading: "Admin"
   users: "Users"
   invite_links: "Invite links"
@@ -102,6 +98,14 @@ undo:
   nav_undo_label: "Undo {label} ({keys})"
   nav_redo_label: "Redo {label} ({keys})"
   theme: "theme change"
+  theme_new: "new theme"
+  theme_copy: "theme duplicated"
+  theme_delete: "theme deleted"
+  theme_rename: "theme renamed"
+  theme_colour: "colour change"
+  theme_reset: "colours reset"
+  theme_defaults_mine: "back to the default themes"
+  theme_defaults: "default themes change"
   sidebar: "sidebar"
   rename: "name changed"
   deleted_key: "API key deleted"
@@ -158,11 +162,72 @@ undo:
   skipped: "“{title}” skipped"
   unskipped: "“{title}” no longer skipped"
 
-# The Appearance card. Light is always the default; a pick is remembered in
-# this browser only. Names for the presets in static/js/theme.js.
+# The Appearance screen (static/js/themes_editor.js). Light is always the
+# default. Names for the built-in themes in static/js/theme.js, used until a
+# list is saved; a saved list keeps its own names.
 theme:
   heading: "Appearance"
-  description: "Pick how this app looks in this browser."
+  tab_mine: "My themes"
+  tab_defaults: "Defaults for everyone"
+  description: "Pick the theme you use, or make your own. Your themes follow you to every browser you sign in on."
+  defaults_description: "The themes everyone starts with. People who have not changed their own list see changes here at once; people who have keep theirs."
+  in_use: "In use"
+  use: "Use"
+  edit: "Edit {name}"
+  new: "New theme"
+  new_name: "New theme"
+  copy_name: "{name} copy"
+  duplicate: "Duplicate"
+  delete: "Delete"
+  back_to_defaults: "Go back to the defaults"
+  restore_built_in: "Restore the built-in themes"
+  name: "Theme name"
+  mode: "Light or dark"
+  mode_light: "Light"
+  mode_dark: "Dark"
+  base_heading: "Colours"
+  fine_heading: "Fine-tune"
+  fine_help: "Worked out from the colours above so text stays readable. Change any of them; Reset puts the readable colour back."
+  reset: "Reset"
+  reset_title: "Back to the colour worked out for readable text"
+  reset_all: "Reset all fine-tuning"
+  auto: "Auto"
+  hex: "hex code"
+  colour_base_accent: "Main colour (buttons)"
+  colour_base_second: "Second colour (where you are)"
+  colour_base_background: "Page"
+  colour_base_surface: "Cards"
+  colour_text: "Text"
+  colour_background: "Page, tinted"
+  colour_surface: "Card, tinted"
+  colour_nested: "Card inside a card"
+  colour_chrome: "Navbar and sidebar"
+  colour_border: "Borders"
+  colour_link: "Links"
+  colour_nav_link: "Sidebar links"
+  colour_accent_fg: "Button text"
+  colour_second_text: "Headings"
+  colour_second_fg: "Current sidebar item text"
+  colour_info: "Info box"
+  colour_info_border: "Info box border"
+  hard_to_read: "Some text in this theme is hard to read:"
+  ratio: "contrast {ratio}:1, needs 4.5:1"
+  check_text_card: "Text on a card"
+  check_text_nested: "Text on a card inside a card"
+  check_text_info: "Text in an info box"
+  check_link: "Links"
+  check_button: "Button text"
+  check_heading: "Headings"
+  check_active_nav: "The current sidebar item"
+  check_sidebar_link: "Sidebar links"
+  preview_nav: "Here"
+  preview_nav_other: "Elsewhere"
+  preview_card: "A card"
+  preview_heading: "A heading"
+  preview_text: "Some text and"
+  preview_link: "a link"
+  preview_info: "An info box"
+  preview_button: "Button"
   preset_light: "Light"
   preset_dark: "Dark"
   preset_ocean: "Ocean"
@@ -173,7 +238,7 @@ theme:
   preset_wsu: "WSU"
   preset_midnight: "Midnight"
   preset_slate: "Slate"
-  preset_dark_pink: "Dark pink"
+  preset_cerise: "Cerise"
   preset_wsu_dark: "WSU dark"
 
 signed_out:
@@ -253,8 +318,13 @@ join:
   invalid_heading: "This link is not working"
   invalid: "This invite link is invalid, expired, or has been switched off. Ask whoever shared it for a new one."
 
+# The Account screen: a card per thing about you. Password, PIN, two-factor,
+# API keys and "where you're signed in" are cards here too, under their own
+# sections below.
 account:
   heading: "Account"
+  profile_heading: "Your name"
+  logout_description: "Sign out of this browser. Other devices stay signed in."
   display_name_label: "Display name"
   display_name_placeholder: "Your name"
   save_button: "Save"
@@ -302,7 +372,7 @@ sessions:
   # Empty this string to stop asking for confirmation.
   revoke_others_confirm: "Sign out every device but this one? They will need a new way in."
 
-# The password panel, shown while the owner has auth.passwords on.
+# The password card on Account, shown while the owner has auth.passwords on.
 password:
   heading: "Password"
   description: "Sign in with a username and password as well as a login link. If you forget it, sign in with a new login link and set another. Setting one signs you out everywhere else."
@@ -317,7 +387,7 @@ password:
   remove_button: "Remove password"
   remove_confirm: "Remove your password? You will sign in with login links only."
 
-# The two-factor panel, and the step every sign-in shows on an account with
+# The two-factor card on Account, and the step every sign-in shows on an account with
 # it on.
 two_factor:
   copy_secret_button: "Copy"
@@ -347,6 +417,8 @@ admin:
   sessions_button: "Sessions"
   heading: "Admin"
   description: "Create an account by minting a login link and send it to the person. It works once unless you choose otherwise."
+  create_heading: "Add someone"
+  list_heading: "People"
   new_name_label: "Name"
   new_name_placeholder: "Their name"
   new_role_label: "Role"
@@ -478,6 +550,8 @@ invite_links:
   made_by: "Made by {name}"
   heading: "Invite links"
   description: "One link for a group: post it in a group chat and each person who opens it joins as a new user, until the places run out. People who joined through it can sign back in on a new device with the same link."
+  create_heading: "New invite link"
+  list_heading: "Made so far"
   label_label: "What is it for"
   label_placeholder: "Group-1"
   uses_label: "Places"
@@ -518,6 +592,7 @@ admin_keys:
   table_owner: "Owner"
   create_heading: "Create a key for someone"
   create_description: "The key acts as that person, at no more than their permission, and they can see that you made it."
+  list_heading: "Every key"
   user_label: "Account"
 
 # The Logs screen (owner only; static/js/logs.js). Placeholders in {braces}
@@ -548,8 +623,15 @@ logs:
   encrypted: "Encrypted on disk."
   not_encrypted: "Not encrypted on disk."
   dropped: "{count} entries dropped under load since start."
-  empty: "Nothing has been logged yet."
   no_matches: "Nothing matches."
+  # The calendar that picks which day shows. {date} is a day, {count} a number.
+  calendar_label: "Pick a day"
+  prev_month: "Previous month"
+  next_month: "Next month"
+  today_button: "Today"
+  day_button: "{date}: {count} entries"
+  day_matches: "{date}: {count} matches"
+  day_empty: "Nothing logged on this day."
   entries: "entries: {count}"
   matches: "matches: {count}"
   errors: "errors: {count}"

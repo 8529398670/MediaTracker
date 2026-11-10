@@ -4,31 +4,39 @@
 const CardActions = {
   // The screen's callbacks: { open( row ) , filter( id , value ) ,
   // select( row , event ) , selecting() }.
+  // Every click is held still (Dom.steady): the button pressed, or the card
+  // that replaced its own, stays where it was on screen.
   wire( container , screen ) {
     container.addEventListener( "click" , ( event ) => {
-      const article = event.target.closest( ".media-card" );
-      if ( !article ) return;
-      const row = Library.get( article.getAttribute( "data-id" ) );
-      if ( !row ) return;
-      if ( screen.selecting() && !event.target.closest( "a, .dropdown-menu, [data-bs-toggle]" ) ) {
-        event.preventDefault();
-        screen.select( row , event );
-        return;
-      }
-      const chip = event.target.closest( "[data-filter]" );
-      if ( chip ) {
-        screen.filter( chip.getAttribute( "data-filter" ) , chip.getAttribute( "data-value" ) );
-        return;
-      }
-      if ( Card.clicked( event , article ) ) return;
-      const control = event.target.closest( "[data-action]" );
-      if ( !control ) {
-        // A click on the card itself: its Details.
-        if ( !event.target.closest( "a, input, button, .dropdown-menu" ) ) screen.open( row );
-        return;
-      }
-      this.run( control.getAttribute( "data-action" ) , row , control , screen );
+      const anchor = event.target.closest( "[data-action], button, .media-card" );
+      if ( !anchor ) return;
+      Dom.steady( anchor , () => this.dispatch( event , screen ) );
     } );
+  },
+
+  dispatch( event , screen ) {
+    const article = event.target.closest( ".media-card" );
+    if ( !article ) return;
+    const row = Library.get( article.getAttribute( "data-id" ) );
+    if ( !row ) return;
+    if ( screen.selecting() && !event.target.closest( "a, .dropdown-menu, [data-bs-toggle]" ) ) {
+      event.preventDefault();
+      screen.select( row , event );
+      return;
+    }
+    const chip = event.target.closest( "[data-filter]" );
+    if ( chip ) {
+      screen.filter( chip.getAttribute( "data-filter" ) , chip.getAttribute( "data-value" ) );
+      return;
+    }
+    if ( Card.clicked( event , article ) ) return;
+    const control = event.target.closest( "[data-action]" );
+    if ( !control ) {
+      // A click on the card itself: its Details.
+      if ( !event.target.closest( "a, input, button, .dropdown-menu" ) ) screen.open( row );
+      return;
+    }
+    return this.run( control.getAttribute( "data-action" ) , row , control , screen );
   },
 
   async run( action , row , control , screen ) {

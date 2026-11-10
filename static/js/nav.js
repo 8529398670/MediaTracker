@@ -4,9 +4,13 @@
 // a sidebar link to #name. The URL hash is the only state -- back, forward,
 // reload and a pasted link all land on the same screen, with no router.
 //
+// A hash can also name a card on a screen (#two-factor-panel), or one of the
+// screens that became a card on Account (#two-factor, see moved): that opens
+// the screen it is on and scrolls to it, so old links and bookmarks still work.
+//
 // Whether a screen exists for this user is not decided here. The screen's own
-// file un-hides its section (Keys.init shows the API keys panel, and only if
-// the server has them switched on); Nav only offers what was un-hidden. So
+// file un-hides its section (Keys.init shows the All API keys screen, and only
+// if the server has them switched on); Nav only offers what was un-hidden. So
 // app.js calls Nav.init() last, once every screen has had its say.
 const Nav = {
   fallback: "library",
@@ -14,6 +18,13 @@ const Nav = {
   wide: window.matchMedia( "(min-width: 992px)" ),
   // Collapsed-or-not is a per-browser convenience, like the theme.
   storageKey: "sidebar-collapsed",
+  // Screens that are now cards on Account: old hash -> the card's id.
+  moved: {
+    "password": "password-panel",
+    "pin": "pin-panel",
+    "two-factor": "two-factor-panel",
+    "api-keys": "api-keys-panel",
+  },
 
   init() {
     Dom.all( "[data-nav]" ).forEach( ( link ) => {
@@ -52,7 +63,20 @@ const Nav = {
   // A hash naming a screen this user does not have (an admin link opened by a
   // non-admin, a typo) shows the account screen rather than nothing.
   current() {
-    return this.available( this.screen() ) ? this.screen() : this.fallback;
+    const name = this.screen();
+    if ( this.available( name ) ) return name;
+    const card = this.card( name );
+    return card ? card.closest( ".view" ).getAttribute( "data-view" ) : this.fallback;
+  },
+
+  // The card a hash names, when it sits on a screen this user has and is
+  // itself showing. null for a screen's own name, or anything else.
+  card( name ) {
+    const id = Object.prototype.hasOwnProperty.call( this.moved , name ) ? this.moved[ name ] : name;
+    const card = id ? document.getElementById( id ) : null;
+    const view = card && card.closest( ".view" );
+    if ( !view || view === card || card.hidden ) return null;
+    return this.available( view.getAttribute( "data-view" ) ) ? card : null;
   },
 
   // The screen is the hash up to its first "/" or "?": everything after it
@@ -75,7 +99,12 @@ const Nav = {
       if ( active ) link.setAttribute( "aria-current" , "page" );
       else link.removeAttribute( "aria-current" );
     } );
-    if ( changed ) window.scrollTo( 0 , 0 );
+    const card = this.card( window.location.hash.replace( /^#/ , "" ) );
+    if ( card ) Dom.reveal( card , "start" );
+    else if ( changed ) {
+      Dom.movedOnPurpose();
+      window.scrollTo( 0 , 0 );
+    }
     this.announce( name );
   },
 

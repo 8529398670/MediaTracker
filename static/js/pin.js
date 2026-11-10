@@ -1,4 +1,4 @@
-// The PIN panel: what stands between "anyone holding the invite link" and
+// The PIN card on the Account screen: what stands between "anyone holding the invite link" and
 // "signed in as you". Only offered to non-admin accounts -- an admin can
 // never be picked on the join page, so a PIN would protect nothing.
 const Pin = {

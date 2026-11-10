@@ -10014,6 +10014,356 @@
           }
         }
       }
+    },
+    "/api/account/themes": {
+      "post": {
+        "summary": "Replace your own themes",
+        "operationId": "post_api_account_themes",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "themes": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Theme"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Your whole list, 1 to 40 themes. null goes back to following the app's defaults."
+                  },
+                  "theme_id": {
+                    "type": "string",
+                    "description": "The theme you use."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "themes": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Theme"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "What you now see; null while the built-in themes apply."
+                    },
+                    "themes_custom": {
+                      "type": "boolean"
+                    },
+                    "theme_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "themes",
+                    "themes_custom",
+                    "theme_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      }
+    },
+    "/api/admin/theme-defaults": {
+      "get": {
+        "summary": "The themes everyone without their own list sees",
+        "operationId": "get_api_admin_theme_defaults",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-required-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "themes": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Theme"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "null while the built-in themes apply."
+                    }
+                  },
+                  "required": [
+                    "themes"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      },
+      "post": {
+        "summary": "Replace the default themes",
+        "operationId": "post_api_admin_theme_defaults",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-required-role": "admin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "themes": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Theme"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "1 to 40 themes. null goes back to the built-in ones."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "themes": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Theme"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "themes"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      }
+    },
+    "/api/account/theme": {
+      "post": {
+        "summary": "Pick which theme you use",
+        "operationId": "post_api_account_theme",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "theme_id": {
+                    "type": "string",
+                    "description": "A theme's id. Empty for the first in the list."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "theme_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "theme_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "theme_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10448,6 +10798,28 @@
               }
             ],
             "description": "Your own live login link, or null."
+          },
+          "theme_id": {
+            "type": "string",
+            "description": "The theme you use. Empty: the first."
+          },
+          "themes_custom": {
+            "type": "boolean",
+            "description": "Whether you have your own list rather than following the defaults."
+          },
+          "themes": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones."
           }
         },
         "required": [
@@ -10828,6 +11200,57 @@
           "created_at",
           "expires_at",
           "last_used_at"
+        ]
+      },
+      "Theme": {
+        "type": "object",
+        "description": "A colour scheme on the Appearance screen. Colours are #rrggbb. Anything not given is worked out by static/js/theme.js at readable contrast.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Lower-case letters, digits, - and _, up to 32."
+          },
+          "name": {
+            "type": "string",
+            "description": "1 to 60 characters."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark"
+            ]
+          },
+          "accent": {
+            "type": "string",
+            "description": "The main colour: what you can press."
+          },
+          "second": {
+            "type": "string",
+            "description": "Says where you are: active nav item, headings, info."
+          },
+          "background": {
+            "type": "string",
+            "description": "The page. Left out: the mode's own."
+          },
+          "surface": {
+            "type": "string",
+            "description": "Cards. Left out: the mode's own."
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Worked-out colours replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border. Leaving one out puts the readable colour back."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode",
+          "accent",
+          "second"
         ]
       }
     }

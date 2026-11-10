@@ -12,6 +12,8 @@ const Pager = {
   filters: {},
   // Each table's latest load, so an older answer arriving late is dropped.
   loads: {},
+  // Tables Pager.reset is holding at their old height, until a load lands.
+  holds: {},
 
   // A search box for a table, on the server like sorting.
   search( table , input , refresh ) {
@@ -86,8 +88,18 @@ const Pager = {
 
   // Empties a table at once, for when what it holds is about to be someone
   // else's. A load that is still out is dropped by the next load's turn.
+  release( table ) {
+    if ( !this.holds[ table ] ) return;
+    this.holds[ table ]();
+    delete this.holds[ table ];
+  },
+
+  // The table keeps its height until the next load fills it (Dom.hold), so
+  // the page does not shrink and spring back in between.
   reset( table ) {
     const element = Dom.get( table );
+    this.release( table );
+    this.holds[ table ] = Dom.hold( element );
     Dom.clear( element.querySelector( "tbody" ) );
     const holder = element.closest( ".table-responsive" ) || element;
     const more = holder.parentElement.querySelector( ".pager-more[data-for='" + table + "']" );
@@ -134,11 +146,11 @@ const Pager = {
     const target = controls.find( ( control ) => control.textContent === spot.text )
       || controls[ Math.min( spot.control , controls.length - 1 ) ];
     if ( target ) {
-      target.focus();
+      target.focus( { preventScroll: true } );
       return;
     }
     element.setAttribute( "tabindex" , "-1" );
-    element.focus();
+    element.focus( { preventScroll: true } );
   },
 
   // table is the table's id, field the name its rows arrive under, fetchPage
@@ -150,6 +162,7 @@ const Pager = {
     try {
       page = await fetchPage( offset );
     } catch ( error ) {
+      this.release( table );
       App.showError( error.message );
       return null;
     }
@@ -157,6 +170,7 @@ const Pager = {
     const spot = offset ? null : this.focusSpot( element );
     if ( !offset ) Dom.clear( element.querySelector( "tbody" ) );
     page[ field ].forEach( renderRow );
+    this.release( table );
     if ( !offset && page[ field ].length === 0 ) this.empty( element );
     this.label( table );
     this.putBack( element , spot );
@@ -176,7 +190,7 @@ const Pager = {
       // that does not depend on an app having taken busy-buttons.
       more.addEventListener( "click" , () => Dom.busy( more , () => this.load( table , field , fetchPage , renderRow , page.next ) ) );
       holder.after( more );
-      if ( onMore ) more.focus();
+      if ( onMore ) more.focus( { preventScroll: true } );
     } else if ( onMore ) {
       this.putBack( element , { row: element.querySelector( "tbody" ).rows.length - 1 , control: 0 , text: "" } );
     }

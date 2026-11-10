@@ -44,6 +44,7 @@ from app.routes import (
     sessions,
     settings,
     team,
+    themes,
     two_factor,
 )
 from app.routes import discover, dupes, images, jobs, library, lookup, media_types, playlists, porting, prefs, state, titles
@@ -167,6 +168,8 @@ def build_routes(static_server: StaticServer, cfg: Config) -> list[BaseRoute]:
         # Any signed-in user.
         signed_in("/api/me", account.me),
         signed_in("/api/account/rename", account.rename, ["POST"]),
+        signed_in("/api/account/themes", themes.set_my_themes, ["POST"]),
+        signed_in("/api/account/theme", themes.set_my_theme, ["POST"]),
         # A session only: a PIN lets its holder sign in through an invite
         # link, so a key that could set one could turn itself into a session.
         pin_sessions("/api/account/pin", account.set_pin, ["POST"]),
@@ -209,6 +212,9 @@ def build_routes(static_server: StaticServer, cfg: Config) -> list[BaseRoute]:
         # sessions could end the one that would revoke it.
         admin_sessions("/api/admin/users/{user_id}/sessions", sessions.list_user_sessions),
         admin_sessions("/api/admin/users/{user_id}/sessions/{session_id}/revoke", sessions.revoke_user_session, ["POST"]),
+        # The themes everyone starts from. Not a credential, so a key may.
+        admins("/api/admin/theme-defaults", themes.get_theme_defaults),
+        admins("/api/admin/theme-defaults", themes.set_theme_defaults, ["POST"]),
         # Invite links: one link for a group, each person who opens it joins
         # as a new user (see invite_links.py). Creating one needs a session for
         # the same reason as creating a user -- the link mints accounts and

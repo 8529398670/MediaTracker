@@ -184,17 +184,13 @@ const DiscoverScreen = {
   },
 
   renderGrid() {
-    const grid = this.grid;
-    const scrollY = window.scrollY;
-    Dom.clear( grid );
     const shown = this.films.filter( ( film ) => this.visible( film ) );
     this.result = { rows: shown.map( ( film ) => this.row( film ) ) };
     const container = Dom.el( "div" , { class: "media-grid layout-" + this.card.layout + " size-" + this.card.size } );
     this.result.rows.forEach( ( row ) => container.appendChild( Card.build( row , this.card , {} ) ) );
-    grid.appendChild( container );
+    Dom.swap( this.grid , container );
     Dom.show( Dom.get( "discover-more" ) , this.films.length < this.total );
     Dom.show( Dom.get( "discover-empty" ) , shown.length === 0 );
-    if ( scrollY ) window.scrollTo( 0 , scrollY );
   },
 
   // The server leaves out what the Watched and Skipped filters hide; this
@@ -303,11 +299,11 @@ const DiscoverScreen = {
     [ [ "discover-from" , "from" ] , [ "discover-to" , "to" ] , [ "discover-sort" , "sort" ] , [ "discover-topic" , "topic" ] , [ "discover-only" , "only" ] , [ "discover-watched" , "watched" ] , [ "discover-skipped" , "skipped" ] ].forEach( ( pair ) => {
       Dom.get( pair[ 0 ] ).addEventListener( "change" , ( event ) => this.set( { [ pair[ 1 ] ]: event.target.value.trim() } ) );
     } );
-    Dom.all( "#discover-genremode button" ).forEach( ( button ) => button.addEventListener( "click" , () => this.set( { genremode: button.getAttribute( "data-mode" ) } ) ) );
-    Dom.get( "discover-genres-more" ).addEventListener( "click" , () => { this.showAllGenres = !this.showAllGenres; this.renderFacets(); } );
+    Dom.all( "#discover-genremode button" ).forEach( ( button ) => Dom.onPress( button , () => this.set( { genremode: button.getAttribute( "data-mode" ) } ) ) );
+    Dom.onPress( Dom.get( "discover-genres-more" ) , () => { this.showAllGenres = !this.showAllGenres; this.renderFacets(); } );
     Dom.get( "discover-more" ).addEventListener( "click" , () => this.load( true ) );
     Dom.get( "discover-customize" ).addEventListener( "click" , () => Customizer.open( "discover" ) );
-    Dom.all( "[data-discover-layout]" ).forEach( ( button ) => button.addEventListener( "click" , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-discover-layout" ) } ) ) ) );
+    Dom.all( "[data-discover-layout]" ).forEach( ( button ) => Dom.onPress( button , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-discover-layout" ) } ) ) ) );
     this.grid.addEventListener( "click" , ( event ) => {
       const article = event.target.closest( ".media-card" );
       if ( !article ) return;
@@ -319,7 +315,7 @@ const DiscoverScreen = {
       if ( Card.clicked( event , article ) ) return;
       const control = event.target.closest( "[data-action]" );
       if ( !control ) return;
-      this.act( control.getAttribute( "data-action" ) , row );
+      Dom.steady( control , () => this.act( control.getAttribute( "data-action" ) , row ) );
     } );
     CardMenu.wire( this.grid , {
       row: ( id ) => ( this.result.rows || [] ).find( ( r ) => r.t.id === id ),

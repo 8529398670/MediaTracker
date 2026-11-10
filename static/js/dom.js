@@ -58,10 +58,16 @@ const Dom = {
   // this for every button it makes, and a button in the page's HTML gets it
   // with Dom.onPress. A question the handler asks counts as part of the wait, so
   // the press cannot be repeated behind it; style.css hides the spinner meanwhile.
+  //
+  // Every press also goes through Dom.steady, so whatever the handler redraws,
+  // the button (or what took its place) stays where it was on screen. A button
+  // that is meant to take the reader somewhere else has data-scroll="free".
   press( button , handler ) {
     return ( event ) => {
       if ( button.getAttribute( "aria-busy" ) === "true" ) return;
-      const result = handler( event );
+      const result = button.getAttribute( "data-scroll" ) === "free"
+        ? handler( event )
+        : this.steady( button , () => handler( event ) );
       if ( result && typeof result.then === "function" ) {
         // A button in a row's menu is out of sight by now, so the menu's own
         // button shows the work as well.
@@ -78,6 +84,135 @@ const Dom = {
 
   onPress( button , handler ) {
     button.addEventListener( "click" , this.press( button , handler ) );
+  },
+
+  // Nothing moves under the reader. Runs work (sync, or answering a promise)
+  // and then scrolls the window so anchor sits where it sat before: the page
+  // may have grown, shrunk or been redrawn above it, and none of that should
+  // look like a jump. If anchor was redrawn, the nearest thing still there is
+  // used: anchor itself, else the closest of its old ancestors that is still
+  // showing or was redrawn under the same id or data-key. So a row that gets
+  // redrawn should carry a data-key, and its buttons keep their place too.
+  //
+  // It stands back when the reader scrolled meanwhile, or the screen changed:
+  // both are somewhere they chose to go. A dev build says in the console when
+  // it had to correct, which means the work moved the page and is worth fixing
+  // at its source (Dom.swap, updating in place) rather than leaning on this.
+  steady( anchor , work ) {
+    const spot = this.spotOf( anchor );
+    const done = () => {
+      this.settle( spot );
+      window.requestAnimationFrame( () => this.settle( spot ) );
+    };
+    let result;
+    try {
+      result = work();
+    } catch ( error ) {
+      done();
+      throw error;
+    }
+    if ( result && typeof result.then === "function" ) return Promise.resolve( result ).finally( done );
+    done();
+    return result;
+  },
+
+  // Where anchor and each of its ancestors sit on screen now, for settle.
+  spotOf( anchor ) {
+    if ( !anchor || !anchor.isConnected ) return null;
+    const chain = [];
+    for ( let node = anchor ; node && node !== document.body ; node = node.parentElement ) {
+      if ( node.getClientRects().length === 0 ) continue;
+      const key = node.id ? "#" + CSS.escape( node.id )
+        : node.getAttribute( "data-key" ) ? "[data-key=\"" + CSS.escape( node.getAttribute( "data-key" ) ) + "\"]" : "";
+      chain.push( { node , key , top: node.getBoundingClientRect().top } );
+    }
+    if ( chain.length === 0 ) return null;
+    const view = anchor.closest( ".view" );
+    return {
+      chain,
+      hash: window.location.hash,
+      view: view && view.classList.contains( "view-active" ) ? view : null,
+      scrolled: Dom.scrollIntent,
+    };
+  },
+
+  settle( spot ) {
+    this.shrinkRunway();
+    if ( !spot || spot.scrolled !== Dom.scrollIntent || spot.hash !== window.location.hash ) return;
+    if ( spot.view && !spot.view.classList.contains( "view-active" ) ) return;
+    const showing = ( node ) => Boolean( node ) && node.isConnected && node.getClientRects().length > 0;
+    let target = null;
+    let before = 0;
+    for ( const link of spot.chain ) {
+      const node = showing( link.node ) ? link.node : link.key ? document.querySelector( link.key ) : null;
+      if ( showing( node ) ) {
+        [ target , before ] = [ node , link.top ];
+        break;
+      }
+    }
+    if ( !target ) return;
+    const moved = target.getBoundingClientRect().top - before;
+    if ( Math.abs( moved ) < 1 ) return;
+    const room = document.documentElement.scrollHeight - window.innerHeight;
+    if ( window.scrollY + moved > room ) this.runway( window.scrollY + moved - room );
+    window.scrollBy( { top: moved , behavior: "instant" } );
+    if ( Math.abs( moved ) > 2 && typeof Fresh !== "undefined" && Fresh.version === "dev" ) {
+      const name = target.id ? "#" + target.id : target.tagName.toLowerCase() + ( target.className ? "." + String( target.className ).trim().split( /\s+/ ).join( "." ) : "" );
+      console.warn( "[steady] " + name + " moved " + Math.round( moved ) + "px; kept in place" );
+    }
+  },
+
+  // Brings element into view because the reader asked for it (a box they
+  // opened, the error banner), and tells Dom.steady this move is meant.
+  // The one way to scroll after an action: never scrollIntoView directly.
+  reveal( element , block = "nearest" ) {
+    if ( !element ) return;
+    this.movedOnPurpose();
+    element.scrollIntoView( { block: block } );
+  },
+
+  movedOnPurpose() {
+    Dom.scrollIntent += 1;
+  },
+
+  // A list filtered down to a few rows can leave the page too short to stay
+  // where the reader was, and the browser would pull it up. So, as a word
+  // processor does, the page gets blank room at its foot, given back as the
+  // reader scrolls up or the content grows into it.
+  runway( needed ) {
+    let pad = this.get( "steady-runway" );
+    if ( !pad ) {
+      pad = this.el( "div" , { attrs: { id: "steady-runway" , "aria-hidden": "true" } } );
+      document.body.appendChild( pad );
+      window.addEventListener( "scroll" , () => this.shrinkRunway() , { passive: true } );
+    }
+    pad.style.height = Math.ceil( pad.offsetHeight + needed ) + "px";
+  },
+
+  shrinkRunway() {
+    const pad = this.get( "steady-runway" );
+    if ( !pad || pad.offsetHeight === 0 ) return;
+    const content = document.documentElement.scrollHeight - pad.offsetHeight;
+    const need = Math.max( 0 , Math.ceil( window.scrollY + window.innerHeight - content ) );
+    if ( need < pad.offsetHeight ) pad.style.height = need + "px";
+  },
+
+  // Puts nodes in holder in one step, in place of what it held, so the page
+  // is never painted with the holder empty (which would pull the scroll
+  // position up with it). Build the new content first, awaiting whatever it
+  // needs, and then swap: never clear a holder and fill it after an await.
+  swap( holder , ...nodes ) {
+    if ( holder ) holder.replaceChildren( ...nodes.filter( Boolean ) );
+  },
+
+  // Holds element at its current height until release() is called, for a
+  // holder that has to sit empty while it waits. Prefer building elsewhere
+  // and swapping.
+  hold( element ) {
+    if ( !element ) return () => {};
+    const before = element.style.minHeight;
+    element.style.minHeight = element.offsetHeight + "px";
+    return () => { element.style.minHeight = before; };
   },
 
   // Runs work with button showing that it is busy: it cannot be pressed, so a
@@ -197,7 +332,7 @@ const Dom = {
       element.addEventListener( "hidden.bs.modal" , () => {
         ok.removeEventListener( "click" , onOk );
         element._open = false;
-        if ( returnTo && returnTo.focus ) returnTo.focus();
+        if ( returnTo && returnTo.focus ) returnTo.focus( { preventScroll: true } );
         resolve( answer );
       } , { once: true } );
       modal.show();
@@ -253,7 +388,7 @@ const Dom = {
       const close = ( refocus ) => {
         open = false;
         input.replaceWith( button );
-        if ( refocus ) button.focus();
+        if ( refocus ) button.focus( { preventScroll: true } );
       };
       const refuse = () => {
         input.classList.add( "is-invalid" );
@@ -389,7 +524,7 @@ const Dom = {
         element.removeEventListener( "hide.bs.modal" , holdWhileSaving );
         form.onsubmit = null;
         element._open = false;
-        if ( returnTo && returnTo.focus ) returnTo.focus();
+        if ( returnTo && returnTo.focus ) returnTo.focus( { preventScroll: true } );
         resolve( answer );
       } , { once: true } );
       modal.show();
@@ -626,7 +761,7 @@ const Dom = {
     // busy, which Bootstrap takes as disabled and would leave the menu open.
     list.addEventListener( "click" , () => {
       menu.hide();
-      toggle.focus();
+      toggle.focus( { preventScroll: true } );
     } , true );
     return holder;
   },
@@ -637,6 +772,18 @@ const Dom = {
     return this.el( "span" , { class: "badge text-bg-" + ( tone || "secondary" ) , text: text } );
   },
 };
+
+// Counts the times the page was moved on purpose (the reader scrolling by
+// hand, or Dom.reveal), so Dom.steady never fights it: a correction is
+// skipped if this moved while the work ran.
+Dom.scrollIntent = 0;
+[ "wheel" , "touchmove" ].forEach( function ( type ) {
+  window.addEventListener( type , function () { Dom.scrollIntent += 1; } , { passive: true } );
+} );
+window.addEventListener( "keydown" , function ( event ) {
+  if ( [ "PageUp" , "PageDown" , "Home" , "End" , "ArrowUp" , "ArrowDown" , " " ].includes( event.key )
+    && !event.target.closest( "input, textarea, select, button, a, summary, [role=button], [tabindex], [contenteditable]" ) ) Dom.scrollIntent += 1;
+} );
 
 // The close button on a box that stays until it is dismissed. A shown-once
 // value goes with the box rather than sitting hidden in the page. The value of

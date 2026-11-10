@@ -15,6 +15,7 @@ from app.core.security import Actor, actor_from, check_csrf, clear_session_cooki
 from app.models import login_tokens, sessions, users
 from app.models import passwords
 from app.models import pins
+from app.models import themes
 from app.models import two_factor
 from app.routes.admin import link_options, link_response
 from app.routes.helpers import bad_request, conflict, forbidden, get_config, get_store, read_json, run, server_error
@@ -41,6 +42,7 @@ def me_row(store: Store, cfg: Config, actor: Actor, version: str) -> dict[str, A
     # is_owner tells the UI which account-management buttons to offer; the
     # server checks ownership again on every request that depends on it.
     owner_id = users.get_owner_id(store)
+    my_themes, themes_custom = themes.mine(store, actor.user.themes)
     payload: dict[str, Any] = {
         "authenticated": True,
         "id": actor.user.id,
@@ -59,6 +61,9 @@ def me_row(store: Store, cfg: Config, actor: Actor, version: str) -> dict[str, A
         "maintenance": cfg.maintenance,
         "version": version,
         "announcement": cfg.announcement,
+        "themes": my_themes,
+        "themes_custom": themes_custom,
+        "theme_id": actor.user.theme_id,
         "has_pin": pins.has_pin(actor.user),
         "username": actor.user.username,
         "has_password": passwords.has_password(actor.user),

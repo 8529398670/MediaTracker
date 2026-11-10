@@ -33,7 +33,7 @@ const SearchExtras = {
         Card.toggle( article );
         return;
       }
-      DiscoverScreen.act( action , row ).then( () => this.draw() );
+      Dom.steady( control , () => DiscoverScreen.act( action , row ).then( () => this.draw() ) );
     } );
   },
 
