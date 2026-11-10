@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
 from app.core.config import Config
 from app.core.db import Store
@@ -16,29 +16,35 @@ from app.core.security import actor_from
 from app.media import dupes, normalize, porting
 from app.models import import_batches, library_cache, titles, user_state, users
 from app.models.revision import NotFoundError
-from app.routes.helpers import bad_request, get_config, get_store, not_found, run
+from app.routes.helpers import Refused, bad_request, get_config, get_store, run
 from app.routes.subject import subject_from
-from app.routes.titles import _body
+from app.routes.titles import _body, answer
 
 MAX_ROWS = 200
+
+
+def parse_checked(store: Store, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/import/parse, shared with MCP: the rows a paste or file
+    holds, each with its likeliest duplicate. Nothing is written."""
+    text = str(body.get("text") or "")
+    fmt = body.get("format") if body.get("format") in porting.FORMATS else "auto"
+    try:
+        parsed = porting.parse(text, fmt, normalize.type_id(body.get("type") or "movie"), body.get("status") if body.get("status") in normalize.STATUSES else "queue")
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+    snapshot = library_cache.get(store)
+    live = snapshot.live_titles()
+    for entry in parsed["rows"]:
+        found = dupes.find_matches(entry["fields"], live, minimum=dupes.SIMILAR, limit=1)
+        entry["dupe"] = {**found[0], "title": snapshot.titles[found[0]["id"]]["title"]} if found else None
+    return parsed
 
 
 async def parse(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    text = str(body.get("text") or "")
-    fmt = body.get("format") if body.get("format") in porting.FORMATS else "auto"
-    try:
-        parsed = porting.parse(text, fmt, normalize.type_id(body.get("type") or "movie"), body.get("status") if body.get("status") in normalize.STATUSES else "queue")
-    except ValueError as error:
-        return bad_request(str(error))
-    snapshot = await run(library_cache.get, get_store(request))
-    live = snapshot.live_titles()
-    for entry in parsed["rows"]:
-        found = dupes.find_matches(entry["fields"], live, minimum=dupes.SIMILAR, limit=1)
-        entry["dupe"] = {**found[0], "title": snapshot.titles[found[0]["id"]]["title"]} if found else None
-    return JSONResponse(parsed)
+    return await answer(request, parse_checked, get_store(request), body)
 
 
 def import_rows(store: Store, cfg: Config, actor_id: int, subject_id: int, rows: list[dict[str, Any]], batch_id: str, skip_dupes: bool) -> dict[str, Any]:
@@ -67,6 +73,20 @@ def import_rows(store: Store, cfg: Config, actor_id: int, subject_id: int, rows:
     return {"batch_id": batch_id, "created": len(created), "skipped": skipped}
 
 
+def import_checked(store: Store, cfg: Config, actor_id: int, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/import/items, shared with MCP."""
+    rows = [entry for entry in body.get("rows") or [] if isinstance(entry, dict)]
+    if not rows:
+        raise Refused(400, "nothing to import")
+    if len(rows) > MAX_ROWS:
+        raise Refused(400, f"at most {MAX_ROWS} rows per request")
+    batch_id = str(body.get("batch_id") or "") or import_batches.new_batch_id()
+    try:
+        return import_rows(store, cfg, actor_id, subject_id, rows, batch_id, body.get("skip_dupes", True) is not False)
+    except titles.TooManyTitlesError as error:
+        raise Refused(400, str(error)) from None
+
+
 async def import_items(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -74,28 +94,22 @@ async def import_items(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    rows = [entry for entry in body.get("rows") or [] if isinstance(entry, dict)]
-    if not rows:
-        return bad_request("nothing to import")
-    if len(rows) > MAX_ROWS:
-        return bad_request(f"at most {MAX_ROWS} rows per request")
-    batch_id = str(body.get("batch_id") or "") or import_batches.new_batch_id()
+    return await answer(request, import_checked, get_store(request), get_config(request), actor_from(request).user.id, subject, body)
+
+
+def undo_import_checked(store: Store, batch_id: str, actor_id: int) -> dict[str, Any]:
+    """POST /api/import/{batch_id}/undo, shared with MCP."""
     try:
-        result = await run(import_rows, get_store(request), get_config(request), actor_from(request).user.id, subject, rows, batch_id, body.get("skip_dupes", True) is not False)
-    except titles.TooManyTitlesError as error:
-        return bad_request(str(error))
-    return JSONResponse(result)
+        return {"removed": import_batches.undo_batch(store, batch_id, actor_id)}
+    except NotFoundError:
+        raise Refused(404, "no such import") from None
 
 
 async def undo_import(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    try:
-        removed = await run(import_batches.undo_batch, get_store(request), request.path_params["batch_id"], actor_from(request).user.id)
-    except NotFoundError:
-        return not_found("no such import")
-    return JSONResponse({"removed": removed})
+    return await answer(request, undo_import_checked, get_store(request), request.path_params["batch_id"], actor_from(request).user.id)
 
 
 def export_body(store: Store, subject_id: int, fmt: str) -> tuple[bytes, str, str]:

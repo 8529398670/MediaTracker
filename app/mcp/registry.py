@@ -3,15 +3,21 @@
 Adding one is the MCP version of adding a route: write it next to the others
 in app/routes/mcp_tools.py, calling the same helper the matching HTTP handler
 calls, so a rule enforced there holds whichever door a change comes through.
-The defaults match the rest of the template:
+The rules match the rest of the template:
 
-- Any signed-in key, unless the user asked for admin. admin_only hides the
+- One tool per route an API key may call. route names it, and
+  test_mcp_parity.py fails until every key-callable route in
+  config/openapi.json has a tool, or an "x-mcp-http" reason for staying HTTP
+  only (file bytes, for one: MCP messages are JSON, and clients cap their
+  size, so uploads and downloads go over /api/files with the same key and the
+  tool hands back the addresses).
+- Any signed-in key, unless the route is admin only. admin_only hides the
   tool from user-scoped keys entirely.
-- Never create a credential or delete anything. /mcp only accepts API keys,
-  and those routes need a browser session (see RequireSession) so that
-  revoking a leaked key really ends it, and so that a key can never erase what
-  cannot be put back. A tool is a key-authenticated route; the same rule
-  applies.
+- Nothing a key cannot do over HTTP. Managing users, keys and sign-in, and
+  erasing anything for good, need a browser session (see RequireSession), so
+  that revoking a leaked key really ends it and a key can never erase what
+  cannot be put back. A tool is a key-authenticated route; the same rule keeps
+  those out.
 - Mark the hints honestly. read_only and destructive become the spec's
   readOnlyHint / destructiveHint, which a client uses to decide whether to ask
   the person before calling. They are advice to the client, not protection --
@@ -92,6 +98,9 @@ class Tool:
     read_only: bool = False
     destructive: bool = False
     admin_only: bool = False
+    # The HTTP route this tool is the MCP door to, as "METHOD /path/{param}"
+    # the way config/openapi.json writes it.
+    route: str = ""
     # Asked on every call: a tool for a feature that is switched off answers
     # exactly like one that does not exist. None is always.
     enabled: Callable[[Config], bool] | None = None
@@ -128,6 +137,11 @@ class Registry:
         if tool.name in self._tools:
             raise ValueError(f"mcp: tool {tool.name!r} registered twice")
         self._tools[tool.name] = tool
+
+    def tools(self) -> list[Tool]:
+        """Every registered tool, whoever may call it, in registration order:
+        what config/mcp.json lists."""
+        return list(self._tools.values())
 
     def visible(self, actor: Actor | None, cfg: Config) -> list[Tool]:
         """tools/list for one actor: the tools its effective role may call, in

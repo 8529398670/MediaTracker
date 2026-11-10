@@ -12,15 +12,16 @@ from __future__ import annotations
 from typing import Any
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
+from app.core.config import Config
 from app.core.db import Store
 from app.core.security import actor_from
 from app.models import library_cache, titles
 from app.models.revision import NotFoundError
 from app.providers import enrich, fields, net, resolve
-from app.routes.helpers import bad_request, error, get_config, get_store, not_found, run
-from app.routes.titles import _body, check_dupes
+from app.routes.helpers import Refused, get_config, get_store
+from app.routes.titles import _body, answer, check_dupes
 
 MAX_LINES = 25
 _limiter: net.RateLimiter | None = None
@@ -51,26 +52,25 @@ def resolve_line(store: Store, line: str, kind: str) -> dict[str, Any]:
     }
 
 
+def resolve_checked(store: Store, cfg: Config, actor_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/resolve, shared with the MCP lookup tool."""
+    lines = [str(line).strip() for line in body.get("lines") or [] if str(line).strip()][:MAX_LINES]
+    if not lines:
+        raise Refused(400, "nothing to look up")
+    if not cfg.providers.network:
+        raise Refused(503, "lookups_off")
+    gate = limiter(cfg.providers.lookups_per_minute)
+    if not all(gate.allow(f"user:{actor_id}") for _line in lines):
+        raise Refused(429, "lookup_rate_limited")
+    kind = str(body.get("kind") or "any")
+    return {"results": [resolve_line(store, line, kind) for line in lines]}
+
+
 async def resolve_lines(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    lines = [str(line).strip() for line in body.get("lines") or [] if str(line).strip()][:MAX_LINES]
-    if not lines:
-        return bad_request("nothing to look up")
-    cfg = get_config(request)
-    if not cfg.providers.network:
-        return error(503, "lookups_off")
-    actor = actor_from(request)
-    gate = limiter(cfg.providers.lookups_per_minute)
-    if not all(gate.allow(f"user:{actor.user.id}") for _line in lines):
-        return error(429, "lookup_rate_limited")
-    kind = str(body.get("kind") or "any")
-    store = get_store(request)
-    results = []
-    for line in lines:
-        results.append(await run(resolve_line, store, line, kind))
-    return JSONResponse({"results": results})
+    return await answer(request, resolve_checked, get_store(request), get_config(request), actor_from(request).user.id, body)
 
 
 def enrich_one(store: Store, title_id: str, refresh: bool) -> dict[str, Any]:
@@ -81,13 +81,18 @@ def enrich_one(store: Store, title_id: str, refresh: bool) -> dict[str, Any]:
     return {"title": titles.get_title(store, title_id), "previous": previous}
 
 
+def enrich_checked(store: Store, cfg: Config, title_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/titles/{title_id}/enrich, shared with MCP."""
+    if not cfg.providers.network:
+        raise Refused(503, "lookups_off")
+    try:
+        return enrich_one(store, title_id, bool(body.get("refresh")))
+    except NotFoundError:
+        raise Refused(404, "no such title") from None
+
+
 async def enrich_title(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    if not get_config(request).providers.network:
-        return error(503, "lookups_off")
-    try:
-        return JSONResponse(await run(enrich_one, get_store(request), request.path_params["title_id"], bool(body.get("refresh"))))
-    except NotFoundError:
-        return not_found("no such title")
+    return await answer(request, enrich_checked, get_store(request), get_config(request), request.path_params["title_id"], body)

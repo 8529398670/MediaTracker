@@ -67,7 +67,11 @@ async def get_library(request: Request) -> Response:
     return JSONResponse(await run(library_payload, get_store(request), subject, since))
 
 
-async def get_vocab(request: Request) -> Response:
+def vocab() -> dict[str, Any]:
     """The fixed words the client builds menus from: statuses, lookup kinds,
-    and the canonical genre names the vocabulary folds onto."""
-    return JSONResponse({"statuses": list(STATUSES), "lookup_kinds": list(LOOKUP_KINDS), "canonical_genres": list(genres.GENRES)})
+    and the canonical genre names the vocabulary folds onto. Shared with MCP."""
+    return {"statuses": list(STATUSES), "lookup_kinds": list(LOOKUP_KINDS), "canonical_genres": list(genres.GENRES)}
+
+
+async def get_vocab(request: Request) -> Response:
+    return JSONResponse(vocab())

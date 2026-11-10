@@ -2,15 +2,18 @@
 views. Both take ?user= so an admin acting for someone sees their setup."""
 from __future__ import annotations
 
+from typing import Any
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from app.core.db import Store
 from app.core.security import actor_from
 from app.models import RestoreError, prefs, views
 from app.models.revision import NotFoundError
-from app.routes.helpers import bad_request, get_store, not_found, parse_id, restore_refused, run
+from app.routes.helpers import Refused, get_store, parse_id, restore_refusal, run
 from app.routes.subject import subject_from
-from app.routes.titles import _body
+from app.routes.titles import _body, answer
 
 
 async def get_prefs(request: Request) -> Response:
@@ -20,6 +23,15 @@ async def get_prefs(request: Request) -> Response:
     return JSONResponse(await run(prefs.get_prefs, get_store(request), subject))
 
 
+def save_prefs_checked(store: Store, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/prefs, shared with MCP."""
+    changes = {section: body[section] for section in prefs.SECTIONS if section in body}
+    try:
+        return prefs.save_prefs(store, subject_id, changes)
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+
+
 async def save_prefs(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -27,11 +39,7 @@ async def save_prefs(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    changes = {section: body[section] for section in prefs.SECTIONS if section in body}
-    try:
-        return JSONResponse(await run(prefs.save_prefs, get_store(request), subject, changes))
-    except ValueError as error:
-        return bad_request(str(error))
+    return await answer(request, save_prefs_checked, get_store(request), subject, body)
 
 
 async def list_views(request: Request) -> Response:
@@ -41,6 +49,14 @@ async def list_views(request: Request) -> Response:
     return JSONResponse(await run(views.list_views, get_store(request), subject))
 
 
+def create_view_checked(store: Store, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/views, shared with MCP."""
+    try:
+        return views.create_view(store, subject_id, body)
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+
+
 async def create_view(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -48,10 +64,28 @@ async def create_view(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
+    return await answer(request, create_view_checked, get_store(request), subject, body, status=201)
+
+
+def view_action_checked(store: Store, subject_id: int, actor_id: int, actor_is_admin: bool, raw_id: str, action: str, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/views/{view_id}/update|delete|restore, shared with MCP."""
+    view_id = parse_id(raw_id)
+    if view_id is None:
+        raise Refused(404, "no such view")
     try:
-        return JSONResponse(await run(views.create_view, get_store(request), subject, body), status_code=201)
+        if action == "update":
+            record, previous = views.update_view(store, subject_id, view_id, body)
+            return {"view": record, "previous": previous}
+        if action == "delete":
+            views.delete_view(store, subject_id, view_id, actor_id)
+            return {"deleted": True}
+        return {"view": views.restore_view(store, subject_id, view_id, actor_id, actor_is_admin)}
+    except NotFoundError:
+        raise Refused(404, "no such view") from None
+    except RestoreError as refusal:
+        raise restore_refusal(refusal) from None
     except ValueError as error:
-        return bad_request(str(error))
+        raise Refused(400, str(error)) from None
 
 
 async def _view_call(request: Request, action: str) -> Response:
@@ -61,26 +95,8 @@ async def _view_call(request: Request, action: str) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    view_id = parse_id(request.path_params["view_id"])
-    if view_id is None:
-        return not_found("no such view")
     actor = actor_from(request)
-    store = get_store(request)
-    try:
-        if action == "update":
-            record, previous = await run(views.update_view, store, subject, view_id, body)
-            return JSONResponse({"view": record, "previous": previous})
-        if action == "delete":
-            await run(views.delete_view, store, subject, view_id, actor.user.id)
-            return JSONResponse({"deleted": True})
-        record = await run(views.restore_view, store, subject, view_id, actor.user.id, actor.is_admin)
-        return JSONResponse({"view": record})
-    except NotFoundError:
-        return not_found("no such view")
-    except RestoreError as refusal:
-        return restore_refused(refusal)
-    except ValueError as error:
-        return bad_request(str(error))
+    return await answer(request, view_action_checked, get_store(request), subject, actor.user.id, actor.is_admin, request.path_params["view_id"], action, body)
 
 
 async def update_view(request: Request) -> Response:
@@ -95,6 +111,13 @@ async def restore_view(request: Request) -> Response:
     return await _view_call(request, "restore")
 
 
+def reorder_views_checked(store: Store, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/views/reorder, shared with MCP."""
+    ids = [ident for ident in body.get("ids") or [] if isinstance(ident, int)]
+    views.reorder_views(store, subject_id, ids)
+    return {"ok": True}
+
+
 async def reorder_views(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -102,6 +125,4 @@ async def reorder_views(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    ids = [ident for ident in body.get("ids") or [] if isinstance(ident, int)]
-    await run(views.reorder_views, get_store(request), subject, ids)
-    return JSONResponse({"ok": True})
+    return await answer(request, reorder_views_checked, get_store(request), subject, body)

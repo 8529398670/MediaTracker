@@ -18,7 +18,7 @@ from app.core.security import actor_from, check_csrf
 from app.media import dupes, normalize
 from app.models import RestoreError, library_cache, titles, user_state
 from app.models.revision import ConflictError, NotFoundError, bump
-from app.routes.helpers import bad_request, conflict, forbidden, get_config, get_store, not_found, read_json, restore_refused, run
+from app.routes.helpers import Refused, bad_request, forbidden, get_config, get_store, read_json, restore_refusal, run
 from app.routes.subject import subject_from
 
 MAX_BULK = 2000
@@ -31,6 +31,17 @@ async def _body(request: Request) -> dict[str, Any] | Response:
     if not check_csrf(request, body.get("csrf_token")):
         return forbidden("invalid csrf token")
     return body
+
+
+async def answer(request: Request, helper: Any, *args: Any, status: int = 200) -> Response:
+    """Run a helper an MCP tool shares, in a worker thread, and send what it
+    returns, or the Refused it raised, the same way every time. Only
+    Refused.internal (500) is logged as a server error; a deliberate 503 such
+    as lookups_off is answered as itself."""
+    try:
+        return JSONResponse(await run(helper, *args), status_code=status)
+    except Refused as refused:
+        return refused.response(request if refused.status == 500 else None)
 
 
 def check_dupes(store: Store, fields: dict[str, Any]) -> list[dict[str, Any]]:
@@ -58,6 +69,17 @@ def add_title(store: Store, cfg: Config, actor_id: int, subject_id: int, raw: di
     return {"created": True, "title": record, "state": saved}
 
 
+def create_checked(store: Store, cfg: Config, actor_id: int, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/titles, shared with MCP."""
+    try:
+        result = add_title(store, cfg, actor_id, subject_id, body.get("title") or {}, body.get("state") or {}, bool(body.get("force")))
+    except (ValueError, titles.TooManyTitlesError) as error:
+        raise Refused(400, str(error)) from None
+    if not result["created"]:
+        raise Refused(409, "possible_duplicate", dupes=result["dupes"])
+    return result
+
+
 async def create(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -65,66 +87,69 @@ async def create(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    actor = actor_from(request)
-    try:
-        result = await run(
-            add_title, get_store(request), get_config(request), actor.user.id, subject,
-            body.get("title") or {}, body.get("state") or {}, bool(body.get("force")),
-        )
-    except (ValueError, titles.TooManyTitlesError) as error:
-        return bad_request(str(error))
-    if not result["created"]:
-        return conflict("possible_duplicate", dupes=result["dupes"])
-    return JSONResponse(result, status_code=201)
+    return await answer(request, create_checked, get_store(request), get_config(request), actor_from(request).user.id, subject, body, status=201)
+
+
+def get_one_checked(store: Store, title_id: str) -> dict[str, Any]:
+    record = titles.get_title(store, title_id)
+    if record is None:
+        raise Refused(404, "no such title")
+    return record
 
 
 async def get_one(request: Request) -> Response:
-    record = await run(titles.get_title, get_store(request), request.path_params["title_id"])
-    if record is None:
-        return not_found("no such title")
-    return JSONResponse(record)
+    return await answer(request, get_one_checked, get_store(request), request.path_params["title_id"])
+
+
+def update_checked(store: Store, title_id: str, body: dict[str, Any], actor_id: int) -> dict[str, Any]:
+    """POST /api/titles/{title_id}/update, shared with MCP."""
+    changes = normalize.clean_title_fields(body.get("set") or {})
+    if not changes:
+        raise Refused(400, "nothing to change")
+    try:
+        record, previous = titles.update_title(store, title_id, changes, body.get("expect"), actor_id)
+    except NotFoundError:
+        raise Refused(404, "no such title") from None
+    except ConflictError as error:
+        raise Refused(409, "changed_elsewhere", current=error.current) from None
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+    return {"title": record, "previous": previous}
 
 
 async def update(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    changes = normalize.clean_title_fields(body.get("set") or {})
-    if not changes:
-        return bad_request("nothing to change")
+    return await answer(request, update_checked, get_store(request), request.path_params["title_id"], body, actor_from(request).user.id)
+
+
+def delete_checked(store: Store, title_id: str, actor_id: int) -> dict[str, Any]:
     try:
-        record, previous = await run(
-            titles.update_title, get_store(request), request.path_params["title_id"], changes, body.get("expect"), actor_from(request).user.id
-        )
+        return {"title": titles.delete_title(store, title_id, actor_id)}
     except NotFoundError:
-        return not_found("no such title")
-    except ConflictError as error:
-        return conflict("changed_elsewhere", current=error.current)
-    except ValueError as error:
-        return bad_request(str(error))
-    return JSONResponse({"title": record, "previous": previous})
+        raise Refused(404, "no such title") from None
 
 
 async def delete(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
+    return await answer(request, delete_checked, get_store(request), request.path_params["title_id"], actor_from(request).user.id)
+
+
+def restore_checked(store: Store, title_id: str, restore_days: int) -> dict[str, Any]:
     try:
-        record = await run(titles.delete_title, get_store(request), request.path_params["title_id"], actor_from(request).user.id)
-    except NotFoundError:
-        return not_found("no such title")
-    return JSONResponse({"title": record})
+        return {"title": titles.restore_title(store, title_id, restore_days)}
+    except RestoreError as refusal:
+        raise restore_refusal(refusal) from None
 
 
 async def restore(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    try:
-        record = await run(titles.restore_title, get_store(request), request.path_params["title_id"], get_config(request).library.restore_days)
-    except RestoreError as refusal:
-        return restore_refused(refusal)
-    return JSONResponse({"title": record})
+    return await answer(request, restore_checked, get_store(request), request.path_params["title_id"], get_config(request).library.restore_days)
 
 
 def bulk_titles(store: Store, actor_id: int, ids: list[str], op: str, value: Any, restore_days: int) -> dict[str, Any]:
@@ -171,20 +196,30 @@ def bulk_titles(store: Store, actor_id: int, ids: list[str], op: str, value: Any
     return {"previous": previous}
 
 
+def bulk_checked(store: Store, actor_id: int, body: dict[str, Any], restore_days: int) -> dict[str, Any]:
+    """POST /api/titles/bulk, shared with MCP."""
+    ids = [ident for ident in body.get("ids") or [] if normalize.valid_title_id(ident)][:MAX_BULK]
+    if not ids:
+        raise Refused(400, "no titles given")
+    try:
+        return bulk_titles(store, actor_id, ids, str(body.get("op") or ""), body.get("value"), restore_days)
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+
+
 async def bulk(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    ids = [ident for ident in body.get("ids") or [] if normalize.valid_title_id(ident)][:MAX_BULK]
-    if not ids:
-        return bad_request("no titles given")
-    try:
-        result = await run(
-            bulk_titles, get_store(request), actor_from(request).user.id, ids, str(body.get("op") or ""), body.get("value"), get_config(request).library.restore_days
-        )
-    except ValueError as error:
-        return bad_request(str(error))
-    return JSONResponse(result)
+    return await answer(request, bulk_checked, get_store(request), actor_from(request).user.id, body, get_config(request).library.restore_days)
+
+
+def check_checked(store: Store, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/titles/check, shared with MCP: {matches: [...]}, nothing written."""
+    fields = normalize.clean_title_fields(body.get("title") or {})
+    if not fields.get("title"):
+        raise Refused(400, "a title needs a name")
+    return {"matches": check_dupes(store, fields)}
 
 
 async def check(request: Request) -> Response:
@@ -192,7 +227,4 @@ async def check(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
         return body
-    fields = normalize.clean_title_fields(body.get("title") or {})
-    if not fields.get("title"):
-        return bad_request("a title needs a name")
-    return JSONResponse({"matches": await run(check_dupes, get_store(request), fields)})
+    return await answer(request, check_checked, get_store(request), body)

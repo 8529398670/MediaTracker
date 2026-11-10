@@ -334,7 +334,6 @@ const LibraryScreen = {
     Dom.all( "[data-layout]" ).forEach( ( button ) => {
       Dom.onPress( button , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-layout" ) } ) ) );
     } );
-    Dom.get( "customize-button" ).addEventListener( "click" , () => Customizer.open( "library" ) );
     Dom.onPress( Dom.get( "select-button" ) , () => this.setSelecting( !this.selecting ) );
     Dom.get( "library-empty-clear" ).addEventListener( "click" , () => this.setQuery( Query.defaults( this.query.list ) ) );
     Dom.get( "filter-sheet-clear" ).addEventListener( "click" , () => {
@@ -416,8 +415,8 @@ const LibraryScreen = {
   },
 };
 
-// The sidebar's library half: Watched (under Playlists), every scope with its
-// count, and Trash.
+// The sidebar's library half: Watched and Not for me (under Playlists),
+// every scope with how many titles are still ahead in it, and Trash.
 const LibraryNav = {
   render() {
     const box = Dom.get( "sidebar-library" );
@@ -425,12 +424,18 @@ const LibraryNav = {
     Dom.clear( box );
     const list = LibraryScreen.query ? LibraryScreen.query.list : "all";
     const here = Nav.screen() === "library";
-    const watched = Dom.get( "sidebar-watched" );
-    const watchedOn = here && list === "watched";
-    watched.classList.toggle( "active" , watchedOn );
-    watched.setAttribute( "aria-current" , watchedOn ? "page" : "false" );
-    watched.onclick = () => Nav.closeSidebar();
-    Dom.text( Dom.get( "sidebar-watched-count" ) , String( Library.counts( "all" ).watched ) );
+    const totals = Library.counts( "all" );
+    // Watched and Not for me sit under Playlists; Not for me only once
+    // something has been skipped (or while it is open).
+    [ "watched" , "skipped" ].forEach( ( name ) => {
+      const link = Dom.get( "sidebar-" + name );
+      const on = here && list === name;
+      link.classList.toggle( "active" , on );
+      link.setAttribute( "aria-current" , on ? "page" : "false" );
+      link.onclick = () => Nav.closeSidebar();
+      if ( name === "skipped" ) link.hidden = !totals.skipped && !on;
+      Dom.text( Dom.get( "sidebar-" + name + "-count" ) , String( totals[ name ] ) );
+    } );
     const scopes = [ { id: "all" , label: I18n.get( "library.scope_all" ) , icon: "grid-3x3-gap" } ].concat(
       Library.types.map( ( type ) => ( { id: type.id , label: type.label , icon: Vocab.typeIcon( type.id ) } ) ) );
     scopes.forEach( ( scope ) => {

@@ -75,6 +75,7 @@
           <a class="nav-link" href="#discover" data-nav="discover"><i class="bi bi-compass" aria-hidden="true"></i><span data-i18n="nav.discover"></span></a>
           <a class="nav-link" href="#playlists" data-nav="playlists"><i class="bi bi-collection-play" aria-hidden="true"></i><span data-i18n="nav.playlists"></span></a>
           <a id="sidebar-watched" class="nav-link" href="#library/all/watched"><i class="bi bi-check-circle" aria-hidden="true"></i><span class="nav-link-text flex-grow-1" data-i18n="nav.watched"></span><span id="sidebar-watched-count" class="nav-count"></span></a>
+          <a id="sidebar-skipped" class="nav-link" href="#library/all/skipped" hidden><i class="bi bi-hand-thumbs-down" aria-hidden="true"></i><span class="nav-link-text flex-grow-1" data-i18n="nav.skipped"></span><span id="sidebar-skipped-count" class="nav-count"></span></a>
           <h3 class="sidebar-heading" data-i18n="nav.library_heading"></h3>
           <div id="sidebar-library" class="sidebar-library d-flex flex-column gap-1"></div>
           <div class="sidebar-group">
@@ -88,6 +89,7 @@
           <!-- Account: its second line names who is signed in (App.labelAccount). -->
           <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="nav-link-text"><span data-i18n="nav.account"></span><span id="sidebar-user" class="nav-link-sub"></span></span></a>
           <a class="nav-link" href="#appearance" data-nav="appearance"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.appearance"></span></a>
+          <a class="nav-link" href="#about" data-nav="about"><i class="bi bi-info-circle" aria-hidden="true"></i><span data-i18n="nav.about"></span></a>
 
           <div id="sidebar-admin" class="sidebar-group" hidden>
             <h3 class="sidebar-heading" data-i18n="nav.admin_heading"></h3>
@@ -234,7 +236,7 @@
           the URL (#library/movie/all?genre=Drama). Not a .card: the cards
           are inside it. See static/js/screens/library.js.
         -->
-        <section class="view library-view" data-view="library" id="library-panel" hidden>
+        <section class="view library-view view-edge" data-view="library" id="library-panel" hidden>
           <div id="views-bar" class="views-bar" data-i18n-attr="aria-label:views.label"></div>
 
           <div class="library-toolbar">
@@ -258,10 +260,6 @@
                 <button class="btn btn-outline-secondary" type="button" data-layout="list" data-i18n-attr="title:customize.layout_list,aria-label:customize.layout_list"><i class="bi bi-view-list" aria-hidden="true"></i></button>
                 <button class="btn btn-outline-secondary" type="button" data-layout="compact" data-i18n-attr="title:customize.layout_compact,aria-label:customize.layout_compact"><i class="bi bi-list-ul" aria-hidden="true"></i></button>
               </div>
-              <button id="customize-button" class="btn btn-outline-secondary" type="button">
-                <i class="bi bi-sliders" aria-hidden="true"></i>
-                <span class="btn-label" data-i18n="customize.button"></span>
-              </button>
               <button id="select-button" class="btn btn-outline-secondary" type="button" aria-pressed="false">
                 <i class="bi bi-check2-square" aria-hidden="true"></i>
                 <span class="btn-label" data-i18n="bulk.select"></span>
@@ -317,7 +315,7 @@
         </section>
 
         <!-- Discover: the Wikipedia film catalogue; see screens/discover.js. -->
-        <section class="view library-view" data-view="discover" id="discover-panel" hidden>
+        <section class="view library-view view-edge" data-view="discover" id="discover-panel" hidden>
           <div class="library-head">
             <h2 class="h4 mb-0" data-i18n="discover.heading"></h2>
             <span id="discover-count" class="text-body-secondary small"></span>
@@ -347,22 +345,11 @@
                 <option value="boxoffice" data-i18n="discover.only_boxoffice"></option>
                 <option value="awarded" data-i18n="discover.only_awarded"></option>
               </select>
-              <select id="discover-watched" class="form-select w-auto" data-i18n-attr="aria-label:discover.watched">
-                <option value="hide" data-i18n="discover.watched_hide"></option>
-                <option value="only" data-i18n="discover.watched_only"></option>
-                <option value="all" data-i18n="discover.watched_all"></option>
-              </select>
-              <select id="discover-skipped" class="form-select w-auto" data-i18n-attr="aria-label:discover.skipped">
-                <option value="hide" data-i18n="discover.skipped_hide"></option>
-                <option value="only" data-i18n="discover.skipped_only"></option>
-                <option value="all" data-i18n="discover.skipped_all"></option>
-              </select>
               <div class="btn-group" role="group" data-i18n-attr="aria-label:customize.layout">
                 <button class="btn btn-outline-secondary" type="button" data-discover-layout="grid" data-i18n-attr="title:customize.layout_grid,aria-label:customize.layout_grid"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i></button>
                 <button class="btn btn-outline-secondary" type="button" data-discover-layout="list" data-i18n-attr="title:customize.layout_list,aria-label:customize.layout_list"><i class="bi bi-view-list" aria-hidden="true"></i></button>
                 <button class="btn btn-outline-secondary" type="button" data-discover-layout="compact" data-i18n-attr="title:customize.layout_compact,aria-label:customize.layout_compact"><i class="bi bi-list-ul" aria-hidden="true"></i></button>
               </div>
-              <button id="discover-customize" class="btn btn-outline-secondary" type="button"><i class="bi bi-sliders" aria-hidden="true"></i> <span class="btn-label" data-i18n="customize.button"></span></button>
             </div>
           </div>
           <details class="discover-facets" open>
@@ -378,7 +365,18 @@
             <button id="discover-genres-more" class="btn btn-sm btn-link px-0" type="button" hidden></button>
             <div class="small text-body-secondary mt-2" data-i18n="filters.name_cert"></div>
             <div id="discover-ratings" class="facet-chips"></div>
-            <div id="discover-skipped-count" class="small text-body-secondary mt-2"></div>
+            <!-- Watched and skipped films are always left out; these bring
+                 them back (the watched / skipped params, "all" when on). -->
+            <div class="d-flex flex-wrap gap-3 mt-2">
+              <div class="form-check form-switch mb-0">
+                <input id="discover-show-watched" class="form-check-input" type="checkbox" role="switch" />
+                <label for="discover-show-watched" id="discover-show-watched-label" class="form-check-label small"></label>
+              </div>
+              <div class="form-check form-switch mb-0">
+                <input id="discover-show-skipped" class="form-check-input" type="checkbox" role="switch" />
+                <label for="discover-show-skipped" id="discover-show-skipped-label" class="form-check-label small"></label>
+              </div>
+            </div>
           </details>
           <div id="discover-chips" class="filter-chips" hidden></div>
           <div id="discover-grid" class="library-grid"></div>
@@ -387,11 +385,12 @@
         </section>
 
         <!-- Adding titles: paste, look up, check, add. See screens/add.js. -->
-        <section class="view" data-view="add" id="add-panel" hidden>
+        <section class="view view-edge" data-view="add" id="add-panel" hidden>
           <h2 class="view-title" data-i18n="add.heading"></h2>
           <p class="view-description" data-i18n="add.description"></p>
           <section class="card">
-            <div class="card-body">
+            <div class="card-body row g-3">
+              <div class="col-12 col-xl-5">
               <form id="add-form" autocomplete="off">
                 <label for="add-text" class="visually-hidden" data-i18n="add.heading"></label>
                 <textarea id="add-text" class="form-control mb-2" rows="5" data-i18n-attr="placeholder:add.placeholder"></textarea>
@@ -413,11 +412,14 @@
                   </div>
                 </div>
               </form>
-              <p id="add-progress" class="small text-body-secondary mt-2 mb-0"></p>
+              </div>
+              <div class="col-12 col-xl-7">
+              <p id="add-progress" class="small text-body-secondary mt-0 mb-0"></p>
               <div id="add-results" class="list-group mt-3"></div>
               <div id="add-actions" class="d-flex gap-2 mt-3" hidden>
                 <button id="add-confirm" class="btn btn-success" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span id="add-confirm-label"></span></button>
                 <button id="add-clear" class="btn btn-outline-secondary" type="button" data-i18n="add.clear"></button>
+              </div>
               </div>
             </div>
           </section>
@@ -427,14 +429,14 @@
           Playlists: the index (#playlists) and one playlist (#playlists/12),
           numbered and in your order. See static/js/screens/playlists.js.
         -->
-        <section class="view playlists-view" data-view="playlists" id="playlists-panel" hidden>
+        <section class="view playlists-view view-edge" data-view="playlists" id="playlists-panel" hidden>
           <div id="playlists-index">
             <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
               <h2 class="h4 mb-0 me-auto" data-i18n="playlist.heading"></h2>
               <button id="playlists-new" class="btn btn-primary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span data-i18n="playlist.new"></span></button>
             </div>
             <p class="text-body-secondary" data-i18n="playlist.description"></p>
-            <div id="playlists-list" class="list-group playlists-list"></div>
+            <div id="playlists-list" class="row row-cols-1 row-cols-lg-2 row-cols-xxl-3 g-2 playlists-list"></div>
             <div id="playlists-empty" class="card library-empty" hidden>
               <div class="card-body text-body-secondary" data-i18n="playlist.empty_index"></div>
             </div>
@@ -557,6 +559,7 @@
         <section class="view" data-view="account" id="account-panel">
           <h2 class="view-title" data-i18n="account.heading"></h2>
 
+
           <section class="card">
             <div class="card-body">
               <h3 class="card-title" data-i18n="account.profile_heading"></h3>
@@ -581,41 +584,6 @@
               <select id="acting-select" class="form-select"></select>
               <p id="acting-locked" class="small text-warning-emphasis mt-2" data-i18n="acting.locked" hidden></p>
               <p class="small text-body-secondary mt-2 mb-0" data-i18n="acting.description"></p>
-            </div>
-          </section>
-
-          <!-- Where Apple TV links open; saved on the account (Prefs ui.appletv_app). -->
-          <section class="card">
-            <div class="card-body">
-              <h3 class="card-title" data-i18n="account.appletv_heading"></h3>
-              <div class="form-check form-switch">
-                <input id="appletv-app" class="form-check-input" type="checkbox" role="switch" />
-                <label for="appletv-app" class="form-check-label" data-i18n="account.appletv_label"></label>
-              </div>
-              <p class="small text-body-secondary mb-0" data-i18n="account.appletv_description"></p>
-            </div>
-          </section>
-
-          <!-- Which links sit on every card's face, in order; saved on the
-               account (Prefs ui.card_links). See App.initCardLinks. -->
-          <section class="card">
-            <div class="card-body">
-              <h3 class="card-title" data-i18n="account.card_links_heading"></h3>
-              <p class="small text-body-secondary" data-i18n="account.card_links_description"></p>
-              <ul id="card-links" class="list-group mb-2"></ul>
-              <button id="card-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.card_links_reset"></button>
-            </div>
-          </section>
-
-          <!-- Which links a card's right-click (or long-press) menu lists
-               after Watched, Love and Skip, in order; saved on the account
-               (Prefs ui.menu_links). See App.initMenuLinks. -->
-          <section class="card">
-            <div class="card-body">
-              <h3 class="card-title" data-i18n="account.menu_links_heading"></h3>
-              <p class="small text-body-secondary" data-i18n="account.menu_links_description"></p>
-              <ul id="menu-links" class="list-group mb-2"></ul>
-              <button id="menu-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.menu_links_reset"></button>
             </div>
           </section>
 
@@ -752,6 +720,10 @@
             <div class="card-body">
               <h3 class="card-title" data-i18n="api_keys.heading"></h3>
               <p class="text-body-secondary" data-i18n="api_keys.description"></p>
+              <p id="key-spec-line" class="small" hidden>
+                <span data-i18n="api_keys.spec_text"></span>
+                <a id="key-spec-link" target="_blank" rel="noopener noreferrer" data-i18n="api_keys.spec_link"></a>
+              </p>
 
               <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
                 <div class="col-md">
@@ -813,6 +785,74 @@
             </div>
           </section>
 
+          <!--
+            MCP: the API keys again, set up for an agent. Pick the client, make
+            a key, and the setup to paste comes back with the key already in
+            it. Nothing here the API keys card cannot do; it saves the reading.
+            See mcp.js.
+          -->
+          <section class="card" id="mcp-panel" hidden>
+            <div class="card-body">
+              <h3 class="card-title" data-i18n="mcp.heading"></h3>
+              <p class="text-body-secondary" data-i18n="mcp.description"></p>
+              <p id="mcp-spec-line" class="small" hidden>
+                <span data-i18n="mcp.spec_text"></span>
+                <a id="mcp-spec-link" target="_blank" rel="noopener noreferrer" data-i18n="mcp.spec_link"></a>
+              </p>
+
+              <p class="mb-1 small fw-semibold" data-i18n="mcp.endpoint_label"></p>
+              <div class="link-box mb-3">
+                <code id="mcp-endpoint"></code>
+                <button id="mcp-endpoint-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="mcp.copy_button"></button>
+              </div>
+
+              <fieldset class="mb-3">
+                <legend class="form-label fs-6 mb-2" data-i18n="mcp.client_label"></legend>
+                <div id="mcp-clients" class="mcp-clients" role="radiogroup">
+                  <input type="radio" class="btn-check" name="mcp-client" id="mcp-client-claude_code" value="claude_code" checked />
+                  <label class="btn btn-sm btn-outline-primary" for="mcp-client-claude_code" data-i18n="mcp.client_claude_code"></label>
+                  <input type="radio" class="btn-check" name="mcp-client" id="mcp-client-claude_desktop" value="claude_desktop" />
+                  <label class="btn btn-sm btn-outline-primary" for="mcp-client-claude_desktop" data-i18n="mcp.client_claude_desktop"></label>
+                  <input type="radio" class="btn-check" name="mcp-client" id="mcp-client-json" value="json" />
+                  <label class="btn btn-sm btn-outline-primary" for="mcp-client-json" data-i18n="mcp.client_json"></label>
+                </div>
+              </fieldset>
+
+              <form id="mcp-key-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="mcp-key-name" class="form-label" data-i18n="mcp.name_label"></label>
+                  <input id="mcp-key-name" class="form-control" name="name" maxlength="80" required />
+                </div>
+                <div class="col-md" id="mcp-key-role-field" hidden>
+                  <label for="mcp-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
+                  <select id="mcp-key-role" class="form-select" name="role">
+                    <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="admin" data-i18n="api_keys.role_admin"></option>
+                  </select>
+                </div>
+                <div class="col-md">
+                  <label for="mcp-key-days" class="form-label" data-i18n="api_keys.days_label"></label>
+                  <input id="mcp-key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
+                         data-i18n-attr="placeholder:api_keys.days_placeholder" />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="mcp.create_button"></button>
+                </div>
+              </form>
+
+              <div id="mcp-key-notice" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button id="mcp-key-forget" type="button" class="btn-close" data-i18n-attr="aria-label:mcp.forget_label"></button>
+                <span id="mcp-key-notice-text"></span>
+              </div>
+
+              <p id="mcp-hint" class="small text-body-secondary mt-3 mb-1"></p>
+              <div class="link-box">
+                <pre class="mcp-snippet"><code id="mcp-snippet"></code></pre>
+                <button id="mcp-snippet-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="mcp.copy_button"></button>
+              </div>
+            </div>
+          </section>
+
           <!-- Every device with a live session on this account; see sessions.js.
                Folded away until opened, and remembered open or shut in this
                browser. It is only fetched while open. -->
@@ -848,30 +888,134 @@
           </section>
         </section>
 
-        <!-- Your themes, and for admins the defaults everyone starts from.
-             Drawn by themes_editor.js; see theme.js for where they are kept. -->
-        <section class="view" data-view="appearance" id="appearance">
+        <!-- Everything about how the app looks, in one place: the theme
+             (themes_editor.js, theme.js), and everything about cards: what
+             they show (ui/customizer.js) and which links and buttons they
+             carry (App.initCardLinks and friends in app.js).
+             #appearance/theme|cards picks a tab; see appearance.js. -->
+        <section class="view view-full" data-view="appearance" id="appearance">
           <h2 class="view-title" data-i18n="theme.heading"></h2>
-          <ul class="nav nav-tabs mb-3" id="theme-tabs" role="tablist" hidden>
+          <ul class="nav nav-tabs mb-3" id="appearance-tabs" role="tablist">
             <li class="nav-item" role="presentation">
-              <button class="nav-link active" id="theme-tab-mine" type="button" role="tab" data-bs-toggle="tab"
-                      data-bs-target="#theme-pane-mine" aria-controls="theme-pane-mine" aria-selected="true" data-i18n="theme.tab_mine"></button>
+              <button class="nav-link active" id="appearance-tab-theme" type="button" role="tab" data-bs-toggle="tab" data-appearance-tab="theme"
+                      data-bs-target="#appearance-pane-theme" aria-controls="appearance-pane-theme" aria-selected="true" data-i18n="appearance.tab_theme"></button>
             </li>
             <li class="nav-item" role="presentation">
-              <button class="nav-link" id="theme-tab-defaults" type="button" role="tab" data-bs-toggle="tab"
-                      data-bs-target="#theme-pane-defaults" aria-controls="theme-pane-defaults" aria-selected="false" data-i18n="theme.tab_defaults"></button>
+              <button class="nav-link" id="appearance-tab-cards" type="button" role="tab" data-bs-toggle="tab" data-appearance-tab="cards"
+                      data-bs-target="#appearance-pane-cards" aria-controls="appearance-pane-cards" aria-selected="false" data-i18n="appearance.tab_cards"></button>
             </li>
           </ul>
           <div class="tab-content">
-            <div class="tab-pane show active" id="theme-pane-mine" role="tabpanel" aria-labelledby="theme-tab-mine">
-              <p class="text-body-secondary" data-i18n="theme.description"></p>
-              <div id="theme-editor-mine"></div>
+            <!-- Theme: yours, and for admins the defaults everyone starts from. -->
+            <div class="tab-pane show active" id="appearance-pane-theme" role="tabpanel" aria-labelledby="appearance-tab-theme">
+              <ul class="nav nav-pills mb-3" id="theme-tabs" role="tablist" hidden>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="theme-tab-mine" type="button" role="tab" data-bs-toggle="tab"
+                          data-bs-target="#theme-pane-mine" aria-controls="theme-pane-mine" aria-selected="true" data-i18n="theme.tab_mine"></button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="theme-tab-defaults" type="button" role="tab" data-bs-toggle="tab"
+                          data-bs-target="#theme-pane-defaults" aria-controls="theme-pane-defaults" aria-selected="false" data-i18n="theme.tab_defaults"></button>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane show active" id="theme-pane-mine" role="tabpanel" aria-labelledby="theme-tab-mine">
+                  <p class="text-body-secondary" data-i18n="theme.description"></p>
+                  <div id="theme-editor-mine"></div>
+                </div>
+                <div class="tab-pane" id="theme-pane-defaults" role="tabpanel" aria-labelledby="theme-tab-defaults">
+                  <p class="text-body-secondary" data-i18n="theme.defaults_description"></p>
+                  <div id="theme-editor-defaults"></div>
+                </div>
+              </div>
             </div>
-            <div class="tab-pane" id="theme-pane-defaults" role="tabpanel" aria-labelledby="theme-tab-defaults">
-              <p class="text-body-secondary" data-i18n="theme.defaults_description"></p>
-              <div id="theme-editor-defaults"></div>
+
+            <!-- Cards. Top: what each card shows, its click buttons, layout
+                 and size, separately for the library and Discover
+                 (ui/customizer.js). Below: what is the same on every card. -->
+            <div class="tab-pane" id="appearance-pane-cards" role="tabpanel" aria-labelledby="appearance-tab-cards">
+              <p class="text-body-secondary" data-i18n="customize.description"></p>
+              <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                <span class="small text-body-secondary" data-i18n="customize.screen"></span>
+                <div id="customize-screen" class="btn-group btn-group-sm" role="group" data-i18n-attr="aria-label:customize.screen">
+                  <button class="btn btn-outline-secondary" type="button" data-customize-screen="library" data-i18n="customize.screen_library"></button>
+                  <button class="btn btn-outline-secondary" type="button" data-customize-screen="discover" data-i18n="customize.screen_discover"></button>
+                </div>
+                <button id="customize-reset" class="btn btn-sm btn-link ms-auto" type="button" data-i18n="customize.reset"></button>
+              </div>
+              <div class="row g-4">
+                <div class="col-lg-4">
+                  <h3 class="h6" data-i18n="customize.fields_heading"></h3>
+                  <ul id="customize-fields" class="list-group choice-list"></ul>
+                </div>
+                <div class="col-lg-4">
+                  <h3 class="h6" data-i18n="customize.buttons_heading"></h3>
+                  <ul id="customize-buttons" class="list-group choice-list"></ul>
+                </div>
+                <div class="col-lg-4">
+                  <h3 class="h6" data-i18n="customize.layout"></h3>
+                  <div id="customize-layout" class="btn-group mb-3" role="group"></div>
+                  <h3 class="h6" data-i18n="customize.size"></h3>
+                  <div id="customize-size" class="btn-group mb-3" role="group"></div>
+                  <h3 class="h6" data-i18n="customize.preview"></h3>
+                  <div id="customize-preview" class="customize-preview"></div>
+                </div>
+              </div>
+
+              <!-- The same on every card, Library and Discover alike; saved
+                   in Prefs ui (card_links, corner_watch, appletv_app). The
+                   right-click menu has no list of its own: it shows the
+                   click buttons above (CardMenu). See App.initCardLinks and friends. -->
+              <hr class="my-4" />
+              <h3 class="h5" data-i18n="customize.everywhere_heading"></h3>
+              <p class="text-body-secondary" data-i18n="customize.everywhere_description"></p>
+              <div class="row g-4">
+                <div class="col-lg-4">
+                  <h3 class="h6" data-i18n="account.card_links_heading"></h3>
+                  <p class="small text-body-secondary" data-i18n="account.card_links_description"></p>
+                  <ul id="card-links" class="list-group choice-list mb-2"></ul>
+                  <button id="card-links-reset" type="button" class="btn btn-sm btn-link px-0" data-i18n="account.card_links_reset"></button>
+                </div>
+                <div class="col-lg-4">
+                  <h3 class="h6" data-i18n="account.corner_watch_heading"></h3>
+                  <div class="form-check form-switch">
+                    <input id="corner-watch" class="form-check-input" type="checkbox" role="switch" />
+                    <label for="corner-watch" class="form-check-label" data-i18n="account.corner_watch_label"></label>
+                  </div>
+                  <p class="small text-body-secondary" data-i18n="account.corner_watch_description"></p>
+                  <h3 class="h6 mt-4" data-i18n="account.appletv_heading"></h3>
+                  <div class="form-check form-switch">
+                    <input id="appletv-app" class="form-check-input" type="checkbox" role="switch" />
+                    <label for="appletv-app" class="form-check-label" data-i18n="account.appletv_label"></label>
+                  </div>
+                  <p class="small text-body-secondary mb-0" data-i18n="account.appletv_description"></p>
+                </div>
+              </div>
             </div>
+
           </div>
+        </section>
+
+        <!-- What this app is and where it comes from: app.description, the
+             version, app.repo and the API reference. Shown only when
+             app.show_about is on. See about.js. -->
+        <section class="view" data-view="about" id="about-panel" hidden>
+          <h2 class="view-title" data-i18n="about.heading"></h2>
+          <section class="card">
+            <div class="card-body">
+              <p id="about-description" class="card-text" hidden></p>
+              <dl class="about-facts">
+                <dt data-i18n="about.version"></dt>
+                <dd id="about-version"></dd>
+                <dt id="about-source-term" data-i18n="about.source" hidden></dt>
+                <dd id="about-source-detail" hidden><a id="about-source" target="_blank" rel="noopener noreferrer"></a></dd>
+                <dt id="about-api-term" data-i18n="about.api_reference" hidden></dt>
+                <dd id="about-api-detail" hidden><a id="about-api" target="_blank" rel="noopener noreferrer" data-i18n="about.api_link"></a></dd>
+                <dt id="about-mcp-term" data-i18n="about.mcp_reference" hidden></dt>
+                <dd id="about-mcp-detail" hidden><a id="about-mcp" target="_blank" rel="noopener noreferrer" data-i18n="about.mcp_link"></a></dd>
+              </dl>
+            </div>
+          </section>
         </section>
 
         <section class="view" data-view="users" id="admin-panel" hidden>
@@ -1126,19 +1270,50 @@
 
         <!-- The activity log, owner only; see logs.js. data-no-track keeps
              reading the log from writing to it (track.js). -->
-        <section class="view" data-view="logs" id="logs-panel" data-no-track hidden>
+        <section class="view view-full" data-view="logs" id="logs-panel" data-no-track hidden>
           <h2 class="view-title" data-i18n="logs.heading"></h2>
           <p class="view-description" data-i18n="logs.description"></p>
 
           <section class="card">
             <div class="card-body">
+              <!-- Three columns: the search field, the date button centred in
+                   the row, and Live/Prune at the right end. The two outer
+                   columns are equal, which is what keeps the button centred. -->
               <form id="logs-search-form" class="row g-2 align-items-end" role="search" autocomplete="off">
                 <div class="col-md">
                   <label for="logs-query" class="form-label" data-i18n="logs.search_label"></label>
                   <input id="logs-query" class="form-control" type="search" name="q" maxlength="200"
                          data-i18n-attr="placeholder:logs.search_placeholder" />
                 </div>
-                <div class="col-md-auto row-actions">
+                <!-- One day at a time; the calendar picks which. It opens from
+                     this button rather than taking a column beside the log:
+                     the log is a table, and a table gets the whole width. See
+                     logs.js, and "Desktop layout" in references/frontend.md. -->
+                <div class="col-md-auto text-center">
+                  <div class="dropdown dropdown-center log-date-picker">
+                    <button type="button" id="logs-date-button" class="btn btn-outline-secondary dropdown-toggle"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                            data-i18n-attr="title:logs.calendar_label">
+                      <i class="bi bi-calendar3" aria-hidden="true"></i> <span id="logs-date-label"></span>
+                    </button>
+                    <div class="dropdown-menu log-cal-menu">
+                      <div class="log-calendar" role="group" data-i18n-attr="aria-label:logs.calendar_label">
+                        <div class="log-cal-head">
+                          <button type="button" id="logs-cal-prev" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.prev_month,title:logs.prev_month">
+                            <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                          </button>
+                          <span id="logs-cal-title" class="log-cal-title" aria-live="polite"></span>
+                          <button type="button" id="logs-cal-next" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.next_month,title:logs.next_month">
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                          </button>
+                          <button type="button" id="logs-cal-today" class="btn btn-sm btn-outline-secondary ms-auto" data-i18n="logs.today_button"></button>
+                        </div>
+                        <div id="logs-cal-grid" class="log-cal-grid"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md row-actions justify-content-center justify-content-md-end">
                   <button type="button" id="logs-live" class="btn btn-outline-secondary" aria-pressed="false">
                     <i class="bi bi-broadcast" aria-hidden="true"></i> <span data-i18n="logs.live_button"></span>
                   </button>
@@ -1153,20 +1328,6 @@
 
           <section class="card">
             <div class="card-body">
-              <!-- One day at a time; the calendar picks which. See logs.js. -->
-              <div class="log-calendar" role="group" data-i18n-attr="aria-label:logs.calendar_label">
-                <div class="log-cal-head">
-                  <button type="button" id="logs-cal-prev" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.prev_month,title:logs.prev_month">
-                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
-                  </button>
-                  <span id="logs-cal-title" class="log-cal-title" aria-live="polite"></span>
-                  <button type="button" id="logs-cal-next" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.next_month,title:logs.next_month">
-                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
-                  </button>
-                  <button type="button" id="logs-cal-today" class="btn btn-sm btn-outline-secondary ms-auto" data-i18n="logs.today_button"></button>
-                </div>
-                <div id="logs-cal-grid" class="log-cal-grid"></div>
-              </div>
               <p id="logs-empty" class="text-body-secondary mb-0" hidden></p>
               <div id="logs-day"></div>
             </div>
@@ -1216,43 +1377,6 @@
     <div class="offcanvas-footer border-top p-3 d-flex gap-2">
       <button id="filter-sheet-clear" class="btn btn-outline-secondary" type="button" data-i18n="filters.clear_filters"></button>
       <button id="filter-sheet-show" class="btn btn-primary flex-grow-1" type="button" data-bs-dismiss="offcanvas"></button>
-    </div>
-  </div>
-
-  <!-- What each card shows; see static/js/ui/customizer.js. -->
-  <div id="customize-modal" class="modal fade" tabindex="-1" aria-labelledby="customize-title" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="customize-title" class="modal-title h5" data-i18n="customize.heading"></h2>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-attr="aria-label:nav.close"></button>
-        </div>
-        <div class="modal-body">
-          <p class="text-body-secondary" data-i18n="customize.description"></p>
-          <div class="row g-4">
-            <div class="col-lg-4">
-              <h3 class="h6" data-i18n="customize.fields_heading"></h3>
-              <ul id="customize-fields" class="list-group choice-list"></ul>
-            </div>
-            <div class="col-lg-4">
-              <h3 class="h6" data-i18n="customize.buttons_heading"></h3>
-              <ul id="customize-buttons" class="list-group choice-list"></ul>
-            </div>
-            <div class="col-lg-4">
-              <h3 class="h6" data-i18n="customize.layout"></h3>
-              <div id="customize-layout" class="btn-group mb-3" role="group"></div>
-              <h3 class="h6" data-i18n="customize.size"></h3>
-              <div id="customize-size" class="btn-group mb-3" role="group"></div>
-              <h3 class="h6" data-i18n="customize.preview"></h3>
-              <div id="customize-preview" class="customize-preview"></div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button id="customize-reset" class="btn btn-outline-secondary" type="button" data-i18n="customize.reset"></button>
-          <button class="btn btn-primary" type="button" data-bs-dismiss="modal" data-i18n="customize.done"></button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1440,7 +1564,9 @@
   <script src="/js/screens/jobs.js"></script>
   <script src="/js/screens/playlists.js"></script>
   <script src="/js/keys.js"></script>
+  <script src="/js/mcp.js"></script>
   <script src="/js/sessions.js"></script>
+  <script src="/js/about.js"></script>
   <script src="/js/join.js"></script>
   <script src="/js/pin.js"></script>
   <script src="/js/password.js"></script>
@@ -1449,6 +1575,7 @@
   <script src="/js/logs.js"></script>
   <script src="/js/settings.js"></script>
   <script src="/js/themes_editor.js"></script>
+  <script src="/js/appearance.js"></script>
   <script src="/js/fresh.js"></script>
   <script src="/js/app.js"></script>
 </body>

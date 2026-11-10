@@ -143,9 +143,10 @@ class PlaylistRouteTest(unittest.TestCase):
             return body["result"]
 
         _, made = self.client.request("POST", "/api/playlists", self.mom_key, {"name": "Weekend", "items": self.ids})
-        moved = call("change_playlist", {"playlist_id": made["id"], "title_ids": [self.ids[1]], "action": "move", "position": 3})
+        moved = call("move_in_playlist", {"playlist_id": made["id"], "title_id": self.ids[1], "position": 3})
         self.assertFalse(moved.get("isError"), moved)
-        got = call("get_playlist", {"playlist_id": made["id"]})["structuredContent"]
+        self.assertEqual(moved["structuredContent"]["previous_items"], self.ids)
+        got = call("list_playlists", {"playlist_id": made["id"]})["structuredContent"]
         self.assertEqual([(row["number"], row["id"]) for row in got["titles"]], [(1, self.ids[0]), (2, self.ids[2]), (3, self.ids[1])])
         listed = call("list_playlists", {})["structuredContent"]
         self.assertEqual(listed["playlists"], [{"id": made["id"], "name": "Weekend", "count": 3}])

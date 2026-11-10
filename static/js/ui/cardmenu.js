@@ -1,20 +1,32 @@
-// Right-click (or long-press) on a card: its everyday buttons in a menu at
-// the pointer, so Watched, Love, Skip or the parents guide is one click away
-// without opening Details. One menu at a time, built fresh each time from the
+// Right-click (or long-press) on a card: its buttons in a menu at the
+// pointer, so they are one click away without expanding the card or
+// opening Details. One menu at a time, built fresh each time from the
 // row, so what it shows is always the title's current state.
 //
 // On a library card Skip means "not for me" (status dropped); on a Discover
 // film it is Discover's own Skip, which hides the film just for you.
 //
-// The state buttons stay first; the links after them are each person's
-// choice, in their order (Account, Vocab.menuLinks), read on every open.
+// It lists the same buttons, in the same order, as clicking the card does:
+// each person's choice per screen (Appearance > Cards, the card's buttons),
+// read on every open. Rate and Playlist are left out -- each is a dropdown
+// that needs a value, which a menu item cannot ask for -- and a library
+// menu always ends with Details.
 const CardMenu = {
+  // Need a value, so they only work as the card's own dropdowns.
+  NOT_IN_MENU: [ "rate" , "playlist" ],
+
+  ids( card , details ) {
+    const ids = card.buttons.filter( ( id ) => this.NOT_IN_MENU.indexOf( id ) < 0 );
+    if ( details && ids.indexOf( "edit" ) < 0 ) ids.push( "-" , "edit" );
+    return ids;
+  },
+
   library() {
-    return [ "watched" , "love" , "skip" , "-" ].concat( Vocab.menuLinks() , [ "-" , "edit" ] );
+    return this.ids( LibraryScreen.card || Prefs.card( "library" ) , true );
   },
 
   discover() {
-    return [ "add" , "seen" , "skip" , "-" ].concat( Vocab.menuLinks() );
+    return this.ids( DiscoverScreen.card || Prefs.card( "discover" ) , false );
   },
 
   node: null,
@@ -99,7 +111,7 @@ const CardMenu = {
     document.addEventListener( "pointercancel" , lift , { capture: true , once: true } );
   },
 
-  // Library Skip shows as on when the title is "not for me".
+  // Library Skip (an old name for Not for me) shows as on when dropped.
   active( id , row ) {
     if ( id === "skip" && !row.discover ) return Card.active( "drop" , row );
     return Card.active( id , row );

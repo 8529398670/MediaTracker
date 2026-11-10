@@ -61,6 +61,7 @@ def sample_value(key: Any) -> Any:
     """A valid value different from the default."""
     special = {
         "server.public_url": "https://app.example.com",
+        "app.repo": "https://github.com/you/app",
         "server.trusted_proxies": ["10.0.0.0/8"],
         "server.proxy_header": "X-Real-IP",
         "server.maintenance": "read_only",

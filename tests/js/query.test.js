@@ -84,25 +84,25 @@ test( "an old Up next link opens Everything" , () => {
   ok( QueryCodec.parse( "#library/movie/queue?genre=Drama" ).query.list === "all" , "queue -> all" );
 } );
 
-test( "Everything hides watched and skipped by default; Watched hides nothing" , () => {
-  const all = Query.defaults( "all" );
-  ok( Filters.isActive( "hidewatched" , all.filters.hidewatched ) && Filters.isActive( "hideskipped" , all.filters.hideskipped ) , "both on" );
-  ok( Object.keys( Query.defaults( "watched" ).filters ).length === 0 , "none on Watched" );
+test( "Everything, Watched and Not for me split the library with no filters on" , () => {
+  ok( [ "all" , "watched" , "skipped" , "trash" ].every( ( list ) => Object.keys( Query.defaults( list ).filters ).length === 0 ) , "no default filters" );
+  ok( Query.isDefault( Query.defaults( "all" ) ) , "a fresh view is the default" );
   const skipped = { t: { id: "4" , title: "Cats" , type: "movie" , genres: [] , tags: [] } , s: { status: "dropped" } , social: null , score: null };
-  ok( ids( rows.concat( [ skipped ] ).filter( Filters.predicate( all.filters ) ) ) === "1,3" , "watched and dropped left out" );
-  ok( Query.isDefault( all ) , "a fresh view is the default" );
-  ok( QueryCodec.format( "library" , "all" , all ) === "#library/all/all" , "default hides stay out of the URL" );
+  const gone = { t: { id: "5" , title: "Gone" , type: "movie" , genres: [] , tags: [] , deleted_at: "2026-01-05" } , s: { status: "watched" } , social: null , score: null };
+  Library.rows = new Map( rows.concat( [ skipped , gone ] ).map( ( row ) => [ row.t.id , row ] ) );
+  ok( ids( Library.pool( "all" , "all" ) ) === "1,3" , "Everything: " + ids( Library.pool( "all" , "all" ) ) );
+  ok( ids( Library.pool( "all" , "watched" ) ) === "2" , "Watched" );
+  ok( ids( Library.pool( "all" , "skipped" ) ) === "4" , "Not for me" );
+  ok( ids( Library.pool( "all" , "trash" ) ) === "5" , "Trash" );
+  const counts = Library.counts( "all" );
+  ok( counts.all === 2 && counts.watched === 1 && counts.skipped === 1 && counts.total === 4 , JSON.stringify( counts ) );
+  ok( QueryCodec.parse( "#library/all/skipped" ).query.list === "skipped" , "skipped is a list in the URL" );
 } );
 
-test( "turning a default hide off round-trips through the URL" , () => {
-  const query = Query.defaults( "all" );
-  delete query.filters.hidewatched;
-  const hash = QueryCodec.format( "library" , "all" , query );
-  ok( hash === "#library/all/all?hidewatched=off" , hash );
-  const back = QueryCodec.parse( hash ).query;
-  ok( !( "hidewatched" in back.filters ) && Filters.isActive( "hideskipped" , back.filters.hideskipped ) , JSON.stringify( back.filters ) );
-  ok( !Query.isDefault( back ) , "not the default any more" );
-  ok( ids( rows.filter( Filters.predicate( back.filters ) ) ) === "1,2,3" , "watched shows again" );
+test( "an old link with the retired hide filters opens cleanly" , () => {
+  const parsed = QueryCodec.parse( "#library/all/all?hidewatched=off&hideskipped=on&genre=Drama" );
+  ok( JSON.stringify( Object.keys( parsed.query.filters ) ) === '["genre"]' , JSON.stringify( parsed.query.filters ) );
+  ok( QueryCodec.format( "library" , "all" , parsed.query ) === "#library/all/all?genre=Drama" , "only what still means something" );
 } );
 
 test( "a drop lands on the number of the place it is dropped" , () => {

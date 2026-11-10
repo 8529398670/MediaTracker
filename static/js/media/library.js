@@ -99,7 +99,17 @@ const Library = {
     return this.rows.get( id ) || null;
   },
 
-  // Rows in a scope ("all" or a type id) and list.
+  // Which list a live title belongs to for me: Watched, Not for me
+  // (skipped, status "dropped"), or Everything -- what is still ahead.
+  listOf( row ) {
+    const status = row.s && row.s.status;
+    if ( status === "watched" ) return "watched";
+    if ( status === "dropped" ) return "skipped";
+    return "all";
+  },
+
+  // Rows in a scope ("all" or a type id) and list. Each live title is in
+  // exactly one of all / watched / skipped.
   pool( scope , list ) {
     const out = [];
     this.rows.forEach( ( row ) => {
@@ -110,26 +120,29 @@ const Library = {
       }
       if ( deleted ) return;
       if ( scope !== "all" && row.t.type !== scope ) return;
-      const status = row.s && row.s.status;
-      if ( list === "watched" && status !== "watched" ) return;
+      if ( this.listOf( row ) !== list ) return;
       out.push( row );
     } );
     return out;
   },
 
+  // How many live titles a scope has on each list; total is all three.
   counts( scope ) {
     let all = 0;
     let queue = 0;
     let watched = 0;
+    let skipped = 0;
     this.rows.forEach( ( row ) => {
       if ( row.t.deleted_at ) return;
       if ( scope !== "all" && row.t.type !== scope ) return;
-      all += 1;
+      const list = this.listOf( row );
+      if ( list === "watched" ) watched += 1;
+      else if ( list === "skipped" ) skipped += 1;
+      else all += 1;
       const status = row.s && row.s.status;
       if ( status === "queue" || status === "watching" ) queue += 1;
-      if ( status === "watched" ) watched += 1;
     } );
-    return { all: all , queue: queue , watched: watched };
+    return { all: all , queue: queue , watched: watched , skipped: skipped , total: all + watched + skipped };
   },
 
   trashCount() {

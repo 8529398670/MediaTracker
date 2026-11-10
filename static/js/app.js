@@ -186,7 +186,9 @@ const App = {
     // Side by side: the wait is the slowest screen, not all of them added up.
     const loading = [];
     loading.push( Keys.init( me ) );
+    Mcp.init( me );
     loading.push( Sessions.init() );
+    About.init( me );
 
     // The library first: everything below draws from it. Someone who starts
     // on another person's lists has to be on them before the first load.
@@ -197,8 +199,8 @@ const App = {
       this.showError( error.message );
     }
     this.initAppleTv();
+    this.initCornerWatch();
     this.initCardLinks();
-    this.initMenuLinks();
     Acting.init( me );
     await Playlists.init();
     await LibraryScreen.init( me );
@@ -241,6 +243,8 @@ const App = {
     } );
     Dom.show( Dom.get( "app-loading" ) , false );
 
+    // After the screens, so the Cards tab finds their card settings.
+    Appearance.init();
     // Last, so the sidebar offers exactly the screens the lines above un-hid.
     Nav.init();
     window.addEventListener( "hashchange" , () => LibraryNav.render() );
@@ -271,6 +275,29 @@ const App = {
     } );
   },
 
+  // Whether a grid card's poster carries Watched on its top-right corner.
+  initCornerWatch() {
+    const box = Dom.get( "corner-watch" );
+    box.checked = Prefs.ui( "corner_watch" , true );
+    const apply = ( on ) => {
+      box.checked = on;
+      Prefs.setUi( "corner_watch" , on );
+      LibraryScreen.render();
+      if ( DiscoverScreen.meta ) DiscoverScreen.render();
+      PlaylistsScreen.render();
+    };
+    box.addEventListener( "change" , () => {
+      const on = box.checked;
+      apply( on );
+      Undo.record( {
+        label: I18n.get( on ? "account.corner_watch_on" : "account.corner_watch_off" ),
+        toast: true,
+        undo: () => apply( !on ),
+        redo: () => apply( on ),
+      } );
+    } );
+  },
+
   // Which links sit on every card's face, and in what order.
   initCardLinks() {
     this.initLinkList( {
@@ -285,19 +312,6 @@ const App = {
         if ( DiscoverScreen.meta ) DiscoverScreen.render();
         PlaylistsScreen.render();
       },
-    } );
-  },
-
-  // Which links a card's right-click menu lists after its state buttons.
-  // The menu is built on every open, so nothing needs redrawing.
-  initMenuLinks() {
-    this.initLinkList( {
-      prefix: "menu-links",
-      pref: "menu_links",
-      get: () => Vocab.menuLinks(),
-      defaults: Vocab.MENU_LINKS,
-      saved: "account.menu_links_saved",
-      redraw: () => {},
     } );
   },
 

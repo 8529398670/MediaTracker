@@ -1,20 +1,26 @@
 // The Appearance screen: a list of themes beside the one being edited.
 //
 // Everyone gets "My themes": pick one to use, add, duplicate, rename, delete,
-// and change any colour. Until someone changes something they follow the
+// and change any color. Until someone changes something they follow the
 // app's defaults; the first change saves the whole list to their account and
 // from then on it is theirs ("Go back to the defaults" undoes that).
 //
 // Admins also get "Defaults for everyone": the same editor over the list that
 // everyone without their own sees, and that new accounts start from.
 //
-// Each theme has a mode and four base colours. Everything else is worked out
+// Each theme has a mode, four base colors and a button style (shape, weight,
+// depth, case). Every Bootstrap button color has its own fill, label and
+// outline, worked out from the theme and shown under "Buttons" with the rest.
+//
+// Each theme has a mode and four base colors, and keeps a set for each mode:
+// switching it to dark and back gets its light colors back, and the WSU
+// built-in switches to its own dark colors. Everything else is worked out
 // by theme.js at readable contrast, and shown under "Fine-tune": any of those
-// can be set by hand, and Reset puts the worked-out colour back. A colour that
+// can be set by hand, and Reset puts the worked-out color back. A color that
 // leaves text hard to read is flagged where it is, and in a box above.
 //
 // Every change goes through Undo, and saves the whole list: an undo is the
-// same save with the list from before. Dragging in a colour picker paints as
+// same save with the list from before. Dragging in a color picker paints as
 // it moves and saves once, when the picker closes.
 const ThemeEditor = {
   editors: [],
@@ -22,7 +28,7 @@ const ThemeEditor = {
   defaults: null,
   me: null,
 
-  // The base colours, then the worked-out ones. Labels: theme.colour_<key>.
+  // The base colors, then the worked-out ones. Labels: theme.color_<key>.
   baseFields: [ "accent" , "second" , "background" , "surface" ],
   fineFields: [ "text" , "background" , "surface" , "nested" , "chrome" , "border" , "link" , "navLink" ,
     "accentFg" , "secondText" , "secondFg" , "info" , "infoBorder" ],
@@ -30,6 +36,22 @@ const ThemeEditor = {
     accent: "accent" , second: "second" , background: "background" , surface: "surface" , text: "text" ,
     nested: "nested" , chrome: "chrome" , border: "border" , link: "link" , navLink: "nav_link" ,
     accentFg: "accent_fg" , secondText: "second_text" , secondFg: "second_fg" , info: "info" , infoBorder: "info_border" ,
+  },
+
+  // A label for a color of theme.js: its own key, or for a button variant's
+  // fill, label or outline, one sentence with the variant's name in it.
+  colorLabel( field ) {
+    const variant = Theme.variants.find( ( name ) => field.indexOf( Theme.buttonField( name ) ) === 0 );
+    if ( !variant ) return I18n.get( "theme.color_" + this.labelKeys[ field ] );
+    const part = field.slice( Theme.buttonField( variant ).length ) || "Fill";
+    return I18n.get( "theme.color_btn_" + part.toLowerCase() ).replace( "{variant}" , () => I18n.get( "theme.variant_" + variant ) );
+  },
+
+  // A line of the hard-to-read box.
+  checkLabel( name ) {
+    const match = /^(button|outline)_(.+)$/.exec( name );
+    if ( !match ) return I18n.get( "theme.check_" + name );
+    return I18n.get( "theme.check_" + match[ 1 ] + "_variant" ).replace( "{variant}" , () => I18n.get( "theme.variant_" + match[ 2 ] ) );
   },
 
   init( me ) {
@@ -42,7 +64,7 @@ const ThemeEditor = {
       use: ( id ) => Theme.pick( id ),
       save: ( next , id , action ) => this.saveMine( next , id , action ),
       restore: () => ( Theme.custom ? { label: "theme.back_to_defaults" , run: () => this.saveMine( null , Theme.current , { label: "undo.theme_defaults_mine" } ) } : null ),
-      // Paint the page as a colour is dragged, when it is the theme in use.
+      // Paint the page as a color is dragged, when it is the theme in use.
       live: ( theme ) => { if ( theme.id === Theme.current ) Theme.apply( theme ); },
       settle: () => Theme.apply( Theme.find( Theme.current ) ),
     } );
@@ -165,13 +187,23 @@ const ThemeEditor = {
         return save( edited( theme , ( copy ) => {
           if ( value ) copy[ field ] = value;
           else delete copy[ field ];
-        } ) , undefined , { label: "undo.theme_colour" , merge: "theme:" + theme.id + ":" + field } );
+        } ) , undefined , { label: "undo.theme_color" , merge: "theme:" + theme.id + ":" + field } );
+      },
+      // Light or dark: each keeps its own colors (Theme.setMode), so switching
+      // back finds the colors from before.
+      mode( theme , value ) {
+        return save( edited( theme , ( copy ) => { Theme.setMode( copy , value ); } ) , undefined , { label: "undo.theme_color" } );
       },
       override( theme , field , value ) {
         return save( edited( theme , ( copy ) => {
           if ( value ) copy.overrides[ field ] = value;
           else delete copy.overrides[ field ];
-        } ) , undefined , { label: "undo.theme_colour" , merge: "theme:" + theme.id + ":" + field } );
+        } ) , undefined , { label: "undo.theme_color" , merge: "theme:" + theme.id + ":" + field } );
+      },
+      button( theme , key , value ) {
+        return save( edited( theme , ( copy ) => {
+          copy.button = Object.assign( Theme.button( copy ) , { [ key ]: value } );
+        } ) , undefined , { label: "undo.theme_button" , merge: "theme:" + theme.id + ":button:" + key } );
       },
       resetFine( theme ) {
         return save( edited( theme , ( copy ) => { copy.overrides = {}; } ) , undefined , { label: "undo.theme_reset" } );
@@ -215,12 +247,13 @@ const ThemeEditor = {
       } );
     };
 
-    // A colour: the picker, its hex code, and Reset where there is something to
-    // go back to. auto: nothing chosen, so the value shown is worked out.
-    const colourRow = ( options ) => {
+    // A color: its label over the picker, its hex code, and Reset where there
+    // is something to go back to. auto: nothing chosen, so the value shown is
+    // worked out. One unit, so the colors can flow into columns on a wide screen.
+    const colorRow = ( options ) => {
       const id = root.id + "-" + options.key;
       const picker = Dom.el( "input" , { class: "form-control form-control-color" ,
-        attrs: { type: "color" , id: id , "data-focus": "colour:" + options.key } } );
+        attrs: { type: "color" , id: id , "data-focus": "color:" + options.key } } );
       picker.value = options.value;
       const hex = Dom.el( "input" , { class: "form-control form-control-sm theme-hex" ,
         attrs: { type: "text" , maxlength: "7" , spellcheck: "false" , "aria-label": options.label + " " + I18n.get( "theme.hex" ) ,
@@ -250,13 +283,27 @@ const ThemeEditor = {
         controls.push( Dom.el( "span" , { class: "small text-body-secondary" , text: I18n.get( "theme.auto" ) } ) );
       }
       const label = Dom.el( "label" , { class: "form-label mb-0" , text: options.label , attrs: { for: id } } );
-      const row = Dom.el( "div" , { class: "theme-colour-input" , children: controls } );
-      const kind = "theme-colour-row" + ( options.auto ? " auto" : "" ) + ( options.warn ? " warn" : "" );
-      return [ Dom.el( "div" , { class: kind , children: [ label ] } ) , Dom.el( "div" , { class: kind , children: [ row ] } ) ];
+      const row = Dom.el( "div" , { class: "theme-color-input" , children: controls } );
+      const kind = "theme-color-row" + ( options.auto ? " auto" : "" ) + ( options.warn ? " warn" : "" );
+      return Dom.el( "div" , { class: kind , children: [ label , row ] } );
+    };
+
+    // A row of toggle buttons for one choice, like the light/dark one.
+    const choiceGroup = ( key , label , values , current , change ) => {
+      const group = Dom.el( "div" , { class: "btn-group btn-group-sm flex-wrap" , attrs: { role: "group" , "aria-label": label } } );
+      values.forEach( ( value ) => {
+        const id = root.id + "-" + key + "-" + value;
+        const input = Dom.el( "input" , { class: "btn-check" , attrs: { type: "radio" , name: root.id + "-" + key , id: id , "data-focus": key + ":" + value } } );
+        input.checked = current === value;
+        input.addEventListener( "change" , () => change( value ) );
+        group.appendChild( input );
+        group.appendChild( Dom.el( "label" , { class: "btn btn-outline-secondary" , text: I18n.get( "theme." + key + "_" + value ) , attrs: { for: id } } ) );
+      } );
+      return Dom.el( "div" , { class: "theme-choice" , children: [ Dom.el( "span" , { class: "form-label mb-0" , text: label } ) , group ] } );
     };
 
     const editPane = ( theme ) => {
-      const colours = Theme.colours( theme );
+      const colors = Theme.colors( theme );
       const derived = Theme.derived( theme );
       const mode = Theme.modes[ theme.mode ];
       const problems = Theme.check( theme );
@@ -280,70 +327,111 @@ const ThemeEditor = {
         const id = root.id + "-mode-" + value;
         const input = Dom.el( "input" , { class: "btn-check" , attrs: { type: "radio" , name: root.id + "-mode" , id: id , "data-focus": "mode:" + value } } );
         input.checked = theme.mode === value;
-        input.addEventListener( "change" , () => actions.set( theme , "mode" , value ) );
+        input.addEventListener( "change" , () => actions.mode( theme , value ) );
         modeGroup.appendChild( input );
         modeGroup.appendChild( Dom.el( "label" , { class: "btn btn-outline-secondary btn-sm" , text: I18n.get( "theme.mode_" + value ) , attrs: { for: id } } ) );
       } );
 
-      const base = Dom.el( "div" , { class: "theme-colours" } );
+      const base = Dom.el( "div" , { class: "theme-colors" } );
       self.baseFields.forEach( ( field ) => {
         const optional = field === "background" || field === "surface";
         const chosen = theme[ field ] || "";
-        colourRow( {
+        base.appendChild( colorRow( {
           key: "base-" + field,
-          label: I18n.get( "theme.colour_base_" + field ),
+          label: I18n.get( "theme.color_base_" + field ),
           value: chosen || ( optional ? mode[ field ] : "#000000" ),
           auto: optional && !chosen,
           warn: false,
           preview: ( value ) => previewWith( ( copy ) => { copy[ field ] = value; } ),
           save: ( value ) => actions.set( theme , field , value ),
           reset: optional && chosen ? () => actions.set( theme , field , null ) : null,
-        } ).forEach( ( cell ) => base.appendChild( cell ) );
+        } ) );
       } );
 
-      const fine = Dom.el( "div" , { class: "theme-colours" } );
+      const fine = Dom.el( "div" , { class: "theme-colors" } );
       self.fineFields.forEach( ( field ) => {
         const overridden = Boolean( theme.overrides && theme.overrides[ field ] );
-        colourRow( {
+        fine.appendChild( colorRow( {
           key: "fine-" + field,
-          label: I18n.get( "theme.colour_" + self.labelKeys[ field ] ),
-          value: colours[ field ],
+          label: self.colorLabel( field ),
+          value: colors[ field ],
           auto: !overridden,
           warn: flagged.has( field ),
           preview: ( value ) => previewWith( ( copy ) => { copy.overrides[ field ] = value; } ),
           save: ( value ) => ( value === derived[ field ] && !overridden ? null : actions.override( theme , field , value ) ),
           reset: overridden ? () => actions.override( theme , field , null ) : null,
-        } ).forEach( ( cell ) => fine.appendChild( cell ) );
+        } ) );
       } );
 
-      const children = [
-        Dom.el( "div" , { class: "d-flex flex-wrap align-items-center gap-2 mb-3" , children: [
-          Dom.el( "h3" , { class: "h5 mb-0" , children: [ name ] } ),
-          modeGroup,
-        ] } ),
-        preview,
-      ];
+      // The button's style, then each button color: fill, label, outline.
+      const button = Theme.button( theme );
+      const choices = Dom.el( "div" , { class: "theme-choices" } );
+      Object.keys( Theme.buttonChoices ).forEach( ( key ) => {
+        choices.appendChild( choiceGroup( "button_" + key , I18n.get( "theme.button_" + key ) , Object.keys( Theme.buttonChoices[ key ] ) ,
+          button[ key ] , ( value ) => {
+            previewWith( ( copy ) => { copy.button = Object.assign( Theme.button( copy ) , { [ key ]: value } ); } );
+            actions.button( theme , key , value );
+          } ) );
+      } );
+      const buttonColors = Dom.el( "div" , { class: "theme-colors mt-3" } );
+      Theme.variants.forEach( ( variant ) => {
+        const name = Theme.buttonField( variant );
+        [ name , name + "Fg" , name + "Text" ].forEach( ( field ) => {
+          const overridden = Boolean( theme.overrides && theme.overrides[ field ] );
+          buttonColors.appendChild( colorRow( {
+            key: "button-" + field,
+            label: self.colorLabel( field ),
+            value: colors[ field ],
+            auto: !overridden,
+            warn: flagged.has( field ),
+            preview: ( value ) => previewWith( ( copy ) => { copy.overrides[ field ] = value; } ),
+            save: ( value ) => ( value === derived[ field ] && !overridden ? null : actions.override( theme , field , value ) ),
+            reset: overridden ? () => actions.override( theme , field , null ) : null,
+          } ) );
+        } );
+      } );
+
+      // The preview and anything hard to read sit in an aside: above the
+      // colors on a narrower screen, beside them (and staying in view while
+      // the colors scroll) on a wide one. See .theme-edit-body in style.css.
+      const aside = [ preview ];
       if ( problems.length > 0 ) {
         const items = problems.map( ( problem ) => Dom.el( "li" , {
-          text: I18n.get( "theme.check_" + problem.name ) + " — " + I18n.get( "theme.ratio" ).replace( "{ratio}" , problem.ratio.toFixed( 1 ) ),
+          text: self.checkLabel( problem.name ) + " — " + I18n.get( "theme.ratio" ).replace( "{ratio}" , problem.ratio.toFixed( 1 ) ),
         } ) );
         const box = [ Dom.el( "p" , { class: "mb-1" , text: I18n.get( "theme.hard_to_read" ) } ) , Dom.el( "ul" , { class: "mb-2" , children: items } ) ];
         if ( Object.keys( theme.overrides || {} ).length > 0 ) {
           box.push( Dom.el( "button" , { class: "btn btn-sm btn-outline-secondary" , text: I18n.get( "theme.reset_all" ) ,
             attrs: { type: "button" , "data-focus": "reset-all" } , on: { click: () => actions.resetFine( theme ) } } ) );
         }
-        children.push( Dom.el( "div" , { class: "alert alert-warning mt-3 mb-0" , attrs: { role: "status" } , children: box } ) );
+        aside.push( Dom.el( "div" , { class: "alert alert-warning mt-3 mb-0" , attrs: { role: "status" } , children: box } ) );
       }
-      children.push( Dom.el( "h4" , { class: "h6 mt-4" , text: I18n.get( "theme.base_heading" ) } ) );
-      children.push( base );
+      const main = [
+        Dom.el( "h4" , { class: "h6 mt-0" , text: I18n.get( "theme.base_heading" ) } ),
+        base,
+        Dom.el( "h4" , { class: "h6 mt-4 mb-1" , text: I18n.get( "theme.buttons_heading" ) } ),
+        Dom.el( "p" , { class: "small text-body-secondary" , text: I18n.get( "theme.buttons_help" ) } ),
+        choices,
+        buttonColors,
+      ];
       const fineHeader = [ Dom.el( "h4" , { class: "h6 mb-0" , text: I18n.get( "theme.fine_heading" ) } ) ];
       if ( Object.keys( theme.overrides || {} ).length > 0 && problems.length === 0 ) {
         fineHeader.push( Dom.el( "button" , { class: "btn btn-sm btn-link p-0" , text: I18n.get( "theme.reset_all" ) ,
           attrs: { type: "button" , "data-focus": "reset-all" } , on: { click: () => actions.resetFine( theme ) } } ) );
       }
-      children.push( Dom.el( "div" , { class: "d-flex flex-wrap align-items-baseline gap-3 mt-4 mb-1" , children: fineHeader } ) );
-      children.push( Dom.el( "p" , { class: "small text-body-secondary" , text: I18n.get( "theme.fine_help" ) } ) );
-      children.push( fine );
+      main.push( Dom.el( "div" , { class: "d-flex flex-wrap align-items-baseline gap-3 mt-4 mb-1" , children: fineHeader } ) );
+      main.push( Dom.el( "p" , { class: "small text-body-secondary" , text: I18n.get( "theme.fine_help" ) } ) );
+      main.push( fine );
+      const children = [
+        Dom.el( "div" , { class: "d-flex flex-wrap align-items-center gap-2 mb-3" , children: [
+          Dom.el( "h3" , { class: "h5 mb-0" , children: [ name ] } ),
+          modeGroup,
+        ] } ),
+        Dom.el( "div" , { class: "theme-edit-body" , children: [
+          Dom.el( "div" , { class: "theme-edit-aside" , children: aside } ),
+          Dom.el( "div" , { class: "theme-edit-main" , children: main } ),
+        ] } ),
+      ];
       return Dom.el( "div" , { class: "card" , children: [ Dom.el( "div" , { class: "card-body" , children: children } ) ] } );
     };
 
@@ -383,18 +471,18 @@ const ThemeEditor = {
   },
 
   swatch( theme ) {
-    const colours = Theme.colours( theme );
+    const colors = Theme.colors( theme );
     const swatch = Dom.el( "span" , { class: "theme-swatch" , attrs: { "aria-hidden": "true" } } );
-    swatch.style.setProperty( "--swatch-bg" , colours.background );
-    swatch.style.setProperty( "--swatch-accent" , colours.accent );
-    swatch.style.setProperty( "--swatch-second" , colours.second );
+    swatch.style.setProperty( "--swatch-bg" , colors.background );
+    swatch.style.setProperty( "--swatch-accent" , colors.accent );
+    swatch.style.setProperty( "--swatch-second" , colors.second );
     return swatch;
   },
 
-  // The page in miniature, in this theme's colours: sidebar, card, nested card,
-  // heading, link, button and info box.
+  // The page in miniature, in this theme's colors: sidebar, card, nested card,
+  // heading, link, info box and every kind of button.
   preview( theme ) {
-    const c = Theme.colours( theme );
+    const c = Theme.colors( theme );
     const paint = ( element , styles ) => {
       Object.keys( styles ).forEach( ( key ) => { element.style[ key ] = styles[ key ]; } );
       return element;
@@ -412,14 +500,29 @@ const ThemeEditor = {
     ] } ) , { background: c.nested , borderColor: c.border } );
     const info = paint( Dom.el( "div" , { class: "theme-preview-info" , text: I18n.get( "theme.preview_info" ) } ) ,
       { background: c.info , borderColor: c.infoBorder } );
+    // Real Bootstrap buttons, solid then outline: the preview carries the
+    // theme's own custom properties, so style.css draws them as the page will.
+    const buttons = ( outline ) => Dom.el( "div" , { class: "theme-preview-buttons" , children:
+      [ "primary" ].concat( Theme.variants ).map( ( variant ) => Dom.el( "button" , {
+        class: "btn btn-sm btn-" + ( outline ? "outline-" : "" ) + variant,
+        text: variant === "primary" ? I18n.get( "theme.preview_button" ) : I18n.get( "theme.variant_" + variant ),
+        attrs: { type: "button" , tabindex: "-1" },
+      } ) ) } );
     const card = paint( Dom.el( "div" , { class: "theme-preview-card" , children: [
       span( I18n.get( "theme.preview_card" ) ),
       nested,
       info,
-      paint( Dom.el( "span" , { class: "theme-preview-button" , text: I18n.get( "theme.preview_button" ) } ) , { background: c.accent , color: c.accentFg } ),
+      buttons( false ),
+      buttons( true ),
     ] } ) , { background: c.surface , borderColor: c.border } );
     const page = paint( Dom.el( "div" , { class: "theme-preview-page" , children: [ card ] } ) , { background: c.background } );
-    return paint( Dom.el( "div" , { class: "theme-preview" , attrs: { "aria-hidden": "true" } , children: [ side , page ] } ) ,
+    const preview = paint( Dom.el( "div" , { class: "theme-preview" , attrs: { "aria-hidden": "true" , inert: "" } , children: [ side , page ] } ) ,
       { color: c.text , borderColor: c.border } );
+    // Its own mode, so a light theme previews light on a dark page too.
+    preview.setAttribute( "data-bs-theme" , theme.mode === "dark" ? "dark" : "light" );
+    Object.keys( Theme.vars ).forEach( ( field ) => preview.style.setProperty( Theme.vars[ field ] , c[ field ] ) );
+    const style = Theme.buttonStyle( theme );
+    Object.keys( style ).forEach( ( name ) => preview.style.setProperty( name , style[ name ] ) );
+    return preview;
   },
 };

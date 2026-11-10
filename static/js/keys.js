@@ -26,6 +26,11 @@ const Keys = {
     if ( me.api_keys_enabled === false ) return;
 
     Dom.show( Dom.get( "api-keys-panel" ) , true );
+    // What a key can call: openapi.json in app.repo, else the server's own.
+    if ( me.openapi_url ) {
+      Dom.get( "key-spec-link" ).setAttribute( "href" , me.openapi_url );
+      Dom.show( Dom.get( "key-spec-line" ) , true );
+    }
     // Only an admin is offered the role choice. A non-admin has exactly one
     // option, and an "admin" entry the server would refuse is worse than no
     // choice at all.

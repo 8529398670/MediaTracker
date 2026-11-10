@@ -3,7 +3,8 @@
 // clears all (filters, search, sort and grouping, back to the list's
 // defaults). Nothing that narrows the list is ever left off this row -- the
 // old app's hidden "hide watched" toggles are exactly what made it feel
-// broken -- so Hide watched and Hide skipped, on by default, are chips too.
+// broken. Watched and skipped titles are not filtered out of Everything:
+// they are lists of their own (Query.LISTS), so nothing is on by default.
 //
 // The other half is the sheet (FilterSheet below): every filter that applies
 // here, with live counts. Changes apply as they are made; there is no draft
@@ -74,7 +75,7 @@ const FilterBar = {
     Filters.ORDER.forEach( ( id ) => {
       const value = query.filters[ id ];
       if ( !Filters.isActive( id , value ) ) return;
-      const text = Filters.defs[ id ].kind === "hide" ? I18n.get( "filters.name_" + id ) : I18n.get( "filters.name_" + id ) + ": " + this.describe( id , value );
+      const text = I18n.get( "filters.name_" + id ) + ": " + this.describe( id , value );
       chips.push( this.chip( text , () => {
         const next = Query.clone( query );
         delete next.filters[ id ];
@@ -138,7 +139,6 @@ const FilterSheet = {
     if ( def.kind === "range" ) control = this.range( id , def , value , query , change );
     if ( def.kind === "rating" ) control = this.rating( id , value , query , change );
     if ( def.kind === "toggle" ) control = this.toggle( id , value , query , change );
-    if ( def.kind === "hide" ) return this.hide( id , value , query , change );
     if ( !control ) return null;
     box.appendChild( control );
     return box;
@@ -254,22 +254,6 @@ const FilterSheet = {
       } ) );
     }
     return wrap;
-  },
-
-  // A hide is one switch, named for what it does, with no heading of its own.
-  hide( id , value , query , change ) {
-    const input = Dom.el( "input" , {
-      class: "form-check-input",
-      attrs: { type: "checkbox" , role: "switch" , id: "filter-" + id },
-      on: { change: ( event ) => this.update( query , id , event.target.checked ? { on: true } : null , change ) },
-    } );
-    input.checked = Filters.isActive( id , value );
-    return Dom.el( "section" , { class: "filter-section" , children: [
-      Dom.el( "div" , { class: "form-check form-switch mb-0" , children: [
-        input,
-        Dom.el( "label" , { class: "form-check-label" , text: I18n.get( "filters.name_" + id ) , attrs: { for: "filter-" + id } } ),
-      ] } ),
-    ] } );
   },
 
   toggle( id , value , query , change ) {

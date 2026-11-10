@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.core import config_live
 from app.core.config import ValidationError
+from app.core.config import repo_file
 from app.tests.support import new_holder
 from app.tests.support import in_container
 
@@ -56,6 +57,20 @@ class HolderTest(unittest.TestCase):
         for key in ("server.secret_key", "server.nope"):
             with self.subTest(key), self.assertRaises(config_live.UnknownSettingError):
                 holder.save(version_of(path), {key: "x"})
+
+    def test_repo_is_live_and_cleaned(self) -> None:
+        """app.repo is live, loses a trailing / or .git, and builds file links;
+        an address that is not https is refused."""
+        holder, path = new_holder(self)
+        # A scaffold given --repo starts with one, so start from none.
+        holder.save(version_of(path), {"app.repo": ""})
+        self.assertEqual(repo_file(holder.get(), "config/openapi.json"), "")
+        holder.save(version_of(path), {"app.repo": "https://github.com/you/app.git/"})
+        self.assertEqual(holder.get().repo, "https://github.com/you/app")
+        self.assertEqual(repo_file(holder.get(), "/config/openapi.json"), "https://github.com/you/app/blob/HEAD/config/openapi.json")
+        for bad in ("http://github.com/you/app", "github.com/you/app", "https://github.com/you/app?x=1", "javascript:alert(1)"):
+            with self.subTest(bad), self.assertRaises(ValidationError):
+                holder.save(version_of(path), {"app.repo": bad})
 
     def test_poll_applies_a_hand_edit(self) -> None:
         holder, path = new_holder(self)

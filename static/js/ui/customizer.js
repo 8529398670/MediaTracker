@@ -1,25 +1,26 @@
-// "Customize cards": choose what each card shows and which buttons it
-// carries, put them in order, pick a layout and a size -- with a live
-// preview, and the library behind it changing as you go. Saved on the
-// account per screen (Prefs.setCard), so the phone and the laptop match.
-// Each change is an undo step (quick runs of changes fold into one).
+// Customize cards, on Appearance > Cards: choose what each card shows and
+// which buttons it carries, put them in order, pick a layout and a size --
+// with a live preview. The library and Discover each have their own
+// settings (the switch at the top picks which). Saved on the account per
+// screen (Prefs.setCard), so the phone and the laptop match. Each change is
+// an undo step (quick runs of changes fold into one); the library's layout
+// buttons change the same settings, so both always agree.
 const Customizer = {
   screen: "library",
-  modal: null,
 
-  open( screen ) {
-    this.screen = screen;
-    this.modal = bootstrap.Modal.getOrCreateInstance( Dom.get( "customize-modal" ) );
+  show( screen ) {
+    if ( screen ) this.screen = screen;
     this.refresh();
-    this.modal.show();
   },
 
   owner() {
     return this.screen === "discover" ? DiscoverScreen : LibraryScreen;
   },
 
+  // The screen's live settings; read from the account if it has not
+  // started yet.
   current() {
-    return this.owner().card;
+    return this.owner().card || Prefs.card( this.screen );
   },
 
   apply( card ) {
@@ -27,8 +28,13 @@ const Customizer = {
   },
 
   refresh() {
-    const modal = Dom.get( "customize-modal" );
-    if ( !modal || !modal.classList.contains( "show" ) && !this.modal ) return;
+    if ( !Dom.get( "customize-fields" ) ) return;
+    Dom.all( "[data-customize-screen]" ).forEach( ( button ) => {
+      const on = button.getAttribute( "data-customize-screen" ) === this.screen;
+      button.classList.toggle( "btn-soft-primary" , on );
+      button.classList.toggle( "btn-outline-secondary" , !on );
+      button.setAttribute( "aria-pressed" , String( on ) );
+    } );
     const card = this.current();
     this.renderChoices( Dom.get( "customize-fields" ) , "fields" , Object.keys( Vocab.FIELDS ) , card );
     this.renderChoices( Dom.get( "customize-buttons" ) , "buttons" , Vocab.SCREEN_BUTTONS[ this.screen ] , card );
@@ -105,7 +111,7 @@ const Customizer = {
     const box = Dom.get( "customize-preview" );
     Dom.clear( box );
     const owner = this.owner();
-    const rows = owner.result && owner.result.rows.length ? owner.result.rows : Array.from( Library.rows.values() );
+    const rows = owner.result && owner.result.rows && owner.result.rows.length ? owner.result.rows : Array.from( Library.rows.values() );
     const sample = rows.find( ( row ) => row.t.poster && row.score && ( row.t.genres || [] ).length ) || rows[ 0 ];
     if ( !sample ) return;
     const grid = Dom.el( "div" , { class: "media-grid layout-" + card.layout + " size-" + card.size + " is-preview" } );
@@ -119,6 +125,7 @@ const Customizer = {
 };
 
 document.addEventListener( "DOMContentLoaded" , () => {
+  Dom.all( "[data-customize-screen]" ).forEach( ( button ) => button.addEventListener( "click" , () => Customizer.show( button.getAttribute( "data-customize-screen" ) ) ) );
   const reset = Dom.get( "customize-reset" );
   if ( reset ) reset.addEventListener( "click" , () => Customizer.reset() );
   // The preview is a picture of a card; its buttons do nothing.

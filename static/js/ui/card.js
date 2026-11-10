@@ -34,8 +34,9 @@ const Card = {
     if ( card.fields.indexOf( "poster" ) >= 0 ) article.appendChild( this.poster( row ) );
     // Watched, on the poster's top-right corner. In list and compact (and a
     // grid card with no poster) it is the first button on the face instead;
-    // style.css shows whichever one fits the layout.
-    const watch = t.deleted_at ? null : this.watchButton( row , "media-watch" );
+    // style.css shows whichever one fits the layout. The corner one can be
+    // turned off on Account (Prefs ui.corner_watch).
+    const watch = t.deleted_at || !Prefs.ui( "corner_watch" , true ) ? null : this.watchButton( row , "media-watch" );
     if ( watch ) article.appendChild( watch );
 
     const body = Dom.el( "div" , { class: "card-body media-body" } );

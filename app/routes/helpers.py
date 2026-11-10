@@ -140,6 +140,31 @@ def send_page(request: Request, name: str, rows: list[Any], sort_fields: tuple[s
 # and no handler accidentally leaks internal detail.
 
 
+class Refused(Exception):
+    """A rule saying no, kept apart from how it is delivered: a route sends it
+    as a status and an error body (response), an MCP tool as a tool error with
+    the same words. A helper both doors call raises it, so the rule is written
+    once. extra is more for the caller, such as the current value a 409 was
+    about. Refused.internal is a failure on our side: a 500 whose cause goes
+    to the log, never to the caller."""
+
+    def __init__(self, status: int, message: str, **extra: Any) -> None:
+        super().__init__(message)
+        self.status, self.message, self.extra = status, message, extra
+        self.cause: object = message
+
+    @classmethod
+    def internal(cls, cause: object) -> Refused:
+        refused = cls(500, "internal error")
+        refused.cause = cause
+        return refused
+
+    def response(self, request: Request | None = None) -> JSONResponse:
+        if self.status >= 500 and request is not None:
+            return server_error(request, self.cause)
+        return JSONResponse({"error": self.message, **self.extra}, status_code=self.status)
+
+
 def error(status: int, message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status)
 
@@ -166,11 +191,16 @@ def conflict(message: str, **extra: Any) -> JSONResponse:
 
 def restore_refused(refusal: RestoreError) -> JSONResponse:
     """The answer for each way a restore can be refused."""
+    return restore_refusal(refusal).response()
+
+
+def restore_refusal(refusal: RestoreError) -> Refused:
+    """restore_refused for a helper an MCP tool shares."""
     if isinstance(refusal, RestoreGoneError):
-        return not_found(str(refusal))
+        return Refused(404, str(refusal))
     if isinstance(refusal, RestoreForbiddenError):
-        return forbidden(str(refusal))
-    return conflict(str(refusal))
+        return Refused(403, str(refusal))
+    return Refused(409, str(refusal))
 
 
 def server_error(request: Request, cause: object) -> JSONResponse:

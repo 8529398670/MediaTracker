@@ -32,7 +32,7 @@ const TypesScreen = {
     if ( !body ) return;
     Dom.clear( body );
     Library.types.forEach( ( type ) => {
-      const count = Library.counts( type.id ).all;
+      const count = Library.counts( type.id ).total;
       const label = Dom.el( "input" , { class: "form-control form-control-sm" , attrs: { maxlength: "40" , "aria-label": I18n.get( "types.label" ) } } );
       label.value = type.label;
       label.addEventListener( "change" , () => this.save( type , { label: label.value.trim() } ) );

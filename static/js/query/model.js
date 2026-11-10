@@ -3,7 +3,7 @@
 // a global one, which is how a genre picked in Movies used to empty TV.
 //
 //   {
-//     list:    "all" | "watched" | "trash"
+//     list:    "all" | "watched" | "skipped" | "trash"
 //     text:    the search box
 //     filters: { genre: { mode: "any", values: ["Drama"] } , year: { from , to , unknown } , ... }
 //     sort:    [ { key: "imdb" , dir: "desc" } , { key: "title" , dir: "asc" } ]
@@ -16,24 +16,19 @@
 //
 // Pure: no DOM.
 const Query = {
-  LISTS: [ "all" , "watched" , "trash" ],
+  // Lists split the library by where each title stands for you, so none of
+  // them needs a filter switched on to make sense: Everything is what is
+  // still ahead (never watched or skipped titles), Watched and Not for me
+  // (skipped, status "dropped") hold the rest, Trash the deleted ones.
+  LISTS: [ "all" , "watched" , "skipped" , "trash" ],
 
   // What each list sorts by until someone says otherwise: watched by when,
   // the rest by what was added last. A hand-made order is a playlist.
   DEFAULT_SORT: {
     watched: [ { key: "watched" , dir: "desc" } ],
     all: [ { key: "added" , dir: "desc" } ],
+    skipped: [ { key: "updated" , dir: "desc" } ],
     trash: [ { key: "updated" , dir: "desc" } ],
-  },
-
-  // Filters a list starts with. Everything hides what you have watched or
-  // skipped, as Up next used to; take a chip away to see them.
-  DEFAULT_FILTERS: {
-    all: { hidewatched: { on: true } , hideskipped: { on: true } },
-  },
-
-  defaultFilters( list ) {
-    return JSON.parse( JSON.stringify( this.DEFAULT_FILTERS[ list ] || {} ) );
   },
 
   defaults( list ) {
@@ -41,7 +36,7 @@ const Query = {
     return {
       list: which,
       text: "",
-      filters: this.defaultFilters( which ),
+      filters: {},
       sort: this.DEFAULT_SORT[ which ].map( ( step ) => Object.assign( {} , step ) ),
       group: { by: "none" , dir: "asc" },
     };
@@ -54,19 +49,11 @@ const Query = {
   // Only what differs from the list's defaults -- that is what the hash and
   // the "Clear all" button care about.
   isDefault( query ) {
-    return this.sameFilters( query.filters , this.defaultFilters( query.list ) ) && !query.text && this.sameSort( query.sort , this.defaults( query.list ).sort ) && query.group.by === "none";
+    return this.activeCount( query ) === 0 && !query.text && this.sameSort( query.sort , this.defaults( query.list ).sort ) && query.group.by === "none";
   },
 
   sameSort( a , b ) {
     return JSON.stringify( a ) === JSON.stringify( b );
-  },
-
-  // Only active filters count: an inactive leftover is the same as none.
-  sameFilters( a , b ) {
-    const active = ( filters ) => Object.keys( filters ).filter( ( id ) => Filters.isActive( id , filters[ id ] ) ).sort();
-    const left = active( a );
-    const right = active( b );
-    return JSON.stringify( left ) === JSON.stringify( right ) && left.every( ( id ) => JSON.stringify( a[ id ] ) === JSON.stringify( b[ id ] ) );
   },
 
   activeCount( query ) {

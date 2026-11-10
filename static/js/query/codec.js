@@ -6,7 +6,8 @@
 // Screen, scope and list are the path; text, filters, sort and grouping are
 // the query string. Anything left at its default is left out, so a plain
 // #library/movie/all means exactly the defaults. An old .../queue link (the
-// retired Up next list) opens Everything.
+// retired Up next list) opens Everything, and the retired hidewatched /
+// hideskipped filters in an old link or saved view are ignored.
 //
 // Pure: no DOM (takes and returns strings).
 const QueryCodec = {
@@ -21,8 +22,6 @@ const QueryCodec = {
     const query = Query.defaults( list );
     query.text = params.get( "q" ) || "";
     Object.keys( Filters.defs ).forEach( ( id ) => {
-      // "off" takes away a filter the list starts with (hidewatched=off).
-      if ( params.get( id ) === "off" ) { delete query.filters[ id ]; return; }
       const value = Filters.decode( id , params.get( id ) );
       if ( value ) query.filters[ id ] = value;
     } );
@@ -44,13 +43,9 @@ const QueryCodec = {
   queryString( query ) {
     const params = new URLSearchParams();
     if ( query.text ) params.set( "q" , query.text );
-    const defaults = Query.defaultFilters( query.list );
     Filters.ORDER.forEach( ( id ) => {
       const value = query.filters[ id ];
-      const active = Filters.isActive( id , value );
-      const standard = Filters.isActive( id , defaults[ id ] );
-      if ( active && !( standard && JSON.stringify( value ) === JSON.stringify( defaults[ id ] ) ) ) params.set( id , Filters.encode( id , value ) );
-      else if ( !active && standard ) params.set( id , "off" );
+      if ( Filters.isActive( id , value ) ) params.set( id , Filters.encode( id , value ) );
     } );
     if ( !Query.sameSort( query.sort , Query.defaults( query.list ).sort ) ) {
       params.set( "sort" , query.sort.map( ( step ) => ( step.dir === "desc" ? "-" : "" ) + step.key ).join( "," ) );

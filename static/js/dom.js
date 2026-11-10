@@ -766,7 +766,7 @@ const Dom = {
     return holder;
   },
 
-  // A status pill for a table cell. tone is a Bootstrap colour name:
+  // A status pill for a table cell. tone is a Bootstrap color name:
   // "success", "secondary", "warning", "danger".
   badge( text , tone ) {
     return this.el( "span" , { class: "badge text-bg-" + ( tone || "secondary" ) , text: text } );

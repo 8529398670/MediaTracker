@@ -19,9 +19,9 @@ from app.media import dupes, normalize
 from app.models import library_cache, verdicts
 from app.models.revision import ConflictError
 from app.reference.images import CACHE
-from app.routes.helpers import bad_request, conflict, get_config, get_store, run
+from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.subject import subject_from
-from app.routes.titles import _body, add_title
+from app.routes.titles import _body, add_title, answer
 
 SORTS = ("notable", "title", "year", "year-asc", "imdb")
 
@@ -122,10 +122,15 @@ async def query(request: Request) -> Response:
     return JSONResponse(await run(search, get_store(request), subject, dict(request.query_params)))
 
 
-async def meta(request: Request) -> Response:
-    data = await run(lambda: {**catalogue.source_catalogue(), "coverage": catalogue.coverage(), "rating_counts": certs.STORE.counts()})
+def meta_payload() -> dict[str, Any]:
+    """GET /api/discover/meta, shared with MCP: what the catalogue holds."""
+    data = {**catalogue.source_catalogue(), "coverage": catalogue.coverage(), "rating_counts": certs.STORE.counts()}
     data["coverage"].pop("pages", None)
-    return JSONResponse(data)
+    return data
+
+
+async def meta(request: Request) -> Response:
+    return JSONResponse(await run(meta_payload))
 
 
 def facts_for(articles: list[str]) -> dict[str, Any]:
@@ -140,6 +145,18 @@ async def facts(request: Request) -> Response:
     return JSONResponse(await run(facts_for, articles))
 
 
+def verdict_checked(store: Store, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/discover/verdict, shared with MCP."""
+    kwargs = {"expect": body["expect"]} if "expect" in body else {}
+    try:
+        previous = verdicts.set_verdict(store, subject_id, str(body.get("key") or ""), body.get("verdict"), **kwargs)
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+    except ConflictError as error:
+        raise Refused(409, "changed_elsewhere", current=error.current) from None
+    return {"previous": previous}
+
+
 async def set_verdict(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -147,14 +164,7 @@ async def set_verdict(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    kwargs = {"expect": body["expect"]} if "expect" in body else {}
-    try:
-        previous = await run(lambda: verdicts.set_verdict(get_store(request), subject, str(body.get("key") or ""), body.get("verdict"), **kwargs))
-    except ValueError as error:
-        return bad_request(str(error))
-    except ConflictError as error:
-        return conflict("changed_elsewhere", current=error.current)
-    return JSONResponse({"previous": previous})
+    return await answer(request, verdict_checked, get_store(request), subject, body)
 
 
 def film_fields(film: dict[str, Any]) -> dict[str, Any]:
@@ -175,6 +185,22 @@ def film_fields(film: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def add_checked(store: Store, cfg: Config, actor_id: int, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    """POST /api/discover/add, shared with MCP."""
+    film = body.get("film") if isinstance(body.get("film"), dict) else None
+    if not film or not film.get("title"):
+        raise Refused(400, "no film given")
+    # Add puts it in the library with no status; Seen it sends "watched".
+    status = body.get("status") if body.get("status") in normalize.STATUSES else None
+    try:
+        result = add_title(store, cfg, actor_id, subject_id, film_fields(film), {"status": status}, bool(body.get("force")))
+    except ValueError as error:
+        raise Refused(400, str(error)) from None
+    if not result["created"]:
+        raise Refused(409, "possible_duplicate", dupes=result["dupes"])
+    return result
+
+
 async def add(request: Request) -> Response:
     body = await _body(request)
     if isinstance(body, Response):
@@ -182,16 +208,4 @@ async def add(request: Request) -> Response:
     subject = await subject_from(request)
     if isinstance(subject, Response):
         return subject
-    film = body.get("film") if isinstance(body.get("film"), dict) else None
-    if not film or not film.get("title"):
-        return bad_request("no film given")
-    # Add puts it in the library with no status; Seen it sends "watched".
-    status = body.get("status") if body.get("status") in normalize.STATUSES else None
-    cfg: Config = get_config(request)
-    try:
-        result = await run(add_title, get_store(request), cfg, actor_from(request).user.id, subject, film_fields(film), {"status": status}, bool(body.get("force")))
-    except ValueError as error:
-        return bad_request(str(error))
-    if not result["created"]:
-        return conflict("possible_duplicate", dupes=result["dupes"])
-    return JSONResponse(result, status_code=201)
+    return await answer(request, add_checked, get_store(request), get_config(request), actor_from(request).user.id, subject, body, status=201)

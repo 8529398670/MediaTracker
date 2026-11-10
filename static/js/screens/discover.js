@@ -37,8 +37,11 @@ const DiscoverScreen = {
   route() {
     const raw = window.location.hash.replace( /^#/ , "" );
     const cut = raw.indexOf( "?" );
-    if ( cut < 0 && Prefs.lastQuery( "discover" ) ) {
-      window.history.replaceState( null , "" , Prefs.lastQuery( "discover" ) );
+    // Only a remembered query brings anything back; a plain "#discover"
+    // (everything cleared) would land here again and again.
+    const remembered = Prefs.lastQuery( "discover" ) || "";
+    if ( cut < 0 && remembered.indexOf( "?" ) >= 0 ) {
+      window.history.replaceState( null , "" , remembered );
       this.route();
       return;
     }
@@ -176,9 +179,11 @@ const DiscoverScreen = {
     Dom.get( "discover-sort" ).value = this.value( "sort" );
     Dom.get( "discover-topic" ).value = this.params.topic || "";
     Dom.get( "discover-only" ).value = this.params.only || "";
-    Dom.get( "discover-watched" ).value = this.value( "watched" );
-    Dom.get( "discover-skipped" ).value = this.value( "skipped" );
-    Dom.text( Dom.get( "discover-skipped-count" ) , I18n.fill( "discover.skipped_count" , { n: this.skippedCount , w: this.watchedCount } ) );
+    // On means "include them" (all); an old link's "only" also reads as on.
+    Dom.get( "discover-show-watched" ).checked = this.value( "watched" ) !== "hide";
+    Dom.get( "discover-show-skipped" ).checked = this.value( "skipped" ) !== "hide";
+    Dom.text( Dom.get( "discover-show-watched-label" ) , I18n.fill( "discover.show_watched" , { n: this.watchedCount || 0 } ) );
+    Dom.text( Dom.get( "discover-show-skipped-label" ) , I18n.fill( "discover.show_skipped" , { n: this.skippedCount || 0 } ) );
     Dom.all( "[data-discover-layout]" ).forEach( ( button ) => button.classList.toggle( "active" , button.getAttribute( "data-discover-layout" ) === this.card.layout ) );
     this.renderGrid();
   },
@@ -193,8 +198,8 @@ const DiscoverScreen = {
     Dom.show( Dom.get( "discover-empty" ) , shown.length === 0 );
   },
 
-  // The server leaves out what the Watched and Skipped filters hide; this
-  // does the same for a film marked on this page, so it goes at once. It
+  // The server leaves out watched and skipped films unless a Show switch is
+  // on; this does the same for a film marked on this page, so it goes at once. It
   // stays in this.films, so Undo brings it back and Load more's offset holds.
   visible( film ) {
     const inLibrary = film.title_id ? Library.get( film.title_id ) : null;
@@ -296,13 +301,15 @@ const DiscoverScreen = {
       window.clearTimeout( timer );
       timer = window.setTimeout( () => this.set( { q: event.target.value.trim() } ) , 250 );
     } );
-    [ [ "discover-from" , "from" ] , [ "discover-to" , "to" ] , [ "discover-sort" , "sort" ] , [ "discover-topic" , "topic" ] , [ "discover-only" , "only" ] , [ "discover-watched" , "watched" ] , [ "discover-skipped" , "skipped" ] ].forEach( ( pair ) => {
+    [ [ "discover-from" , "from" ] , [ "discover-to" , "to" ] , [ "discover-sort" , "sort" ] , [ "discover-topic" , "topic" ] , [ "discover-only" , "only" ] ].forEach( ( pair ) => {
       Dom.get( pair[ 0 ] ).addEventListener( "change" , ( event ) => this.set( { [ pair[ 1 ] ]: event.target.value.trim() } ) );
     } );
     Dom.all( "#discover-genremode button" ).forEach( ( button ) => Dom.onPress( button , () => this.set( { genremode: button.getAttribute( "data-mode" ) } ) ) );
     Dom.onPress( Dom.get( "discover-genres-more" ) , () => { this.showAllGenres = !this.showAllGenres; this.renderFacets(); } );
     Dom.get( "discover-more" ).addEventListener( "click" , () => this.load( true ) );
-    Dom.get( "discover-customize" ).addEventListener( "click" , () => Customizer.open( "discover" ) );
+    [ "watched" , "skipped" ].forEach( ( name ) => {
+      Dom.get( "discover-show-" + name ).addEventListener( "change" , ( event ) => this.set( { [ name ]: event.target.checked ? "all" : "" } ) );
+    } );
     Dom.all( "[data-discover-layout]" ).forEach( ( button ) => Dom.onPress( button , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-discover-layout" ) } ) ) ) );
     this.grid.addEventListener( "click" , ( event ) => {
       const article = event.target.closest( ".media-card" );

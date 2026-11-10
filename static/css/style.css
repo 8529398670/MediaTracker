@@ -1,6 +1,6 @@
 /*
   Bootstrap 5 (/vendor/bootstrap.min.css) does the layout, components and
-  utilities. This file is only what Bootstrap does not: this app's colours,
+  utilities. This file is only what Bootstrap does not: this app's colors,
   the sidebar shell, and a few touch-friendliness rules. Reach for a utility
   class in the markup before adding a rule here.
 
@@ -9,15 +9,15 @@
   never prefers-color-scheme, so the app looks the same for everyone unless
   they deliberately switch.
 
-  Colours: every theme sets the --app-* tokens as inline variables on <html>,
-  worked out from its few colours in theme.js, with any it overrides. The values below are the Light
+  Colors: every theme sets the --app-* tokens as inline variables on <html>,
+  worked out from its few colors in theme.js, with any it overrides. The values below are the Light
   and Dark themes, for a page that loads before or without it. --app-accent is
-  the main colour, for what you can press; --app-second says where you are.
+  the main color, for what you can press; --app-second says where you are.
   --app-bg, --app-surface and --app-nested are the page, a card, and a card
   inside a card, and --app-chrome the navbar and sidebar.
 
   The block after them hands them on to Bootstrap's own variables. Bootstrap
-  compiles some colours straight into components (.btn-primary, focus rings),
+  compiles some colors straight into components (.btn-primary, focus rings),
   so those are re-pointed explicitly further down.
 */
 
@@ -37,6 +37,35 @@
   --app-info: #d9ebea;
   --app-info-border: #8fc2c0;
   --app-border: #cfd2d3;
+  /* The other buttons: fill, label on it, and the outline's label (theme.js variants). */
+  --app-btn-secondary: #6c7f80;
+  --app-btn-secondary-fg: #0b0d10;
+  --app-btn-secondary-text: #667778;
+  --app-btn-success: #1a8264;
+  --app-btn-success-fg: #ffffff;
+  --app-btn-success-text: #1a8264;
+  --app-btn-danger: #c53a56;
+  --app-btn-danger-fg: #ffffff;
+  --app-btn-danger-text: #c53a56;
+  --app-btn-warning: #e4b520;
+  --app-btn-warning-fg: #0b0d10;
+  --app-btn-warning-text: #8d7014;
+  --app-btn-info: #0b7a75;
+  --app-btn-info-fg: #ffffff;
+  --app-btn-info-text: #0b7a75;
+  --app-btn-light: #e0eced;
+  --app-btn-light-fg: #0b0d10;
+  --app-btn-light-text: #707677;
+  --app-btn-dark: #1e2f32;
+  --app-btn-dark-fg: #ffffff;
+  --app-btn-dark-text: #1e2f32;
+  /* Every button's shape (theme.js buttonChoices). */
+  --app-btn-radius: 0.75rem;
+  --app-btn-weight: 400;
+  --app-btn-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 3px 8px rgba(0, 0, 0, 0.14);
+  --app-btn-image: none;
+  --app-btn-transform: none;
+  --app-btn-spacing: normal;
   --app-sidebar-width: 15rem;
   --app-navbar-height: 4rem;
 }
@@ -57,6 +86,27 @@
   --app-info: #24383a;
   --app-info-border: #39706c;
   --app-border: #41464b;
+  --app-btn-secondary: #859a9c;
+  --app-btn-secondary-fg: #0b0d10;
+  --app-btn-secondary-text: #859a9c;
+  --app-btn-success: #45bb8e;
+  --app-btn-success-fg: #0b0d10;
+  --app-btn-success-text: #45bb8e;
+  --app-btn-danger: #e07186;
+  --app-btn-danger-fg: #0b0d10;
+  --app-btn-danger-text: #e07186;
+  --app-btn-warning: #eec851;
+  --app-btn-warning-fg: #0b0d10;
+  --app-btn-warning-text: #eec851;
+  --app-btn-info: #5fd3c4;
+  --app-btn-info-fg: #0b0d10;
+  --app-btn-info-text: #5fd3c4;
+  --app-btn-light: #e9f5f5;
+  --app-btn-light-fg: #0b0d10;
+  --app-btn-light-text: #e9f5f5;
+  --app-btn-dark: #283a3c;
+  --app-btn-dark-fg: #ffffff;
+  --app-btn-dark-text: #7e898a;
 }
 
 /* This app's own tokens, derived from the theme's. --app-card is a card
@@ -72,7 +122,7 @@
 }
 
 /* Both selectors, because Bootstrap sets these on [data-bs-theme=dark] too. */
-:root, :root[data-bs-theme="dark"] {
+:root, :root[data-bs-theme="dark"], .theme-preview[data-bs-theme] {
   --bs-body-color: var(--app-text);
   --bs-primary: var(--app-accent);
   --bs-link-color: var(--app-link);
@@ -115,9 +165,9 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
    for the one thing on a screen you are meant to press. --tone is the only
    thing each tone sets. */
 .btn-soft-primary { --tone: var(--app-accent); }
-.btn-soft-success { --tone: var(--bs-success); }
-.btn-soft-warning { --tone: #e8a200; }
-.btn-soft-danger { --tone: var(--bs-danger); }
+.btn-soft-success { --tone: var(--app-btn-success); }
+.btn-soft-warning { --tone: var(--app-btn-warning); }
+.btn-soft-danger { --tone: var(--app-btn-danger); }
 .btn-soft-secondary { --tone: var(--bs-secondary-color); }
 [class*="btn-soft-"] {
   --tone-soft: color-mix(in srgb, var(--tone) 15%, var(--app-card));
@@ -147,6 +197,103 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
   --bs-btn-active-bg: color-mix(in srgb, var(--bs-body-color) 10%, var(--app-card));
   --bs-btn-active-border-color: color-mix(in srgb, var(--bs-body-color) 30%, var(--app-border));
 }
+/* The rest of Bootstrap's buttons, in the theme's colors: each fill is worked
+   out from the theme in theme.js (derived), kept readable, and can be set by
+   hand on the Appearance screen. secondary's outline is the row-button grey
+   below and keeps its own rules. */
+.btn-secondary {
+  --bs-btn-color: var(--app-btn-secondary-fg); --bs-btn-bg: var(--app-btn-secondary); --bs-btn-border-color: var(--app-btn-secondary);
+  --bs-btn-hover-color: var(--app-btn-secondary-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-secondary) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-secondary) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-secondary-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-secondary) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-secondary) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-secondary-fg); --bs-btn-disabled-bg: var(--app-btn-secondary); --bs-btn-disabled-border-color: var(--app-btn-secondary);
+}
+.btn-success {
+  --bs-btn-color: var(--app-btn-success-fg); --bs-btn-bg: var(--app-btn-success); --bs-btn-border-color: var(--app-btn-success);
+  --bs-btn-hover-color: var(--app-btn-success-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-success) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-success) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-success-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-success) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-success) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-success-fg); --bs-btn-disabled-bg: var(--app-btn-success); --bs-btn-disabled-border-color: var(--app-btn-success);
+}
+.btn-outline-success {
+  --bs-btn-color: var(--app-btn-success-text); --bs-btn-border-color: var(--app-btn-success-text);
+  --bs-btn-hover-color: var(--app-btn-success-fg); --bs-btn-hover-bg: var(--app-btn-success); --bs-btn-hover-border-color: var(--app-btn-success);
+  --bs-btn-active-color: var(--app-btn-success-fg); --bs-btn-active-bg: var(--app-btn-success); --bs-btn-active-border-color: var(--app-btn-success);
+  --bs-btn-disabled-color: var(--app-btn-success-text); --bs-btn-disabled-border-color: var(--app-btn-success-text);
+}
+.btn-danger {
+  --bs-btn-color: var(--app-btn-danger-fg); --bs-btn-bg: var(--app-btn-danger); --bs-btn-border-color: var(--app-btn-danger);
+  --bs-btn-hover-color: var(--app-btn-danger-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-danger) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-danger) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-danger-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-danger) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-danger) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-danger-fg); --bs-btn-disabled-bg: var(--app-btn-danger); --bs-btn-disabled-border-color: var(--app-btn-danger);
+}
+.btn-outline-danger {
+  --bs-btn-color: var(--app-btn-danger-text); --bs-btn-border-color: var(--app-btn-danger-text);
+  --bs-btn-hover-color: var(--app-btn-danger-fg); --bs-btn-hover-bg: var(--app-btn-danger); --bs-btn-hover-border-color: var(--app-btn-danger);
+  --bs-btn-active-color: var(--app-btn-danger-fg); --bs-btn-active-bg: var(--app-btn-danger); --bs-btn-active-border-color: var(--app-btn-danger);
+  --bs-btn-disabled-color: var(--app-btn-danger-text); --bs-btn-disabled-border-color: var(--app-btn-danger-text);
+}
+.btn-warning {
+  --bs-btn-color: var(--app-btn-warning-fg); --bs-btn-bg: var(--app-btn-warning); --bs-btn-border-color: var(--app-btn-warning);
+  --bs-btn-hover-color: var(--app-btn-warning-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-warning) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-warning) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-warning-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-warning) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-warning) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-warning-fg); --bs-btn-disabled-bg: var(--app-btn-warning); --bs-btn-disabled-border-color: var(--app-btn-warning);
+}
+.btn-outline-warning {
+  --bs-btn-color: var(--app-btn-warning-text); --bs-btn-border-color: var(--app-btn-warning-text);
+  --bs-btn-hover-color: var(--app-btn-warning-fg); --bs-btn-hover-bg: var(--app-btn-warning); --bs-btn-hover-border-color: var(--app-btn-warning);
+  --bs-btn-active-color: var(--app-btn-warning-fg); --bs-btn-active-bg: var(--app-btn-warning); --bs-btn-active-border-color: var(--app-btn-warning);
+  --bs-btn-disabled-color: var(--app-btn-warning-text); --bs-btn-disabled-border-color: var(--app-btn-warning-text);
+}
+.btn-info {
+  --bs-btn-color: var(--app-btn-info-fg); --bs-btn-bg: var(--app-btn-info); --bs-btn-border-color: var(--app-btn-info);
+  --bs-btn-hover-color: var(--app-btn-info-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-info) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-info) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-info-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-info) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-info) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-info-fg); --bs-btn-disabled-bg: var(--app-btn-info); --bs-btn-disabled-border-color: var(--app-btn-info);
+}
+.btn-outline-info {
+  --bs-btn-color: var(--app-btn-info-text); --bs-btn-border-color: var(--app-btn-info-text);
+  --bs-btn-hover-color: var(--app-btn-info-fg); --bs-btn-hover-bg: var(--app-btn-info); --bs-btn-hover-border-color: var(--app-btn-info);
+  --bs-btn-active-color: var(--app-btn-info-fg); --bs-btn-active-bg: var(--app-btn-info); --bs-btn-active-border-color: var(--app-btn-info);
+  --bs-btn-disabled-color: var(--app-btn-info-text); --bs-btn-disabled-border-color: var(--app-btn-info-text);
+}
+.btn-light {
+  --bs-btn-color: var(--app-btn-light-fg); --bs-btn-bg: var(--app-btn-light); --bs-btn-border-color: var(--app-btn-light);
+  --bs-btn-hover-color: var(--app-btn-light-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-light) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-light) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-light-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-light) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-light) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-light-fg); --bs-btn-disabled-bg: var(--app-btn-light); --bs-btn-disabled-border-color: var(--app-btn-light);
+}
+.btn-outline-light {
+  --bs-btn-color: var(--app-btn-light-text); --bs-btn-border-color: var(--app-btn-light-text);
+  --bs-btn-hover-color: var(--app-btn-light-fg); --bs-btn-hover-bg: var(--app-btn-light); --bs-btn-hover-border-color: var(--app-btn-light);
+  --bs-btn-active-color: var(--app-btn-light-fg); --bs-btn-active-bg: var(--app-btn-light); --bs-btn-active-border-color: var(--app-btn-light);
+  --bs-btn-disabled-color: var(--app-btn-light-text); --bs-btn-disabled-border-color: var(--app-btn-light-text);
+}
+.btn-dark {
+  --bs-btn-color: var(--app-btn-dark-fg); --bs-btn-bg: var(--app-btn-dark); --bs-btn-border-color: var(--app-btn-dark);
+  --bs-btn-hover-color: var(--app-btn-dark-fg); --bs-btn-hover-bg: color-mix(in srgb, var(--app-btn-dark) 85%, #000); --bs-btn-hover-border-color: color-mix(in srgb, var(--app-btn-dark) 85%, #000);
+  --bs-btn-active-color: var(--app-btn-dark-fg); --bs-btn-active-bg: color-mix(in srgb, var(--app-btn-dark) 75%, #000); --bs-btn-active-border-color: color-mix(in srgb, var(--app-btn-dark) 75%, #000);
+  --bs-btn-disabled-color: var(--app-btn-dark-fg); --bs-btn-disabled-bg: var(--app-btn-dark); --bs-btn-disabled-border-color: var(--app-btn-dark);
+}
+.btn-outline-dark {
+  --bs-btn-color: var(--app-btn-dark-text); --bs-btn-border-color: var(--app-btn-dark-text);
+  --bs-btn-hover-color: var(--app-btn-dark-fg); --bs-btn-hover-bg: var(--app-btn-dark); --bs-btn-hover-border-color: var(--app-btn-dark);
+  --bs-btn-active-color: var(--app-btn-dark-fg); --bs-btn-active-bg: var(--app-btn-dark); --bs-btn-active-border-color: var(--app-btn-dark);
+  --bs-btn-disabled-color: var(--app-btn-dark-text); --bs-btn-disabled-border-color: var(--app-btn-dark-text);
+}
+/* Every button's shape, from the theme: corners, weight, depth and case. The
+   small and large sizes keep Bootstrap's proportions to the normal one. A
+   focused button shows its focus ring in place of the shadow (Bootstrap). */
+.btn {
+  --bs-btn-border-radius: var(--app-btn-radius);
+  --bs-btn-font-weight: var(--app-btn-weight);
+  text-transform: var(--app-btn-transform);
+  letter-spacing: var(--app-btn-spacing);
+  box-shadow: var(--app-btn-shadow);
+}
+.btn-sm, .btn-group-sm > .btn { --bs-btn-border-radius: calc(var(--app-btn-radius) * 0.67); }
+.btn-lg, .btn-group-lg > .btn { --bs-btn-border-radius: calc(var(--app-btn-radius) * 1.33); }
+/* The sheen is for filled buttons; an outline or link button stays clear. */
+.btn:not([class*="btn-outline-"]):not(.btn-link):not(.btn-close):not(.app-icon-button) { background-image: var(--app-btn-image); }
+.btn-link, .app-icon-button { box-shadow: none; text-transform: none; letter-spacing: normal; }
 .btn { --bs-btn-focus-box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--app-accent) 40%, transparent); }
 .form-control:focus, .form-select:focus {
   border-color: color-mix(in srgb, var(--app-accent) 50%, var(--app-border));
@@ -164,7 +311,7 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
 /* !important: Bootstrap clears this at wide widths, also with !important. */
 .app-sidebar { background-color: var(--app-chrome) !important; }
 
-/* The second colour: where you are, and what is being said. */
+/* The second color: where you are, and what is being said. */
 .card-title, .card h3 { color: var(--app-second-text); }
 progress { accent-color: var(--app-second); }
 .text-bg-info { color: var(--app-second-fg) !important; background-color: var(--app-second) !important; }
@@ -205,20 +352,22 @@ progress { accent-color: var(--app-second); }
 .app-icon-button:hover, .app-icon-button:focus-visible { color: var(--app-accent); }
 .app-icon-button:disabled { opacity: 0.35; }
 
-/* The shell: navbar on top, then sidebar + content. The content column is
-   centred in whatever space is left -- beside the sidebar when signed in, the
-   whole width when signed out. On a phone the sidebar is an offcanvas panel
-   and the content is the whole width. */
+/* The shell: navbar on top, then sidebar + content. <main> takes all the
+   space beside the sidebar (the whole width when signed out); how wide a
+   screen gets is the screen's own choice (.view and its tiers, below), not
+   the shell's. On a phone the sidebar is an offcanvas panel and the content
+   is the whole width. */
 .app-main {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   padding: 1rem;
   width: 100%;
-  max-width: 60rem;
-  margin: 0 auto;
   min-width: 0;
 }
+/* What sits in <main> outside a screen -- the signed-out, join and confirm
+   cards, the banners -- keeps the width it always had, centred. */
+.app-main > :not(#signed-in) { width: 100%; max-width: 60rem; margin-inline: auto; }
 .app-sidebar .nav-link { display: flex; align-items: center; gap: 0.6rem; }
 .app-sidebar .nav-link .bi { font-size: 1.1rem; }
 .nav-link-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
@@ -281,14 +430,63 @@ html { scrollbar-gutter: stable; overflow-anchor: auto; }
 /* One signed-in screen at a time; nav.js marks the one the hash names. */
 .view:not(.view-active) { display: none; }
 
-/* A screen is its heading and a stack of cards, one card per job, so each
-   thing on it has its own edge. */
-.view { display: flex; flex-direction: column; gap: 1rem; }
+/* A screen is its heading and its cards, one card per job, so each thing on
+   it has its own edge. See "Desktop layout" in references/frontend.md.
+   Width follows the content: a screen picks a tier. The default is the width
+   screens were designed at, so a screen nobody has laid out for a desktop
+   looks as it always did -- a wider column only stretches its rows and
+   inputs. A screen goes wider only together with a layout that uses the
+   room: .view-wide for a main + aside or cards side by side, .view-full for
+   an editor with panes. .view-narrow is for one small form. */
+.view { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 60rem; margin-inline: auto; }
+.view.view-narrow { max-width: 48rem; }
+.view.view-wide { max-width: 80rem; }
+.view.view-full { max-width: 120rem; }
+/* MediaTracker's own screens (library, discover, add, playlists, ...): the
+   whole width beside the sidebar, laid out with Bootstrap columns inside. */
+.view.view-edge { max-width: none; }
 .view-title { margin: 0; font-size: 1.5rem; color: var(--app-second-text); }
 .view-description { margin: -0.5rem 0 0; color: var(--bs-secondary-color); }
+.about-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.5rem 1.5rem; margin: 0; }
+.about-facts dt { font-weight: 600; }
+.about-facts dd { margin: 0; overflow-wrap: anywhere; }
 .view .card-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
+/* Prose keeps its measure, however wide the screen: a line past ~70
+   characters is hard to follow back to its start. */
+.view-description, .view .card-text, .view .form-text, .view .alert p { max-width: 70ch; }
 /* An old link to a card (#two-factor) scrolls to it; clear the sticky navbar. */
-.view > .card { scroll-margin-top: calc(var(--app-navbar-height) + 1rem); }
+.view > .card, .view-cards > .card { scroll-margin-top: calc(var(--app-navbar-height) + 1rem); }
+
+/* Cards of the same kind and size -- tiles, summaries, one per item -- sit
+   side by side when there is room. Only those: unrelated cards of different
+   heights in a grid leave ragged edges and holes, and read as chaos (a
+   settings screen like Account stays one column). Each row's cards share one
+   height. A grid, not CSS columns: in columns a card that opens pushes the
+   others into the next column, and the page moves under the reader. A card
+   that needs the width takes the whole row. */
+.view-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: stretch; }
+@media (min-width: 992px) {
+  .view-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); }
+  .view-cards > .card-span { grid-column: 1 / -1; }
+}
+
+/* Main + aside: one thing drives another -- a form beside the list it adds
+   to, an editor beside its preview, a filter beside its results. Two
+   children: the .view-aside and one main element, in either order. Below
+   1440px they stack in page order, exactly as the screen was before (so a
+   form can come first); from 1440px the aside is on the right and stays in
+   view while the main side scrolls. Not sooner: with the sidebar open, a
+   split at 1280 leaves the main side ~34rem and its table wraps and scrolls. */
+.view-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (min-width: 1440px) {
+  .view-split { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); }
+  .view-split > :not(.view-aside) { grid-column: 1; grid-row: 1; }
+  .view-split > .view-aside { grid-column: 2; grid-row: 1; position: sticky; top: calc(var(--app-navbar-height) + 1rem); }
+}
+/* A search box is for a few words; across a wide card it reads as a second
+   heading and pushes the table it filters further from the eye. The box, not
+   its role="search" holder, which may be a whole toolbar (Settings). */
+.view [role="search"] input[type="search"] { max-width: 28rem; }
 
 /* A card that folds away: <details class="card card-collapse"> with a
    <summary class="card-header">. For a list most visits don't need. */
@@ -321,7 +519,7 @@ html { scrollbar-gutter: stable; overflow-anchor: auto; }
 .card-collapse:not([open]) > .card-header { border-bottom: 0; border-radius: var(--bs-card-inner-border-radius); }
 @media (prefers-reduced-motion: reduce) { .card-collapse > .card-header::after { transition: none; } }
 
-/* Tables sit on a card, so they take its colour, not the page's. */
+/* Tables sit on a card, so they take its color, not the page's. */
 .table { --bs-table-bg: transparent; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 td .row-actions { flex-wrap: nowrap; }
@@ -393,6 +591,12 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
    than widening the page. */
 .link-box { display: flex; align-items: flex-start; gap: 0.5rem; }
 .link-box code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: inherit; font-size: 0.85rem; }
+/* The MCP card: the client picker wraps on a phone, and the setup keeps its
+   line breaks but wraps long lines rather than scrolling sideways. */
+.mcp-clients { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.mcp-snippet { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0.75rem; border-radius: var(--bs-border-radius);
+  background: var(--bs-tertiary-bg); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; }
+.mcp-snippet code { color: inherit; font-size: inherit; }
 
 /* The Appearance screen: the list of themes beside the one being edited. */
 .theme-swatch {
@@ -412,7 +616,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
    ========================================================================== */
 
 /* The library wants the width; the account screens stay a readable column. */
-.app-main:has(.library-view.view-active) { max-width: none; }
 
 .library-view { display: flex; flex-direction: column; gap: 0.75rem; }
 
@@ -689,7 +892,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .dupe-title { display: flex; gap: 0.6rem; align-items: flex-start; }
 
 /* Discover. */
-.app-main:has(#discover-panel.view-active) { max-width: none; }
 .discover-years { width: auto; flex-wrap: nowrap; }
 .discover-years .form-control { width: 6rem; }
 .discover-facets { background: var(--app-card); border: 1px solid var(--app-border); border-radius: var(--bs-border-radius); padding: 0.6rem 0.8rem; }
@@ -737,6 +939,17 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .card-menu .dropdown-item .bi-check-circle-fill { color: var(--bs-success); }
 .theme-layout { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
 @media (max-width: 767.98px) { .theme-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (min-width: 1400px) { .theme-layout { grid-template-columns: 16rem minmax(0, 1fr); } }
+/* Inside the editor: the preview and any warnings (the aside) sit above the
+   colors, and from xxl beside them, staying in view while the colors scroll,
+   so each pick shows its effect where the eye already is. The aside comes
+   first in the page either way, so the keyboard order does not change. */
+.theme-edit-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+@media (min-width: 1400px) {
+  .theme-edit-body { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); }
+  .theme-edit-aside { grid-column: 2; grid-row: 1; position: sticky; top: calc(var(--app-navbar-height) + 1rem); }
+  .theme-edit-main { grid-column: 1; grid-row: 1; }
+}
 .theme-list { display: flex; flex-direction: column; gap: 0.25rem; }
 .theme-item {
   display: flex;
@@ -760,27 +973,40 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
   text-align: start;
 }
 .theme-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.theme-colours { display: grid; grid-template-columns: minmax(8rem, 1fr) auto; gap: 0.5rem 1rem; align-items: center; }
-.theme-colour-input { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
-.theme-colour-input input[type="color"] { width: 2.75rem; height: 2.25rem; padding: 0.15rem; }
-.theme-colour-input .theme-hex { width: 6.5rem; font-family: var(--bs-font-monospace); }
-.theme-colour-row.auto .theme-hex { color: var(--bs-secondary-color); }
-.theme-colour-row.warn > label { color: var(--bs-danger-text-emphasis); }
-@media (max-width: 575.98px) { .theme-colours { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; } .theme-colour-input { margin-bottom: 0.5rem; } }
+/* Each color is one unit, its label over its controls, and the units flow
+   into as many columns as fit: one on a phone, two to four on a desktop,
+   instead of one tall column of fifteen. */
+.theme-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0.75rem 1.25rem; align-items: start; }
+.theme-color-row { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.theme-color-input { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+.theme-color-input input[type="color"] { width: 2.75rem; height: 2.25rem; padding: 0.15rem; }
+.theme-color-input .theme-hex { width: 6.5rem; font-family: var(--bs-font-monospace); }
+.theme-color-row.auto .theme-hex { color: var(--bs-secondary-color); }
+.theme-color-row.warn > label { color: var(--bs-danger-text-emphasis); }
 /* A small picture of the page in the theme being edited, drawn with its own
-   colours rather than the page's, so it shows a theme that is not in use. */
+   colors rather than the page's, so it shows a theme that is not in use. */
 .theme-preview { border: 1px solid; border-radius: var(--bs-border-radius); overflow: hidden; display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); font-size: 0.875rem; }
 .theme-preview-side { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; }
 .theme-preview-side span { padding: 0.15rem 0.4rem; border-radius: 0.25rem; }
 .theme-preview-page { padding: 0.75rem; }
 .theme-preview-card, .theme-preview-nested, .theme-preview-info { border: 1px solid; border-radius: 0.375rem; padding: 0.5rem 0.75rem; }
 .theme-preview-nested, .theme-preview-info { margin-top: 0.5rem; }
-.theme-preview-button { display: inline-block; margin-top: 0.5rem; padding: 0.2rem 0.6rem; border-radius: 0.375rem; }
+/* Every button in the theme, solid then outline. Not the touch-sized 44px:
+   the preview is a picture, not something to press. */
+.theme-preview-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+.theme-preview-buttons .btn-sm { min-height: 0; min-width: 0; pointer-events: none; }
+/* The button style choices: label over its row of toggles. */
+.theme-choices { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+.theme-choice { display: flex; flex-direction: column; gap: 0.25rem; }
 .theme-preview-heading { font-weight: 600; }
 
 /* The Logs screen: a month calendar, then the picked day as one <details>
    with a compact table inside. */
-.log-calendar { max-width: 22rem; margin-bottom: 1rem; }
+/* The day's log is a table, and a table gets the whole width, so the
+   calendar is not a column beside it: it opens from a button in the search
+   bar that names the day shown (Logs.renderCalendar). */
+.log-cal-menu { --bs-dropdown-bg: var(--app-surface); padding: 0.75rem; width: min(22rem, calc(100vw - 2rem)); }
+.log-calendar { max-width: 22rem; }
 .log-cal-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
 .log-cal-title { font-weight: 600; min-width: 9rem; text-align: center; }
 .log-cal-grid { display: grid; grid-template-columns: repeat( 7 , minmax( 0 , 1fr ) ); gap: 0.25rem; }

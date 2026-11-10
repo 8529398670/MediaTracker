@@ -228,7 +228,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "Sign-in: managed from a browser, not by agents."
       }
     },
     "/api/account/password": {
@@ -1410,9 +1411,6 @@
         "security": [
           {
             "sessionCookie": []
-          },
-          {
-            "apiKey": []
           }
         ],
         "x-required-role": "admin",
@@ -1500,9 +1498,6 @@
         "security": [
           {
             "sessionCookie": []
-          },
-          {
-            "apiKey": []
           }
         ],
         "x-required-role": "admin",
@@ -1600,9 +1595,6 @@
         "security": [
           {
             "sessionCookie": []
-          },
-          {
-            "apiKey": []
           }
         ],
         "x-required-role": "admin",
@@ -3298,7 +3290,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "Sign-in: managed from a browser, not by agents."
       }
     },
     "/api/admin/users/{user_id}/reset-two-factor": {
@@ -4716,7 +4709,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "Ends a browser session; a key has none to end."
       }
     },
     "/api/logs/events": {
@@ -4800,7 +4794,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "The browser's own activity reports (track.js), not an action."
       }
     },
     "/api/me": {
@@ -4879,7 +4874,50 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "The API reference itself; GET /api/mcp.json is the MCP one."
+      }
+    },
+    "/api/mcp.json": {
+      "get": {
+        "summary": "The MCP tools: every tool /mcp has, its arguments, and the route it stands for",
+        "operationId": "get_api_mcp_json",
+        "tags": [
+          "Monitoring"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "x-mcp-http": "The MCP reference itself; tools/list gives the same list."
       }
     },
     "/api/owner/logs/days": {
@@ -5596,7 +5634,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "The MCP endpoint itself."
       },
       "get": {
         "summary": "Refused: this server has no stream",
@@ -6017,7 +6056,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "Poster image bytes, not JSON: an agent fetches them here with the same key."
       }
     },
     "/api/titles": {
@@ -7281,7 +7321,8 @@
           "503": {
             "$ref": "#/components/responses/E503"
           }
-        }
+        },
+        "x-mcp-http": "A file download (JSON, CSV or Markdown attachment); search_library, get_title and the list tools return the same records as JSON."
       }
     },
     "/api/discover": {
@@ -10755,6 +10796,10 @@
           "api_keys_enabled": {
             "type": "boolean"
           },
+          "mcp_enabled": {
+            "type": "boolean",
+            "description": "server.mcp: whether POST /mcp answers."
+          },
           "logs_enabled": {
             "type": "boolean"
           },
@@ -10780,6 +10825,26 @@
           "announcement": {
             "type": "string",
             "description": "server.announcement. Empty when there is none."
+          },
+          "repo": {
+            "type": "string",
+            "description": "app.repo without a trailing / or .git: where the source lives. Empty when it is not set."
+          },
+          "description": {
+            "type": "string",
+            "description": "app.description. Empty when there is none."
+          },
+          "show_about": {
+            "type": "boolean",
+            "description": "app.show_about: whether the menu has About."
+          },
+          "openapi_url": {
+            "type": "string",
+            "description": "Where to read this API's reference: config/openapi.json in app.repo, or /api/openapi.json when there is no repo."
+          },
+          "mcp_url": {
+            "type": "string",
+            "description": "Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on."
           },
           "shortcuts": {
             "type": "object",
@@ -11204,7 +11269,7 @@
       },
       "Theme": {
         "type": "object",
-        "description": "A colour scheme on the Appearance screen. Colours are #rrggbb. Anything not given is worked out by static/js/theme.js at readable contrast.",
+        "description": "A color scheme on the Appearance screen. Colors are #rrggbb. Anything not given is worked out by static/js/theme.js at readable contrast.",
         "properties": {
           "id": {
             "type": "string",
@@ -11223,7 +11288,7 @@
           },
           "accent": {
             "type": "string",
-            "description": "The main colour: what you can press."
+            "description": "The main color: what you can press."
           },
           "second": {
             "type": "string",
@@ -11242,7 +11307,111 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Worked-out colours replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border. Leaving one out puts the readable colour back."
+            "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
+          },
+          "button": {
+            "type": "object",
+            "description": "How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal).",
+            "properties": {
+              "shape": {
+                "type": "string",
+                "enum": [
+                  "square",
+                  "soft",
+                  "rounded",
+                  "pill"
+                ]
+              },
+              "weight": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "medium",
+                  "bold"
+                ]
+              },
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "flat",
+                  "raised",
+                  "glossy"
+                ]
+              },
+              "case": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "upper"
+                ]
+              }
+            }
+          },
+          "light": {
+            "type": "object",
+            "description": "A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in.",
+            "properties": {
+              "accent": {
+                "type": "string",
+                "description": "The main color: what you can press."
+              },
+              "second": {
+                "type": "string",
+                "description": "Says where you are: active nav item, headings, info."
+              },
+              "background": {
+                "type": "string",
+                "description": "The page. Left out: the mode's own."
+              },
+              "surface": {
+                "type": "string",
+                "description": "Cards. Left out: the mode's own."
+              },
+              "overrides": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
+              }
+            },
+            "required": [
+              "accent",
+              "second"
+            ]
+          },
+          "dark": {
+            "type": "object",
+            "description": "A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped.",
+            "properties": {
+              "accent": {
+                "type": "string",
+                "description": "The main color: what you can press."
+              },
+              "second": {
+                "type": "string",
+                "description": "Says where you are: active nav item, headings, info."
+              },
+              "background": {
+                "type": "string",
+                "description": "The page. Left out: the mode's own."
+              },
+              "surface": {
+                "type": "string",
+                "description": "Cards. Left out: the mode's own."
+              },
+              "overrides": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
+              }
+            },
+            "required": [
+              "accent",
+              "second"
+            ]
           }
         },
         "required": [

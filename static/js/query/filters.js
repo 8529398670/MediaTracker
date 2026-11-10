@@ -104,23 +104,10 @@ const Filters = {
       kind: "toggle",
       value: ( row ) => Boolean( row.s && row.s.heart ),
     },
-    // What the old Up next list left out, now two plain filters that are on
-    // by default in Everything (Query.DEFAULT_FILTERS) and show as chips.
-    // Skipped is "not for me" -- what a card's Skip sets.
-    hidewatched: {
-      kind: "hide",
-      status: "watched",
-      hidden: ( list ) => list !== "all",
-    },
-    hideskipped: {
-      kind: "hide",
-      status: "dropped",
-      hidden: ( list ) => list !== "all",
-    },
   },
 
   // The order the filter sheet lists them in.
-  ORDER: [ "hidewatched" , "hideskipped" , "genre" , "year" , "rating" , "imdb" , "votes" , "status" , "type" , "cert" , "runtime" , "tag" , "loved" , "watchedby" , "lovedby" , "addedby" , "missing" ],
+  ORDER: [ "genre" , "year" , "rating" , "imdb" , "votes" , "status" , "type" , "cert" , "runtime" , "tag" , "loved" , "watchedby" , "lovedby" , "addedby" , "missing" ],
 
   subsumed( id , list , scope ) {
     const def = this.defs[ id ];
@@ -139,7 +126,6 @@ const Filters = {
       case "range": return value.from != null || value.to != null;
       case "rating": return ( value.mode && value.mode !== "any" ) || value.from != null || value.to != null;
       case "toggle": return value.value === true || value.value === false;
-      case "hide": return value.on === true;
       default: return false;
     }
   },
@@ -170,8 +156,6 @@ const Filters = {
       }
       case "toggle":
         return def.value( row ) === value.value;
-      case "hide":
-        return !( row.s && row.s.status === def.status );
       default:
         return true;
     }
@@ -202,8 +186,6 @@ const Filters = {
         return number( value.from ) + ".." + number( value.to );
       case "toggle":
         return value.value ? "yes" : "no";
-      case "hide":
-        return "on";
       default:
         return "";
     }
@@ -236,9 +218,6 @@ const Filters = {
       }
       case "toggle":
         return raw === "yes" ? { value: true } : raw === "no" ? { value: false } : null;
-      // "off" is not a value: the codec reads it as "take the default away".
-      case "hide":
-        return raw === "on" ? { on: true } : null;
       default:
         return null;
     }

@@ -47,6 +47,14 @@ const Logs = {
     Dom.get( "logs-live" ).addEventListener( "click" , () => this.toggleLive() );
     Dom.onPress( Dom.get( "logs-prune" ) , () => this.onPrune() );
     window.addEventListener( "hashchange" , () => this.followScreen() );
+    // The calendar's popup keeps 16px from the window's edges, so on a phone
+    // it does not run into the side of the screen. Clicks inside it (the month
+    // arrows) leave it open; a picked day closes it (pick).
+    new bootstrap.Dropdown( Dom.get( "logs-date-button" ) , {
+      autoClose: "outside",
+      popperConfig: ( config ) => ( { ...config , modifiers: [ ...config.modifiers ,
+        { name: "preventOverflow" , options: { padding: 16 } } ] } ),
+    } );
     Dom.get( "logs-cal-prev" ).addEventListener( "click" , () => this.shiftMonth( -1 ) );
     Dom.get( "logs-cal-next" ).addEventListener( "click" , () => this.shiftMonth( 1 ) );
     Dom.get( "logs-cal-today" ).addEventListener( "click" , () => this.pick( this.today() , true ) );
@@ -135,7 +143,8 @@ const Logs = {
   },
 
   // Shows date: the calendar moves to its month. focus is for a pick made on
-  // the calendar, so the keyboard stays where it was.
+  // the calendar: the popup closes and the keyboard goes back to its button,
+  // which now names the new day.
   async pick( date , focus ) {
     this.shown = date;
     this.month = date.slice( 0 , 7 );
@@ -143,8 +152,9 @@ const Logs = {
     Dom.show( Dom.get( "logs-day" ) , true );
     this.renderCalendar();
     if ( focus ) {
-      const cell = Dom.get( "logs-cal-grid" ).querySelector( "[aria-pressed=\"true\"]" );
-      if ( cell ) cell.focus( { preventScroll: true } );
+      const button = Dom.get( "logs-date-button" );
+      bootstrap.Dropdown.getOrCreateInstance( button ).hide();
+      button.focus( { preventScroll: true } );
     }
     await this.renderDay();
   },
@@ -186,6 +196,7 @@ const Logs = {
     const first = new Date( Date.UTC( year , month - 1 , 1 ) );
     const length = new Date( Date.UTC( year , month , 0 ) ).getUTCDate();
 
+    Dom.text( Dom.get( "logs-date-label" ) , this.dayLabel( this.shown ) );
     Dom.text( Dom.get( "logs-cal-title" ) , first.toLocaleDateString( undefined , { month: "long" , year: "numeric" , timeZone: "UTC" } ) );
     Dom.get( "logs-cal-prev" ).disabled = this.month <= oldest;
     Dom.get( "logs-cal-next" ).disabled = this.month >= newest;

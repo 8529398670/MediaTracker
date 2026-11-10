@@ -79,7 +79,7 @@ const PlaylistsScreen = {
           ? Dom.el( "img" , { class: "playlist-thumb" , attrs: { src: row.t.poster , alt: "" , loading: "lazy" } } )
           : Dom.el( "span" , { class: "playlist-thumb is-empty" , children: [ Card.icon( row ? Vocab.typeIcon( row.t.type ) : "film" ) ] } );
       } );
-      const entry = Dom.el( "div" , { class: "list-group-item playlist-entry" , attrs: { "data-id": String( playlist.id ) , "data-key": "playlist-" + playlist.id } , children: [
+      const entry = Dom.el( "div" , { class: "list-group-item playlist-entry border rounded h-100" , attrs: { "data-id": String( playlist.id ) , "data-key": "playlist-" + playlist.id } , children: [
         Dom.el( "span" , { class: "playlist-grip" , attrs: { "aria-hidden": "true" , title: I18n.get( "playlist.drag" ) } , children: [ Card.icon( "grip-vertical" ) ] } ),
         Dom.el( "a" , { class: "playlist-open" , attrs: { href: "#playlists/" + playlist.id } , children: [
           Dom.el( "span" , { class: "playlist-thumbs" , children: posters.length ? posters : [ Dom.el( "span" , { class: "playlist-thumb is-empty" , children: [ Card.icon( "collection-play" ) ] } ) ] } ),
@@ -107,7 +107,7 @@ const PlaylistsScreen = {
           this.safely( () => Playlists.reorder( ids ) );
         },
       } );
-      entries.push( entry );
+      entries.push( Dom.el( "div" , { class: "col" , attrs: { "data-key": "playlist-col-" + playlist.id } , children: [ entry ] } ) );
     } );
     // Built first, then put in at once, so the list never empties under the reader.
     Dom.swap( box , ...entries );

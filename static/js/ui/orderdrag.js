@@ -61,7 +61,12 @@ const OrderDrag = {
   // In a row of tiles "after" is the right half; in a list, the lower half.
   isAfter( node , event ) {
     const box = node.getBoundingClientRect();
-    const across = node.parentElement && getComputedStyle( node.parentElement ).flexDirection === "row";
+    const holder = node.parentElement;
+    // A tile in a Bootstrap column (the playlists index): across while the
+    // columns sit side by side, down once they stack into one on a phone.
+    const across = holder && holder.classList.contains( "col" ) && holder.parentElement
+      ? holder.getBoundingClientRect().width < holder.parentElement.getBoundingClientRect().width * 0.9
+      : holder && getComputedStyle( holder ).flexDirection === "row";
     return across ? event.clientX > box.left + box.width / 2 : event.clientY > box.top + box.height / 2;
   },
 

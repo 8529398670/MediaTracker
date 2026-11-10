@@ -31,7 +31,7 @@ class ThemeRoutesTest(RoutesTestCase):
         self.assertEqual([theme["id"] for theme in listed], ["one", "two"])
         self.assertFalse(custom)
 
-        # Their own list is theirs; colours come back in lower case.
+        # Their own list is theirs; colors come back in lower case.
         status, reply = self.post(self.user_cookie, "/api/account/themes", {"themes": theme_list("mine"), "theme_id": "mine"})
         self.assertEqual(status, 200, reply)
         listed, custom, theme_id = self.mine(self.user_cookie)
@@ -75,6 +75,13 @@ class ThemeRoutesTest(RoutesTestCase):
             [dict(good, surface="#fff")],
             [dict(good, overrides={"glow": "#000000"})],
             [dict(good, overrides={"link": "blue"})],
+            [dict(good, button={"shape": "blob"})],
+            [dict(good, button={"depth": "deep"})],
+            [dict(good, button={"glow": "on"})],
+            [dict(good, button="pill")],
+            [dict(good, dark={"accent": "gold", "second": "#ffffff"})],
+            [dict(good, dark={"accent": "#000000", "second": "#ffffff", "overrides": {"glow": "#000000"}})],
+            [dict(good, dark="gold")],
         ):
             status, reply = self.post(self.user_cookie, "/api/account/themes", {"themes": themes})
             self.assertEqual(status, 400, (themes, reply))
@@ -85,3 +92,27 @@ class ThemeRoutesTest(RoutesTestCase):
                                   {"themes": [dict(good, overrides={"link": "#ABCDEF", "infoBorder": "#000000"})]})
         self.assertEqual(status, 200, reply)
         self.assertEqual(self.mine(self.user_cookie)[0][0]["overrides"], {"link": "#abcdef", "infoBorder": "#000000"})
+
+        # A button style, and a button variant's color, are kept; an empty
+        # button is the default and is not stored.
+        styled = dict(good, overrides={"btnDanger": "#AA0000", "btnWarningFg": "#000000"},
+                      button={"shape": "Pill", "depth": "glossy"})
+        plain = dict(theme_list("b")[0], button={})
+        status, reply = self.post(self.user_cookie, "/api/account/themes", {"themes": [styled, plain]})
+        self.assertEqual(status, 200, reply)
+        listed = self.mine(self.user_cookie)[0]
+        self.assertEqual(listed[0]["button"], {"shape": "pill", "depth": "glossy"})
+        self.assertEqual(listed[0]["overrides"]["btnDanger"], "#aa0000")
+        self.assertNotIn("button", listed[1])
+
+        # A light theme keeps its dark colors (switching mode swaps them in);
+        # colors kept for the mode already in use mean nothing and are dropped.
+        both = dict(good, dark={"accent": "#CBA052", "second": "#F8E08E", "background": "#101820",
+                                "overrides": {"link": "#FFFFFF"}},
+                    light={"accent": "#000000", "second": "#000000"})
+        status, reply = self.post(self.user_cookie, "/api/account/themes", {"themes": [both]})
+        self.assertEqual(status, 200, reply)
+        listed = self.mine(self.user_cookie)[0]
+        self.assertEqual(listed[0]["dark"], {"accent": "#cba052", "second": "#f8e08e", "background": "#101820",
+                                             "overrides": {"link": "#ffffff"}})
+        self.assertNotIn("light", listed[0])

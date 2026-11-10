@@ -57,6 +57,20 @@ app:
   # Shown in the startup log. [restart]
   name: "Media Tracker"
 
+  # Where this app's source lives, e.g. https://github.com/you/app -- just the
+  # repository, no /tree or /blob path. Links to files in it, such as the API
+  # reference on the API keys card, point there; empty points them at this
+  # server's own copy. scaffold.py fills it in when given --repo.
+  # [live]
+  repo: ""
+
+  # One line on what this app is for, shown on the About screen. [live]
+  description: ""
+
+  # Adds About to the menu: the description above, the version, the source
+  # repository and the API reference. [live]
+  show_about: false
+
 server:
   # 127.0.0.1 answers only this machine, which is what a development run and
   # a server behind a reverse proxy on the same host both want. Use 0.0.0.0
