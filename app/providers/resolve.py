@@ -31,7 +31,7 @@ from app.media.match import (ARTICLE, CERTAIN, FLOOR, STOP_WORDS, confident, fol
 from app.providers.compat import BREAKER, fetch_json, fetch_text, proxy_img
 from app.providers.compat import text as _s
 from app.media.genres import canon_genres
-from app.providers.sources import (TMDB_GENRES, prov_openlibrary, prov_tvmaze,
+from app.providers.sources import (TMDB_GENRES, prov_imdb, prov_openlibrary, prov_tvmaze,
                        prov_wikipedia, strip_tags, year_of)
 from app.media.outline import split_title
 
@@ -591,14 +591,15 @@ def via_wikipedia_id(title: str, kind: str) -> dict:
 def _other_rows(title: str, kind: str) -> list[dict]:
     """The keyless providers, for the kinds TMDB does not carry."""
     rows: list[dict] = []
-    for name, call in (("openlibrary", lambda: prov_openlibrary(title, 6)),
+    for name, call in (("imdb", lambda: prov_imdb(title, kind, 6)),
+                       ("openlibrary", lambda: prov_openlibrary(title, 6)),
                        ("tvmaze", lambda: prov_tvmaze(title, 6)),
                        ("wikipedia", lambda: prov_wikipedia(title, kind, 6))):
         if kind == "book" and name == "tvmaze":
             continue
         if kind != "book" and name == "openlibrary":
             continue
-        if kind in OFF_TMDB and name == "tvmaze":
+        if kind in OFF_TMDB and name in ("tvmaze", "imdb"):
             continue
         if BREAKER.is_open(name):
             continue

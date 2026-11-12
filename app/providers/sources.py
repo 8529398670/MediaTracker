@@ -231,6 +231,51 @@ def prov_omdb(query: str, kind: str, limit: int) -> list[dict]:
     return out
 
 
+# IMDb's own search box, which needs no key. It forgives a word the way the
+# other keyless providers do not: "Has Anyone Seen My Gal" finds "Has Anybody
+# Seen My Gal" (1952) first, where Wikipedia offers a 2021 film instead.
+IMDB_SUGGEST = "https://v3.sg.media-imdb.com/suggestion/{first}/{query}.json"
+IMDB_TV = {"tvSeries", "tvMiniSeries"}
+IMDB_FILM = {"movie", "tvMovie", "tvSpecial", "video", "short"}
+
+
+def prov_imdb(query: str, kind: str, limit: int) -> list[dict]:
+    from app.reference import imdb as ratings
+
+    words = re.sub(r"\s+", " ", (query or "").strip().lower())
+    first = next((c for c in words if c.isalnum()), "")
+    if not first:
+        return []
+    url = IMDB_SUGGEST.format(first=urllib.parse.quote(first),
+                              query=urllib.parse.quote(words[:120]))
+    out = []
+    for row in (fetch_json(url) or {}).get("d", []):
+        qid = row.get("qid") or ""
+        ident = str(row.get("id") or "")
+        if not ident.startswith("tt") or qid not in IMDB_TV | IMDB_FILM:
+            continue
+        media = "tv" if qid in IMDB_TV else "movie"
+        if kind in ("movie", "tv") and media != kind:
+            continue
+        poster = (row.get("i") or {}).get("imageUrl") or ""
+        rated = ratings.STORE.get(ident) if ratings.STORE.folder else None
+        out.append({
+            "source": "imdb",
+            "sourceId": ident,
+            "type": media,
+            "title": _s(row.get("l"), 300),
+            "year": row.get("y") if isinstance(row.get("y"), int) else year_of(str(row.get("yr") or "")),
+            "poster": proxy_img(poster) if poster.startswith("https://") else "",
+            "cast": [n.strip() for n in str(row.get("s") or "").split(",") if n.strip()][:6],
+            "imdbId": ident,
+            "link": f"https://www.imdb.com/title/{ident}/",
+            "_votes": rated[1] if rated else 0,
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 def lookup(query: str, kind: str, limit: int) -> dict:
     """Fan out to whichever providers suit the media kind, then merge."""
     if not KEYS.network:
@@ -242,11 +287,13 @@ def lookup(query: str, kind: str, limit: int) -> dict:
         plan += [("tmdb", lambda: prov_tmdb(query, "movie" if kind == "movie" else "any", limit)),
                  ("wikipedia", lambda: prov_wikipedia(query, kind or "any", limit)),
                  ("itunes", lambda: prov_itunes(query, "movie", limit)),
+                 ("imdb", lambda: prov_imdb(query, "movie", limit)),
                  ("omdb", lambda: prov_omdb(query, "movie", limit))]
     if kind in ("tv", "anime", "any", ""):
         plan += [("tvmaze", lambda: prov_tvmaze(query, limit)),
                  ("tmdb", lambda: prov_tmdb(query, "tv", limit)),
-                 ("wikipedia", lambda: prov_wikipedia(query, "tv", limit))]
+                 ("wikipedia", lambda: prov_wikipedia(query, "tv", limit)),
+                 ("imdb", lambda: prov_imdb(query, "tv", limit))]
     if kind == "book":
         plan = [("openlibrary", lambda: prov_openlibrary(query, limit)),
                 ("wikipedia", lambda: prov_wikipedia(query, "book", limit))]
