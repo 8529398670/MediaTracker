@@ -12,6 +12,7 @@ import re
 import threading
 import time
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +50,11 @@ def configure(lists_dir: Path) -> None:
     FILMS_DIR = lists_dir / "films"
     INDEX_PATH = lists_dir / "index.json"
     CATALOGUE_PATH = lists_dir / "catalogue.json"
+    # The posters learned so far belong to that folder: read again from it.
+    global _THUMBS_LOADED
+    with _FACTS_LOCK:
+        _THUMBS.clear()
+        _THUMBS_LOADED = False
 
 
 # --------------------------------------------------------------------------
@@ -1379,24 +1385,91 @@ def rating_facet(counts: dict[str, int]) -> list[dict]:
 # Wikipedia's own page image for an article, which for a film article is
 # almost always the poster.
 #
-# Only the *address* is learned here, and only in memory. The picture itself
-# is never fetched by this process and never written to disk: the browser
-# loads it straight from Wikimedia and keeps it in its own cache, which is
-# the only copy that exists. That is deliberate — a century of these lists is
-# forty-five thousand films, and forty-five thousand posters is the one thing
-# that certainly does not fit in a container with 256 MB and a data directory
-# meant to hold a library, not a picture archive.
+# Only the poster's *address* is learned here. It is written down in
+# lists/posters.json, so a restart does not send every Discover page back to
+# Wikipedia, Wikidata and IMDb for things already asked (that was seconds a
+# page). The picture itself goes through the poster cache
+# (reference/images.py), which has its own size budget.
 #
 # A film with no free image is remembered as having none, so a row that came
-# up blank once costs nothing the second time it is scrolled past.
+# up blank once costs nothing the second time it is scrolled past. "None" is
+# kept as the day it was found, and asked again after BLANK_RETRY_DAYS, since
+# an article can gain a poster.
 
 FACT_BATCH = 50                      # titles one round of calls will take
-FACT_MAX = 6000                      # rows kept before the slate is wiped
+BLANK_RETRY_DAYS = 30
+SAVE_DELAY = 5.0                     # seconds of quiet before posters.json is written
 
-_FACTS: dict[str, dict] = {}
+# article -> poster address, or the day (since 1970) it was found to have none
+_THUMBS: dict[str, str | int] = {}
+_THUMBS_LOADED = False
+_SAVE_TIMER: threading.Timer | None = None
 _FACTS_LOCK = threading.Lock()
 
 BLANK = {"thumb": "", "imdb": "", "rating": "", "imdbScore": None}
+
+
+def _posters_path() -> Path:
+    return LISTS_DIR / "posters.json"
+
+
+def _today() -> int:
+    return int(time.time() // 86400)
+
+
+def _load_thumbs() -> None:
+    """Read posters.json once. Called with _FACTS_LOCK held."""
+    global _THUMBS_LOADED
+    if _THUMBS_LOADED:
+        return
+    _THUMBS_LOADED = True
+    data = _read_json(_posters_path(), {})
+    if isinstance(data, dict):
+        for name, value in data.items():
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                _THUMBS[str(name)] = value
+
+
+def _known_thumb(name: str) -> str | None:
+    """The poster address, "" for a film known to have none, None when it has
+    to be asked. Called with _FACTS_LOCK held."""
+    value = _THUMBS.get(name)
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int) and _today() - value < BLANK_RETRY_DAYS:
+        return ""
+    return None
+
+
+def _save_thumbs() -> None:
+    global _SAVE_TIMER
+    with _FACTS_LOCK:
+        _SAVE_TIMER = None
+        snapshot = dict(_THUMBS)
+    try:
+        _write_json(_posters_path(), snapshot)
+    except OSError as exc:
+        log(f"lists: could not save posters: {exc}")
+
+
+def _save_soon() -> None:
+    """posters.json after a few quiet seconds: one write for a burst of
+    pages, not one per call. Called with _FACTS_LOCK held."""
+    global _SAVE_TIMER
+    if _SAVE_TIMER is None:
+        _SAVE_TIMER = threading.Timer(SAVE_DELAY, _save_thumbs)
+        _SAVE_TIMER.daemon = True
+        _SAVE_TIMER.start()
+
+
+def flush_posters() -> None:
+    """Write posters.json now if a save is pending (at shutdown)."""
+    global _SAVE_TIMER
+    with _FACTS_LOCK:
+        timer, _SAVE_TIMER = _SAVE_TIMER, None
+    if timer is not None:
+        timer.cancel()
+        _save_thumbs()
 
 
 def _from_store(name: str, thumb: str = "") -> dict:
@@ -1409,38 +1482,43 @@ def _from_store(name: str, thumb: str = "") -> dict:
 def _scored(fact: dict) -> dict:
     """The facts with IMDb's score beside them, looked up as they leave.
 
-    Not kept with the rest: it is a lookup in memory, it changes every day,
-    and a row remembered before the ratings file had loaded would otherwise
-    go on saying it has no score until the slate was wiped.
+    Not kept with the rest: it is a lookup in memory, it changes every day.
     """
     score = imdb.STORE.get(fact.get("imdb"))
     return {**fact, "imdbScore": list(score) if score else None}
 
 
+def known_facts(articles: list[str]) -> dict[str, dict]:
+    """facts() for the articles already answered, with no network at all:
+    what a Discover page can carry from its first response."""
+    out: dict[str, dict] = {}
+    with _FACTS_LOCK:
+        _load_thumbs()
+        for name in articles:
+            name = str(name or "").strip()
+            if not name or name in out:
+                continue
+            thumb = _known_thumb(name)
+            if thumb is not None:
+                out[name] = _scored(_from_store(name, thumb))
+    return out
+
+
 def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
     """Poster, IMDb id, age rating and IMDb score for each of these articles.
 
-    Fifty films cost two calls at most: one to Wikipedia for the page images
-    and one to Wikidata for the identifiers.  Only the poster is always the
-    first of those — the identifiers are kept in ``certs.json``, so a film the
-    rating pass has already asked about costs nothing here, and once that pass
-    has run the second call stops happening at all.
-
-    An article that answers with nothing is remembered as having nothing,
-    which is what stops it being asked twice.
+    Fifty films cost two calls at most, made side by side: one to Wikipedia
+    for the page images and one to Wikidata for the identifiers (kept in
+    ``certs.json``, so a film the rating pass already asked about costs
+    nothing). Films with no free image then ask IMDb for its poster, several
+    at once.
     """
+    out = known_facts(articles)
     wanted: list[str] = []
-    out: dict[str, dict] = {}
-    with _FACTS_LOCK:
-        for name in articles:
-            name = str(name or "").strip()
-            if not name:
-                continue
-            if name in _FACTS:
-                out[name] = _scored(_FACTS[name])
-            elif name not in wanted:
-                wanted.append(name)
-
+    for name in articles:
+        name = str(name or "").strip()
+        if name and name not in out and name not in wanted:
+            wanted.append(name)
     if not wanted:
         return out
     # With lookups switched off there is still the rating and the IMDb id for
@@ -1454,56 +1532,59 @@ def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
     imdb_budget = IMDB_POSTERS_PER_CALL
     for start in range(0, len(wanted), FACT_BATCH):
         batch = wanted[start:start + FACT_BATCH]
-        # Either half failing leaves the other half's answers standing: a row
-        # with a poster and no rating is still a better row.
-        try:
-            thumbs = page_images(batch, size)
-        except Exception as exc:
-            log(f"lists: page images failed: {type(exc).__name__}: {exc}")
-            thumbs = {}
         asking = [name for name in batch
                   if not certs.STORE.known(key_of({"article": name}))]
-        if asking:
+        # Either half failing leaves the other half's answers standing: a row
+        # with a poster and no rating is still a better row.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            images_call = pool.submit(page_images, batch, size)
+            learn_call = pool.submit(learn, asking) if asking else None
             try:
-                learn(asking)
+                thumbs = images_call.result()
             except Exception as exc:
-                # Not written down: a blip is not the same answer as "no
-                # rating", and recording it as one would be permanent.
-                log(f"lists: wikidata failed: {type(exc).__name__}: {exc}")
+                log(f"lists: page images failed: {type(exc).__name__}: {exc}")
+                thumbs = {}
+            if learn_call is not None:
+                try:
+                    learn_call.result()
+                except Exception as exc:
+                    # Not written down: a blip is not the same answer as "no
+                    # rating", and recording it as one would be permanent.
+                    log(f"lists: wikidata failed: {type(exc).__name__}: {exc}")
         # No free image on Wikipedia (most film posters are not free): IMDb's
-        # poster instead, for a film whose IMDb id is known. A few per call,
-        # since each is a call of its own; a film past that is not written
-        # down as having none, so the next call asks for it.
+        # poster instead, for a film whose IMDb id is known. A film past the
+        # budget is not written down as having none, so the next call asks.
         later: set[str] = set()
+        need: list[tuple[str, str]] = []
         for name in batch:
             if thumbs.get(name):
                 continue
             imdb_id = certs.STORE.get(key_of({"article": name}))[0]
-            if not imdb_id:
-                continue
-            if imdb_budget <= 0:
-                later.add(name)
-                continue
-            imdb_budget -= 1
-            poster = imdb_poster(imdb_id)
-            if poster is None:
-                later.add(name)
-            elif poster:
-                thumbs[name] = poster
+            if imdb_id:
+                need.append((name, imdb_id))
+        asked, rest = need[:max(imdb_budget, 0)], need[max(imdb_budget, 0):]
+        imdb_budget -= len(asked)
+        later.update(name for name, _ident in rest)
+        if asked:
+            with ThreadPoolExecutor(max_workers=IMDB_POSTER_WORKERS) as pool:
+                posters = list(pool.map(lambda pair: imdb_poster(pair[1]), asked))
+            for (name, _ident), poster in zip(asked, posters):
+                if poster is None:
+                    later.add(name)
+                elif poster:
+                    thumbs[name] = poster
         with _FACTS_LOCK:
-            # Bounded rather than evicted one at a time: this is a convenience
-            # that costs two calls to rebuild, so the simplest cap will do.
-            if len(_FACTS) >= FACT_MAX:
-                _FACTS.clear()
             for name in batch:
-                fact = _from_store(name, thumbs.get(name, ""))
+                thumb = thumbs.get(name, "")
                 if name not in later:
-                    _FACTS[name] = fact
-                out[name] = _scored(fact)
+                    _THUMBS[name] = thumb or _today()
+                out[name] = _scored(_from_store(name, thumb))
+            _save_soon()
     return out
 
 
-IMDB_POSTERS_PER_CALL = 12
+IMDB_POSTERS_PER_CALL = 40
+IMDB_POSTER_WORKERS = 8
 IMDB_SUGGEST_ID = "https://v3.sg.media-imdb.com/suggestion/t/{ident}.json"
 
 

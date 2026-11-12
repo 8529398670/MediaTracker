@@ -187,6 +187,10 @@ class HostPace:
         "api.themoviedb.org": 0.06,
         "image.tmdb.org": 0.02,
         "upload.wikimedia.org": 0.2,
+        # IMDb's suggestion JSON and Amazon's poster images are static files
+        # on CDNs; a page of posters at the default gap took a quarter minute.
+        "media-imdb.com": 0.05,
+        "media-amazon.com": 0.03,
     }
 
     def __init__(self, default: float = 0.3) -> None:

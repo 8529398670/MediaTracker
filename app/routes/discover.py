@@ -119,6 +119,7 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         film["title_id"] = ident
         film["my_status"] = (states.get(ident) or {}).get("status") if ident else None
         film["verdict"] = (mine.get(film["key"]) or {}).get("v")
+    attach_known_facts(result["films"])
     # A library title whose key did not line up with the catalogue's (an old
     # import under a slightly different name) still found its film above:
     # keep it off the page if it is hidden.
@@ -148,6 +149,26 @@ def meta_payload() -> dict[str, Any]:
 
 async def meta(request: Request) -> Response:
     return JSONResponse(await run(meta_payload))
+
+
+def attach_known_facts(films: list[dict[str, Any]]) -> None:
+    """Posters, IMDb ids and ratings already learned go out with the first
+    response, so a page seen before draws whole at once and only the films
+    never asked about wait for /api/discover/facts. Such a film is marked
+    "facts": true and is not asked about again."""
+    known = catalogue.known_facts([film.get("article") or "" for film in films])
+    for film in films:
+        fact = known.get(film.get("article") or "")
+        if not fact:
+            continue
+        film["facts"] = True
+        film["poster"] = CACHE.path_for(fact.get("thumb") or "") or film.get("poster") or ""
+        film["thumb"] = fact.get("thumb") or film.get("thumb") or ""
+        film["imdb"] = film.get("imdb") or fact.get("imdb") or ""
+        if not film.get("imdbScore") and fact.get("imdbScore"):
+            film["imdbScore"] = fact["imdbScore"]
+        if not film.get("rating") and fact.get("rating"):
+            film["rating"] = fact["rating"]
 
 
 def facts_for(articles: list[str]) -> dict[str, Any]:

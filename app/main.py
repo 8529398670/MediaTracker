@@ -131,6 +131,7 @@ def build_app(
         finally:
             media_task.cancel()
             media_jobs.stop_all()
+            catalogue.flush_posters()
             # By now requests have finished and streams have ended (serve's
             # on_stop). Jobs next, since they write to the log; the log last.
             watcher.cancel()

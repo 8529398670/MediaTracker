@@ -123,31 +123,53 @@ const DiscoverScreen = {
     this.skippedCount = ( data.verdicts || {} ).skip || 0;
     this.watchedCount = ( data.verdicts || {} ).watched || 0;
     this.libraryCount = ( data.verdicts || {} ).library || 0;
-    this.render();
+    if ( more ) this.appendGrid( data.films );
+    else this.render();
     this.loadFacts( data.films );
   },
 
-  // Posters and IMDb ids come a page at a time from Wikipedia and Wikidata
-  // (cached on the server after the first time).
+  // Posters and IMDb ids the server has not learned yet come from Wikipedia,
+  // Wikidata and IMDb (learned once, then kept on the server). Films it
+  // already knows came with them in the first response ("facts"). The
+  // batches go side by side, and each one redraws only the cards it changed,
+  // so the grid never flickers.
   async loadFacts( films ) {
-    const articles = films.map( ( film ) => film.article ).filter( Boolean );
-    for ( let i = 0; i < articles.length; i += 30 ) {
-      const query = articles.slice( i , i + 30 ).map( ( a ) => "a=" + encodeURIComponent( a ) ).join( "&" );
+    const token = this.token;
+    const articles = films.filter( ( film ) => film.article && !film.facts ).map( ( film ) => film.article );
+    const batches = [];
+    for ( let i = 0; i < articles.length; i += 30 ) batches.push( articles.slice( i , i + 30 ) );
+    await Promise.all( batches.map( async ( batch ) => {
+      const query = batch.map( ( a ) => "a=" + encodeURIComponent( a ) ).join( "&" );
       let facts;
       try { facts = await Api.request( "/api/discover/facts?" + query ); } catch ( error ) { return; }
-      let changed = false;
+      if ( token !== this.token ) return;
+      const changed = [];
       this.films.forEach( ( film ) => {
         const fact = facts[ film.article ];
-        if ( !fact ) return;
+        if ( !fact || film.facts ) return;
+        film.facts = true;
+        const before = [ film.poster , film.imdb , film.imdbScore , film.rating ].join( "|" );
         film.poster = fact.poster || film.poster;
         film.thumb = fact.thumb || film.thumb;
         film.imdb = film.imdb || fact.imdb;
         if ( !film.imdbScore && fact.imdbScore ) film.imdbScore = fact.imdbScore;
         if ( !film.rating && fact.rating ) film.rating = fact.rating;
-        changed = true;
+        if ( [ film.poster , film.imdb , film.imdbScore , film.rating ].join( "|" ) !== before ) changed.push( film );
       } );
-      if ( changed ) this.renderGrid();
-    }
+      this.redrawCards( changed );
+    } ) );
+  },
+
+  // Rebuilds just these films' cards, where they stand.
+  redrawCards( films ) {
+    films.forEach( ( film ) => {
+      const old = this.grid.querySelector( '.media-card[data-id="' + CSS.escape( film.key ) + '"]' );
+      if ( !old ) return;
+      const row = this.row( film );
+      const at = this.result.rows.findIndex( ( r ) => r.t.id === film.key );
+      if ( at >= 0 ) this.result.rows[ at ] = row;
+      old.replaceWith( Card.build( row , this.card , {} ) );
+    } );
   },
 
   // -- drawing ------------------------------------------------------------------
@@ -339,6 +361,22 @@ const DiscoverScreen = {
     Dom.swap( this.grid , container );
     Dom.show( Dom.get( "discover-more" ) , this.films.length < this.total );
     Dom.show( Dom.get( "discover-empty" ) , shown.length === 0 );
+  },
+
+  // Load more: the next page's cards after the ones already there, so the
+  // posters on screen stay put.
+  appendGrid( films ) {
+    const container = this.grid.querySelector( ".media-grid" );
+    if ( !container ) { this.renderGrid(); return; }
+    const fragment = document.createDocumentFragment();
+    films.filter( ( film ) => this.visible( film ) ).forEach( ( film ) => {
+      const row = this.row( film );
+      this.result.rows.push( row );
+      fragment.appendChild( Card.build( row , this.card , {} ) );
+    } );
+    container.appendChild( fragment );
+    Dom.show( Dom.get( "discover-more" ) , this.films.length < this.total );
+    Dom.show( Dom.get( "discover-empty" ) , this.result.rows.length === 0 );
   },
 
   // The server leaves out watched and skipped films unless a Show switch is
