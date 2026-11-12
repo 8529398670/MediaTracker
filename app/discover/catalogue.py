@@ -1353,6 +1353,7 @@ def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
             out[name] = _scored(_from_store(name))
         return out
 
+    imdb_budget = IMDB_POSTERS_PER_CALL
     for start in range(0, len(wanted), FACT_BATCH):
         batch = wanted[start:start + FACT_BATCH]
         # Either half failing leaves the other half's answers standing: a row
@@ -1371,15 +1372,65 @@ def facts(articles: list[str], size: int = 200) -> dict[str, dict]:
                 # Not written down: a blip is not the same answer as "no
                 # rating", and recording it as one would be permanent.
                 log(f"lists: wikidata failed: {type(exc).__name__}: {exc}")
+        # No free image on Wikipedia (most film posters are not free): IMDb's
+        # poster instead, for a film whose IMDb id is known. A few per call,
+        # since each is a call of its own; a film past that is not written
+        # down as having none, so the next call asks for it.
+        later: set[str] = set()
+        for name in batch:
+            if thumbs.get(name):
+                continue
+            imdb_id = certs.STORE.get(key_of({"article": name}))[0]
+            if not imdb_id:
+                continue
+            if imdb_budget <= 0:
+                later.add(name)
+                continue
+            imdb_budget -= 1
+            poster = imdb_poster(imdb_id)
+            if poster is None:
+                later.add(name)
+            elif poster:
+                thumbs[name] = poster
         with _FACTS_LOCK:
             # Bounded rather than evicted one at a time: this is a convenience
             # that costs two calls to rebuild, so the simplest cap will do.
             if len(_FACTS) >= FACT_MAX:
                 _FACTS.clear()
             for name in batch:
-                _FACTS[name] = _from_store(name, thumbs.get(name, ""))
-                out[name] = _scored(_FACTS[name])
+                fact = _from_store(name, thumbs.get(name, ""))
+                if name not in later:
+                    _FACTS[name] = fact
+                out[name] = _scored(fact)
     return out
+
+
+IMDB_POSTERS_PER_CALL = 12
+IMDB_SUGGEST_ID = "https://v3.sg.media-imdb.com/suggestion/t/{ident}.json"
+
+
+def imdb_poster(ident: str) -> str | None:
+    """IMDb's poster for one title id: its address, "" when IMDb has none,
+    None when IMDb could not be asked (so it is asked again later)."""
+    if not re.fullmatch(r"tt\d{5,10}", ident or ""):
+        return ""
+    try:
+        payload = fetch_json(IMDB_SUGGEST_ID.format(ident=ident), timeout=4.0, tries=1)
+    except Exception as exc:
+        log(f"lists: imdb poster failed: {type(exc).__name__}: {exc}")
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for row in payload.get("d") or []:
+        if row.get("id") != ident:
+            continue
+        address = str((row.get("i") or {}).get("imageUrl") or "")
+        if not address.startswith("https://"):
+            return ""
+        # IMDb hands back the full-size scan; this asks its image server for
+        # one a card's width.
+        return address.replace("._V1_.jpg", "._V1_SX330.jpg") if address.endswith("._V1_.jpg") else address
+    return ""
 
 
 def learn(articles: list[str]) -> int:

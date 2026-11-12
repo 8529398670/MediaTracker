@@ -82,6 +82,7 @@ const SearchExtras = {
       const fact = facts[ film.article ];
       if ( !fact ) return;
       film.poster = fact.poster || film.poster;
+      film.thumb = fact.thumb || film.thumb;
       film.imdb = film.imdb || fact.imdb;
       if ( !film.imdbScore && fact.imdbScore ) film.imdbScore = fact.imdbScore;
       if ( !film.rating && fact.rating ) film.rating = fact.rating;
@@ -99,18 +100,19 @@ const SearchExtras = {
       return;
     }
     const shown = new Set( this.result.rows.map( ( row ) => row.t.id ) );
-    const everywhere = Library.pool( "all" , "all" );
+    // Every list -- the open one's "all" holds neither Watched nor Not for me.
+    const everywhere = [ "all" , "watched" , "skipped" ].reduce( ( rows , list ) => rows.concat( Library.pool( "all" , list ) ) , [] );
     const match = Search.matcher( text );
     const elsewhere = match ? everywhere.filter( ( row ) => !shown.has( row.t.id ) && match( row ) ) : [];
     const card = LibraryScreen.card;
     if ( elsewhere.length ) {
-      box.appendChild( this.section( "library.search_elsewhere" , "library.search_elsewhere_note" , elsewhere.slice( 0 , this.ELSEWHERE_LIMIT ) , card , "" ) );
+      box.appendChild( this.section( "library.search_elsewhere" , "library.search_elsewhere_note" , elsewhere.slice( 0 , this.ELSEWHERE_LIMIT ) , card , "" , { searching: true } ) );
     }
     // Nothing anywhere by those words: what is spelled nearly like them.
     if ( !this.result.rows.length && !elsewhere.length ) {
       const close = Search.closeMatcher( text );
       const near = close ? everywhere.filter( close ).slice( 0 , this.ELSEWHERE_LIMIT ) : [];
-      if ( near.length ) box.appendChild( this.section( "library.search_close" , "library.search_close_note" , near , card , "" ) );
+      if ( near.length ) box.appendChild( this.section( "library.search_close" , "library.search_close_note" , near , card , "" , { searching: true } ) );
     }
     const found = this.found.get( text );
     if ( found === undefined || found === null ) {

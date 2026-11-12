@@ -255,7 +255,7 @@ const LibraryScreen = {
       nodes.push( container );
       group.rows.forEach( ( row ) => work.push( [ container , row ] ) );
     } );
-    const options = ( row ) => ( { selecting: this.selecting , selected: this.selected.has( row.t.id ) } );
+    const options = ( row ) => ( { selecting: this.selecting , selected: this.selected.has( row.t.id ) , searching: Boolean( this.query.text ) } );
     // The first screenful at once, the rest a chunk per frame, so a thousand
     // cards never freeze the page.
     const step = ( start ) => {
@@ -288,7 +288,7 @@ const LibraryScreen = {
       if ( this.matches( row ) ) this.render();
       return;
     }
-    const node = Card.build( row , this.card , { selecting: this.selecting , selected: this.selected.has( id ) } );
+    const node = Card.build( row , this.card , { selecting: this.selecting , selected: this.selected.has( id ) , searching: Boolean( this.query.text ) } );
     old.replaceWith( node );
     if ( !this.matches( row ) ) {
       node.classList.add( "is-leaving" );

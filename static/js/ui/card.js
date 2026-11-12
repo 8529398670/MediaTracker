@@ -37,8 +37,9 @@ const Card = {
     // style.css shows whichever one fits the layout. The corner one can be
     // turned off on Account (Prefs ui.corner_watch) -- except on cards that
     // carry the Add corner too (Discover films under a library search), which
-    // always show both.
-    const cornerWatch = Prefs.ui( "corner_watch" , true ) || settings.addCorner;
+    // always show both, and on a watched title found by a search, which always
+    // shows that it is watched.
+    const cornerWatch = Prefs.ui( "corner_watch" , true ) || settings.addCorner || ( settings.searching && status === "watched" );
     const watch = t.deleted_at || !cornerWatch ? null : this.watchButton( row , "media-watch" );
     if ( watch ) article.appendChild( watch );
     // Add to library, on the poster's top-left corner -- only where asked
