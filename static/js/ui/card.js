@@ -35,8 +35,11 @@ const Card = {
     // Watched, on the poster's top-right corner. In list and compact (and a
     // grid card with no poster) it is the first button on the face instead;
     // style.css shows whichever one fits the layout. The corner one can be
-    // turned off on Account (Prefs ui.corner_watch).
-    const watch = t.deleted_at || !Prefs.ui( "corner_watch" , true ) ? null : this.watchButton( row , "media-watch" );
+    // turned off on Account (Prefs ui.corner_watch) -- except on cards that
+    // carry the Add corner too (Discover films under a library search), which
+    // always show both.
+    const cornerWatch = Prefs.ui( "corner_watch" , true ) || settings.addCorner;
+    const watch = t.deleted_at || !cornerWatch ? null : this.watchButton( row , "media-watch" );
     if ( watch ) article.appendChild( watch );
     // Add to library, on the poster's top-left corner -- only where asked
     // (Discover films under a library search), and only for a film not in
@@ -192,7 +195,8 @@ const Card = {
     return Dom.el( "button" , {
       class: "btn media-add",
       attrs: { type: "button" , "data-action": "add" , title: text , "aria-label": text },
-      children: [ this.icon( "check-lg" ) ],
+      // An open journal-bookmark, filled while pointed at.
+      children: [ this.icon( "journal-bookmark" ) , this.icon( "journal-bookmark-fill" ) ],
     } );
   },
 

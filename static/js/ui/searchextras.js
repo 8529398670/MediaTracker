@@ -119,7 +119,11 @@ const SearchExtras = {
       const films = found.films.filter( ( film ) => !film.title_id || !Library.get( film.title_id ) );
       this.rows = films.map( ( film ) => DiscoverScreen.row( film ) );
       if ( this.rows.length ) {
-        const discoverCard = Object.assign( {} , Prefs.card( "discover" ) , { layout: card.layout , size: card.size } );
+        // Always with a poster, so both corner checks (Add, Watched) have
+        // somewhere to sit.
+        const discoverPrefs = Prefs.card( "discover" );
+        const fields = discoverPrefs.fields.indexOf( "poster" ) >= 0 ? discoverPrefs.fields : [ "poster" ].concat( discoverPrefs.fields );
+        const discoverCard = Object.assign( {} , discoverPrefs , { layout: card.layout , size: card.size , fields: fields } );
         const section = this.section( "library.search_discover" , found.fuzzy ? "library.search_discover_close_note" : "library.search_discover_note" , this.rows , discoverCard , "search-extra-discover" , { addCorner: true } );
         section.querySelector( ".search-extra-head" ).appendChild( Dom.el( "a" , {
           class: "btn btn-sm btn-outline-primary ms-auto",
