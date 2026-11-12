@@ -1143,6 +1143,7 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
           votes_from: int = 0, votes_to: int = 0,
           limit: int = 60, offset: int = 0, passed: set | None = None,
           watched: str = "hide", seen: set | None = None,
+          library: str = "all", owned: set | None = None,
           fuzzy: bool = False) -> dict:
     """The merged catalogue, filtered and paged.
 
@@ -1203,6 +1204,10 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
     want_skipped = skipped == "only"
     seen = seen or set()
     want_seen = watched == "only"
+    # The keys of what is already in the family library: left out when
+    # `library="hide"`, so Discover shows only what is new to you.
+    owned = owned or set()
+    hide_owned = library == "hide"
 
     hits: list[list] = []
     listed: set[str] = set()
@@ -1214,6 +1219,8 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
         if skipped != "all" and (row[R_KEY] in passed) != want_skipped:
             continue
         if watched != "all" and (row[R_KEY] in seen) != want_seen:
+            continue
+        if hide_owned and row[R_KEY] in owned:
             continue
         if topic and topic not in row[R_TOPICS]:
             continue
@@ -1289,8 +1296,22 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             "facets": {"genres": genre_facet(genre_counts),
                        "years": year_counts,
                        "ratings": rating_facet(rating_counts)},
-            "verdicts": {"skip": len(passed), "watched": len(seen)},
+            "verdicts": {"skip": len(passed), "watched": len(seen),
+                         "library": len(owned & catalogue_keys())},
             "coverage": coverage()}
+
+
+_KEYS: tuple[int, frozenset] = (0, frozenset())
+
+
+def catalogue_keys() -> frozenset:
+    """Every catalogue key, built once per catalogue: what a library count
+    is checked against."""
+    global _KEYS
+    rows = catalogue()
+    if _KEYS[0] != id(rows):
+        _KEYS = (id(rows), frozenset(row[R_KEY] for row in rows))
+    return _KEYS[1]
 
 
 def _cast_of(row: list) -> list:

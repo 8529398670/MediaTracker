@@ -27,14 +27,14 @@ const DiscoverScreen = {
   token: 0,
 
   DEFAULTS: { sort: "-notable" , watched: "hide" , skipped: "hide" , genremode: "any" },
-  FIELDS: [ "q" , "from" , "to" , "genre" , "genremode" , "rating" , "norating" , "imdbfrom" , "imdbto" , "votesfrom" , "votesto" , "topic" , "only" , "actor" , "watched" , "skipped" , "sort" ],
+  FIELDS: [ "q" , "from" , "to" , "genre" , "genremode" , "rating" , "norating" , "imdbfrom" , "imdbto" , "votesfrom" , "votesto" , "topic" , "only" , "actor" , "library" , "watched" , "skipped" , "sort" ],
 
   // The sort keys the catalogue has data for (app/discover/catalogue.py).
   SORT_KEYS: [ "notable" , "imdb_weighted" , "imdb" , "votes" , "year" , "title" , "cert" , "random" ],
   // What the old sort select sent, still in saved links.
   LEGACY_SORTS: { notable: "-notable" , imdb: "-imdb_weighted" , year: "-year" , "year-asc": "year" , title: "title" },
   // The Filters sheet's sections, in order.
-  SHEET: [ "genre" , "year" , "imdb" , "votes" , "cert" , "nocert" , "topic" , "only" , "showwatched" , "showskipped" ],
+  SHEET: [ "genre" , "year" , "imdb" , "votes" , "cert" , "nocert" , "topic" , "only" , "hidelibrary" , "showwatched" , "showskipped" ],
   sheetOpen: false,
 
   async init() {
@@ -122,6 +122,7 @@ const DiscoverScreen = {
     this.facets = data.facets;
     this.skippedCount = ( data.verdicts || {} ).skip || 0;
     this.watchedCount = ( data.verdicts || {} ).watched || 0;
+    this.libraryCount = ( data.verdicts || {} ).library || 0;
     this.render();
     this.loadFacts( data.films );
   },
@@ -229,6 +230,7 @@ const DiscoverScreen = {
     if ( this.params.norating ) filters.nocert = { mode: "any" , values: this.list( "norating" ) };
     if ( this.params.topic ) filters.topic = { value: this.params.topic };
     if ( this.params.only ) filters.only = { value: this.params.only };
+    if ( this.params.library === "hide" ) filters.hidelibrary = { value: true };
     if ( this.value( "watched" ) !== "hide" ) filters.showwatched = { value: true };
     if ( this.value( "skipped" ) !== "hide" ) filters.showskipped = { value: true };
     const sort = this.value( "sort" ).split( "," ).filter( Boolean ).map( ( part ) => ( { key: part.replace( /^-/ , "" ) , dir: part.charAt( 0 ) === "-" ? "desc" : "asc" } ) ).filter( ( step ) => this.SORT_KEYS.indexOf( step.key ) >= 0 );
@@ -258,6 +260,7 @@ const DiscoverScreen = {
       norating: f.nocert ? f.nocert.values.join( "," ) : "",
       topic: f.topic ? f.topic.value : "",
       only: f.only ? f.only.value : "",
+      library: f.hidelibrary ? "hide" : "",
       watched: keep( "watched" , Boolean( f.showwatched ) ),
       skipped: keep( "skipped" , Boolean( f.showskipped ) ),
       sort: next.sort.map( ( step ) => ( step.dir === "desc" ? "-" : "" ) + step.key ).join( "," ),
@@ -283,7 +286,7 @@ const DiscoverScreen = {
     this.SHEET.forEach( ( id ) => {
       const value = query.filters[ id ];
       if ( !value ) return;
-      const text = id === "showwatched" || id === "showskipped"
+      const text = id === "hidelibrary" ? I18n.get( "discover.library_hide" ) : id === "showwatched" || id === "showskipped"
         ? I18n.get( "discover." + ( id === "showwatched" ? "watched_" + this.value( "watched" ) : "skipped_" + this.value( "skipped" ) ) )
         : I18n.get( "filters.name_" + id ) + ": " + this.chipText( id , value );
       box.appendChild( FilterBar.chip( text , () => without( id ) ) );
@@ -303,6 +306,7 @@ const DiscoverScreen = {
       votes: { kind: "range" , step: 100 , noUnknown: true },
       topic: { kind: "choice" , anyLabel: "discover.topic_any" , options: () => ( this.meta.topics || [] ).map( ( t ) => [ t.id , t.label ] ) },
       only: { kind: "choice" , anyLabel: "discover.only_any" , options: () => [ [ "boxoffice" , I18n.get( "discover.only_boxoffice" ) ] , [ "awarded" , I18n.get( "discover.only_awarded" ) ] ] },
+      hidelibrary: { kind: "switch" , text: () => I18n.fill( "discover.hide_library" , { n: this.libraryCount.toLocaleString() } ) },
       showwatched: { kind: "switch" , text: () => I18n.fill( "discover.show_watched" , { n: this.watchedCount || 0 } ) },
       showskipped: { kind: "switch" , text: () => I18n.fill( "discover.show_skipped" , { n: this.skippedCount || 0 } ) },
     };
@@ -349,6 +353,8 @@ const DiscoverScreen = {
       const mode = this.value( name );
       return mode === "all" || ( mode === "only" ) === on;
     };
+    // Added on this page while "in my library" is hidden: it goes too.
+    if ( this.params.library === "hide" && inLibrary ) return false;
     return want( "skipped" , skipped ) && want( "watched" , watched );
   },
 

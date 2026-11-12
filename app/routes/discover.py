@@ -73,7 +73,9 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
     cache = library_cache.get(store)
     states = cache.states_for(subject_id)
     seen: set[str] = set()
+    owned: set[str] = set()
     for title in cache.live_titles():
+        owned.add(catalogue_key_for(title))
         status = (states.get(title["id"]) or {}).get("status")
         if status == "watched":
             seen.add(catalogue_key_for(title))
@@ -103,6 +105,8 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         passed=passed,
         watched=watched,
         seen=seen,
+        library="hide" if params.get("library") == "hide" else "all",
+        owned=owned,
     )
     result = catalogue.query(**query)
     # Nothing by those exact words: try them as near-spellings, and say so.
@@ -123,7 +127,8 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         hidden.add("watched")
     if query["skipped"] == "hide":
         hidden.add("dropped")
-    result["films"] = [film for film in result["films"] if film["my_status"] not in hidden]
+    result["films"] = [film for film in result["films"] if film["my_status"] not in hidden
+                       and not (query["library"] == "hide" and film["title_id"])]
     return result
 
 
