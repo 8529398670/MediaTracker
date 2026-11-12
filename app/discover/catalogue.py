@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import time
+import zlib
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -928,56 +929,115 @@ def coverage() -> dict:
             "films": sum(int(n) for n in (index.get("years") or {}).values())}
 
 
-# `notable` needs no sorting: the catalogue is written in that order. `imdb`
-# is not in here because a lean row does not carry the score; it is worked
-# out in `query`, from the ids the rating pass wrote down.
-SORTS = {
-    "notable": None,
-    "title": lambda r: r[R_HAY],
-    "year": lambda r: (-(r[R_YEAR] or 0), -r[R_SCORE]),
-    "year-asc": lambda r: ((r[R_YEAR] or 9999), -r[R_SCORE]),
-}
+# The orders Discover offers: the same keys the library's sort menu has,
+# wherever the catalogue has the data for them. A sort is up to three of
+# these, each `key` (low to high) or `-key` (high to low), the way the
+# library writes its own in the URL: `-imdb_weighted,-year`.
+SORT_KEYS = ("notable", "imdb_weighted", "imdb", "votes", "year", "title",
+             "cert", "random")
+# What Discover's sort select used to send, still read from saved links.
+LEGACY_SORTS = {"imdb": "-imdb_weighted", "year": "-year",
+                "year-asc": "year", "notable": "-notable", "title": "title"}
+DEFAULT_SORT = "-notable"
 
 
-# Every catalogue film's IMDb rank, worked out once per ratings file and per
-# change to the ids rather than once per query: looking up twenty-eight
+def sort_steps(value: object) -> list[tuple[str, bool]]:
+    """`-imdb_weighted,year` as [("imdb_weighted", True), ("year", False)]:
+    at most three keys, unknown ones dropped, never empty."""
+    text = str(value or "").strip()
+    text = LEGACY_SORTS.get(text, text)
+    steps: list[tuple[str, bool]] = []
+    for part in text.split(","):
+        part = part.strip()
+        desc = part.startswith("-")
+        key = part.lstrip("-")
+        if key in SORT_KEYS and key not in [k for k, _ in steps]:
+            steps.append((key, desc))
+    return steps[:3] or [("notable", True)]
+
+
+# Every catalogue film's IMDb numbers, worked out once per ratings file and
+# per change to the ids rather than once per query: looking up twenty-eight
 # thousand scores is a quarter of a second, and a sort is asked for on every
 # scroll to the next page.
-_RANKS: tuple[object, dict[str, float]] = (None, {})
-_RANKS_LOCK = threading.Lock()
+_SCORES: tuple[object, dict[str, tuple[float, int, int]]] = (None, {})
+_SCORES_LOCK = threading.Lock()
 
 
-def imdb_ranks() -> dict[str, float]:
-    """``{catalogue key: weighted score}`` for every film IMDb has a score for.
+def imdb_scores() -> dict[str, tuple[float, int, int]]:
+    """``{catalogue key: (weighted score, score in tenths, votes)}`` for every
+    film IMDb has a score for.
 
     The version is read before the answers are, so an answer written while
     this runs makes the next call build again rather than keeping a table
     older than its stamp says.
     """
-    global _RANKS
+    global _SCORES
     stamp = (id(imdb.STORE.table), certs.STORE.version)
-    with _RANKS_LOCK:
-        if _RANKS[0] == stamp:
-            return _RANKS[1]
-    ranks: dict[str, float] = {}
+    with _SCORES_LOCK:
+        if _SCORES[0] == stamp:
+            return _SCORES[1]
+    table: dict[str, tuple[float, int, int]] = {}
     for key, entry in certs.STORE.snapshot().items():
         found = imdb.STORE.get(entry[certs.E_IMDB])
         if found:
-            ranks[key] = imdb.weighted(*found)
-    with _RANKS_LOCK:
-        _RANKS = (stamp, ranks)
-    return ranks
+            table[key] = (imdb.weighted(*found), int(found[0]), int(found[1]))
+    with _SCORES_LOCK:
+        _SCORES = (stamp, table)
+    return table
+
+
+_ARTICLE = re.compile(r"^(the|a|an) ")
+
+
+def _sort_value(key: str, scores: dict, answers: dict, today: str):
+    """How a lean row reads for one sort key, or None when it is not known."""
+    if key == "notable":
+        return lambda row: row[R_SCORE]
+    if key == "title":
+        return lambda row: _ARTICLE.sub("", row[R_HAY]) or None
+    if key == "year":
+        return lambda row: row[R_YEAR] or None
+    if key in ("imdb_weighted", "imdb", "votes"):
+        at = ("imdb_weighted", "imdb", "votes").index(key)
+        return lambda row: (scores.get(row[R_KEY]) or (None, None, None))[at]
+    if key == "cert":
+        def place(row):
+            entry = answers.get(row[R_KEY])
+            found = [certs.ORDER.index(r) for r in (entry[certs.E_RATINGS] if entry else []) if r in certs.ORDER]
+            return min(found) if found else None
+        return place
+    if key == "random":
+        return lambda row: zlib.crc32((row[R_KEY] + today).encode())
+    return lambda row: None
+
+
+def sort_hits(hits: list[list], steps: list[tuple[str, bool]], answers: dict) -> list[list]:
+    """The rows in the order asked for.
+
+    Stable sorts, the last key first, so the first key decides and the next
+    breaks its ties. As in the library, a film with nothing to sort by (no
+    IMDb score, no year) goes last whichever way a key runs; films that tie
+    all the way keep the notable order they arrived in.
+    """
+    if steps == [("notable", True)]:
+        return hits  # the catalogue is written in that order
+    scores = imdb_scores()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for key, desc in reversed(steps):
+        value = _sort_value(key, scores, answers, today)
+        known, missing = [], []
+        for row in hits:
+            v = value(row)
+            (missing if v is None else known).append((v, row))
+        known.sort(key=lambda pair: pair[0], reverse=desc)
+        hits = [row for _, row in known] + [row for _, row in missing]
+    return hits
 
 
 def by_imdb(hits: list[list]) -> None:
-    """Best first, by IMDb's score discounted for how few voted.
-
-    A film with no score — no IMDb id yet, or nobody has rated it — goes
-    after every one that has one. The sort is stable, so those keep the
-    notable order they arrived in, and so do films that tie.
-    """
-    ranks = imdb_ranks()
-    hits.sort(key=lambda row: -ranks.get(row[R_KEY], -1.0))
+    """Best first, by IMDb's score discounted for how few voted."""
+    hits[:] = sort_hits(hits, [("imdb_weighted", True)], certs.STORE.snapshot())
 
 
 def wanted_genres(value: object) -> list[str]:
@@ -1078,6 +1138,9 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
           topic: str = "", genres: object = (), genre_mode: str = "any",
           actor: str = "", only: str = "", skipped: str = "hide",
           ratings: object = (), sort: str = "notable",
+          no_ratings: object = (),
+          imdb_from: float = 0, imdb_to: float = 0,
+          votes_from: int = 0, votes_to: int = 0,
           limit: int = 60, offset: int = 0, passed: set | None = None,
           watched: str = "hide", seen: set | None = None,
           fuzzy: bool = False) -> dict:
@@ -1119,6 +1182,14 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
     wanted = wanted_genres(genres)
     every = genre_mode == "all"
     rated = wanted_ratings(ratings)
+    unwanted = wanted_ratings(no_ratings)
+    # IMDb's score and votes narrow the films the same way a topic does:
+    # before anything is counted. A film IMDb has no score for is out as soon
+    # as either is asked for.
+    scored = bool(imdb_from or imdb_to or votes_from or votes_to)
+    scores = imdb_scores() if scored else {}
+    low = round(float(imdb_from or 0) * 10)
+    high = round(float(imdb_to or 0) * 10)
     # Copied once rather than looked up under a lock per row: a fill pass may
     # be writing to it while this walk is reading it.
     answers = certs.STORE.snapshot()
@@ -1158,6 +1229,14 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             continue
         if billed and not any(billed in name for name in _cast_of(row)):
             continue
+        if scored:
+            found = scores.get(row[R_KEY])
+            if not found:
+                continue
+            if (low and found[1] < low) or (high and found[1] > high):
+                continue
+            if (votes_from and found[2] < votes_from) or (votes_to and found[2] > votes_to):
+                continue
 
         year = row[R_YEAR] or 0
         in_years = ((not year_from or year >= year_from)
@@ -1167,7 +1246,8 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
                      or (all(g in mine for g in wanted) if every
                          else any(g in mine for g in wanted)))
         certified = _rating_ids(row[R_KEY], answers)
-        in_ratings = not rated or any(r in rated for r in certified)
+        in_ratings = ((not rated or any(r in rated for r in certified))
+                      and not any(r in unwanted for r in certified))
 
         # Each count is worked out with its own filter lifted and the other
         # two applied, so a number says what *choosing* it would give.
@@ -1187,11 +1267,7 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             listed.add(row[R_KEY])
             hits.append(row)
 
-    order = SORTS.get(sort)
-    if order:
-        hits.sort(key=order)
-    elif sort == "imdb":
-        by_imdb(hits)
+    hits = sort_hits(hits, sort_steps(sort), answers)
     limit = max(1, min(limit, 300))
     # The rating travels with the row rather than only with the poster call
     # that follows it: having just filtered by PG-13, seeing it appear on the
@@ -1208,7 +1284,8 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
     return {"total": len(hits), "offset": offset,
             "films": page,
             "genres": wanted, "genreMode": "all" if every else "any",
-            "actor": actor, "ratings": rated,
+            "actor": actor, "ratings": rated, "noRatings": unwanted,
+            "sort": ",".join(("-" if desc else "") + key for key, desc in sort_steps(sort)),
             "facets": {"genres": genre_facet(genre_counts),
                        "years": year_counts,
                        "ratings": rating_facet(rating_counts)},

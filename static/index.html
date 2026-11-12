@@ -316,35 +316,23 @@
 
         <!-- Discover: the Wikipedia film catalogue; see screens/discover.js. -->
         <section class="view library-view view-edge" data-view="discover" id="discover-panel" hidden>
-          <div class="library-head">
-            <h2 class="h4 mb-0" data-i18n="discover.heading"></h2>
-            <span id="discover-count" class="text-body-secondary small"></span>
-          </div>
-          <p class="text-body-secondary mb-0" data-i18n="discover.description"></p>
+          <!-- The same toolbar as the library's: the filters live in the
+               shared sheet (#filter-sheet), the sort in its own menu. -->
           <div class="library-toolbar">
             <div class="input-group library-search">
               <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
-              <input id="discover-search" class="form-control" type="search" autocomplete="off" data-i18n-attr="placeholder:discover.search_placeholder,aria-label:discover.search_placeholder" />
+              <input id="discover-search" class="form-control" type="search" autocomplete="off" spellcheck="false" data-i18n-attr="placeholder:discover.search_placeholder,aria-label:discover.search_placeholder" />
             </div>
             <div class="library-tools">
-              <div class="input-group discover-years">
-                <span class="input-group-text" data-i18n="filters.name_year"></span>
-                <input id="discover-from" class="form-control" type="number" min="1900" max="2100" inputmode="numeric" data-i18n-attr="placeholder:filters.from,aria-label:filters.from" />
-                <input id="discover-to" class="form-control" type="number" min="1900" max="2100" inputmode="numeric" data-i18n-attr="placeholder:filters.to,aria-label:filters.to" />
+              <button class="btn btn-outline-secondary position-relative" type="button" data-bs-toggle="offcanvas" data-bs-target="#filter-sheet" aria-controls="filter-sheet">
+                <i class="bi bi-funnel" aria-hidden="true"></i>
+                <span class="btn-label" data-i18n="filters.button"></span>
+                <span id="discover-filters-badge" class="badge rounded-pill text-bg-primary" hidden></span>
+              </button>
+              <div class="dropdown">
+                <button id="discover-sort-button" class="btn btn-outline-secondary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"></button>
+                <div id="discover-sort-menu" class="dropdown-menu dropdown-menu-end sort-menu p-3"></div>
               </div>
-              <select id="discover-sort" class="form-select w-auto" data-i18n-attr="aria-label:sort.heading">
-                <option value="notable" data-i18n="discover.sort_notable"></option>
-                <option value="imdb" data-i18n="discover.sort_imdb"></option>
-                <option value="year" data-i18n="discover.sort_year"></option>
-                <option value="year-asc" data-i18n="discover.sort_year_asc"></option>
-                <option value="title" data-i18n="discover.sort_title"></option>
-              </select>
-              <select id="discover-topic" class="form-select w-auto" data-i18n-attr="aria-label:discover.topic"><option value="" data-i18n="discover.topic_any"></option></select>
-              <select id="discover-only" class="form-select w-auto" data-i18n-attr="aria-label:discover.only">
-                <option value="" data-i18n="discover.only_any"></option>
-                <option value="boxoffice" data-i18n="discover.only_boxoffice"></option>
-                <option value="awarded" data-i18n="discover.only_awarded"></option>
-              </select>
               <div class="btn-group" role="group" data-i18n-attr="aria-label:customize.layout">
                 <button class="btn btn-outline-secondary" type="button" data-discover-layout="grid" data-i18n-attr="title:customize.layout_grid,aria-label:customize.layout_grid"><i class="bi bi-grid-3x2-gap" aria-hidden="true"></i></button>
                 <button class="btn btn-outline-secondary" type="button" data-discover-layout="list" data-i18n-attr="title:customize.layout_list,aria-label:customize.layout_list"><i class="bi bi-view-list" aria-hidden="true"></i></button>
@@ -352,33 +340,11 @@
               </div>
             </div>
           </div>
-          <details class="discover-facets" open>
-            <summary class="small fw-semibold" data-i18n="discover.facets"></summary>
-            <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
-              <span class="small text-body-secondary" data-i18n="filters.name_genre"></span>
-              <div id="discover-genremode" class="btn-group btn-group-sm" role="group" hidden>
-                <button type="button" data-mode="any" data-i18n="filters.mode_any"></button>
-                <button type="button" data-mode="all" data-i18n="filters.mode_all"></button>
-              </div>
-            </div>
-            <div id="discover-genres" class="facet-chips"></div>
-            <button id="discover-genres-more" class="btn btn-sm btn-link px-0" type="button" hidden></button>
-            <div class="small text-body-secondary mt-2" data-i18n="filters.name_cert"></div>
-            <div id="discover-ratings" class="facet-chips"></div>
-            <!-- Watched and skipped films are always left out; these bring
-                 them back (the watched / skipped params, "all" when on). -->
-            <div class="d-flex flex-wrap gap-3 mt-2">
-              <div class="form-check form-switch mb-0">
-                <input id="discover-show-watched" class="form-check-input" type="checkbox" role="switch" />
-                <label for="discover-show-watched" id="discover-show-watched-label" class="form-check-label small"></label>
-              </div>
-              <div class="form-check form-switch mb-0">
-                <input id="discover-show-skipped" class="form-check-input" type="checkbox" role="switch" />
-                <label for="discover-show-skipped" id="discover-show-skipped-label" class="form-check-label small"></label>
-              </div>
-            </div>
-          </details>
-          <div id="discover-chips" class="filter-chips" hidden></div>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span id="discover-count" class="small text-body-secondary"></span>
+            <div id="discover-chips" class="filter-chips" hidden></div>
+          </div>
           <div id="discover-grid" class="library-grid"></div>
           <p id="discover-empty" class="text-center text-body-secondary my-4" data-i18n="discover.empty" hidden></p>
           <button id="discover-more" class="btn btn-outline-primary align-self-center" type="button" data-i18n="discover.more" hidden></button>

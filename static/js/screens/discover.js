@@ -1,14 +1,17 @@
 // Discover: films from Wikipedia's lists -- box-office number ones, award
 // winners, every American film of a year, topics like Pre-Code Hollywood --
 // that are not on your list yet. Filtered and sorted on the server (it is
-// 27,000 films), with the same chips, the same Clear all and the same cards
-// as the library. Add puts a film in the family library;
+// 27,000 films), with the library's toolbar: the same Filters sheet, the
+// same Sort menu, the same chips, the same Clear all and the same cards.
+// The hash keeps its own flat words (below); toQuery() turns them into a
+// library-shaped query for the shared pieces, and apply() turns one back. Add puts a film in the family library;
 // Seen it marks it watched; Skip hides it from you (only you) and can be
 // taken back from "Skipped". What you have watched, and library titles you
 // skipped, are hidden too until you ask for them.
 //
 //   #discover?q=&from=1930&to=1949&genre=Comedy,Romance&genremode=all
-//            &rating=PG&topic=&only=awarded&watched=only&skipped=all&sort=imdb
+//            &rating=PG&norating=R&imdbfrom=7&votesfrom=10000&topic=&only=awarded
+//            &watched=all&skipped=all&sort=-imdb_weighted,-year
 const DiscoverScreen = {
   // Thrown when the person says no to adding a possible duplicate: stops the
   // add without an error toast or an Undo step.
@@ -23,8 +26,16 @@ const DiscoverScreen = {
   PAGE: 60,
   token: 0,
 
-  DEFAULTS: { sort: "notable" , watched: "hide" , skipped: "hide" , genremode: "any" },
-  FIELDS: [ "q" , "from" , "to" , "genre" , "genremode" , "rating" , "topic" , "only" , "actor" , "watched" , "skipped" , "sort" ],
+  DEFAULTS: { sort: "-notable" , watched: "hide" , skipped: "hide" , genremode: "any" },
+  FIELDS: [ "q" , "from" , "to" , "genre" , "genremode" , "rating" , "norating" , "imdbfrom" , "imdbto" , "votesfrom" , "votesto" , "topic" , "only" , "actor" , "watched" , "skipped" , "sort" ],
+
+  // The sort keys the catalogue has data for (app/discover/catalogue.py).
+  SORT_KEYS: [ "notable" , "imdb_weighted" , "imdb" , "votes" , "year" , "title" , "cert" , "random" ],
+  // What the old sort select sent, still in saved links.
+  LEGACY_SORTS: { notable: "-notable" , imdb: "-imdb_weighted" , year: "-year" , "year-asc": "year" , title: "title" },
+  // The Filters sheet's sections, in order.
+  SHEET: [ "genre" , "year" , "imdb" , "votes" , "cert" , "nocert" , "topic" , "only" , "showwatched" , "showskipped" ],
+  sheetOpen: false,
 
   async init() {
     Dom.show( Dom.get( "discover-panel" ) , true );
@@ -51,6 +62,8 @@ const DiscoverScreen = {
     const params = new URLSearchParams( cut < 0 ? "" : raw.slice( cut + 1 ) );
     this.params = {};
     this.FIELDS.forEach( ( name ) => { if ( params.get( name ) ) this.params[ name ] = params.get( name ); } );
+    if ( this.LEGACY_SORTS[ this.params.sort ] ) this.params.sort = this.LEGACY_SORTS[ this.params.sort ];
+    if ( this.params.sort === this.DEFAULTS.sort ) delete this.params.sort;
     this.load( false );
   },
 
@@ -93,7 +106,7 @@ const DiscoverScreen = {
   async load( more ) {
     const token = ++this.token;
     if ( !this.meta ) {
-      try { this.meta = await Api.request( "/api/discover/meta" ); this.fillTopics(); } catch ( error ) { this.meta = { topics: [] , coverage: { films: 0 } }; }
+      try { this.meta = await Api.request( "/api/discover/meta" ); } catch ( error ) { this.meta = { topics: [] , coverage: { films: 0 } }; }
     }
     const query = new URLSearchParams( Object.assign( {} , this.params , { limit: String( this.PAGE ) , offset: String( more ? this.films.length : 0 ) } ) );
     let data;
@@ -173,22 +186,145 @@ const DiscoverScreen = {
 
   render() {
     Dom.text( Dom.get( "discover-count" ) , I18n.fill( "discover.count" , { n: this.total.toLocaleString() , all: ( this.meta.coverage.films || 0 ).toLocaleString() } ) );
-    // The facets first: they are where a chip learns how to spell its genre.
-    this.renderFacets();
-    this.renderChips();
-    Dom.get( "discover-search" ).value = this.params.q || "";
-    Dom.get( "discover-from" ).value = this.params.from || "";
-    Dom.get( "discover-to" ).value = this.params.to || "";
-    Dom.get( "discover-sort" ).value = this.value( "sort" );
-    Dom.get( "discover-topic" ).value = this.params.topic || "";
-    Dom.get( "discover-only" ).value = this.params.only || "";
-    // On means "include them" (all); an old link's "only" also reads as on.
-    Dom.get( "discover-show-watched" ).checked = this.value( "watched" ) !== "hide";
-    Dom.get( "discover-show-skipped" ).checked = this.value( "skipped" ) !== "hide";
-    Dom.text( Dom.get( "discover-show-watched-label" ) , I18n.fill( "discover.show_watched" , { n: this.watchedCount || 0 } ) );
-    Dom.text( Dom.get( "discover-show-skipped-label" ) , I18n.fill( "discover.show_skipped" , { n: this.skippedCount || 0 } ) );
-    Dom.all( "[data-discover-layout]" ).forEach( ( button ) => button.classList.toggle( "active" , button.getAttribute( "data-discover-layout" ) === this.card.layout ) );
+    const query = this.toQuery();
+    this.renderChips( query );
+    const badge = Dom.get( "discover-filters-badge" );
+    const active = Object.keys( query.filters ).length;
+    Dom.text( badge , String( active ) );
+    Dom.show( badge , active > 0 );
+    SortControl.render( Dom.get( "discover-sort-button" ) , Dom.get( "discover-sort-menu" ) , query , ( next ) => this.apply( next ) , { keys: this.SORT_KEYS , group: false } );
+    // Only when it says something else, so typing is never overwritten.
+    const search = Dom.get( "discover-search" );
+    if ( search.value.trim() !== ( this.params.q || "" ) ) search.value = this.params.q || "";
+    Dom.all( "[data-discover-layout]" ).forEach( ( button ) => {
+      const on = button.getAttribute( "data-discover-layout" ) === this.card.layout;
+      button.classList.toggle( "active" , on );
+      button.setAttribute( "aria-pressed" , String( on ) );
+    } );
+    if ( this.sheetOpen ) this.renderSheet();
     this.renderGrid();
+  },
+
+  // -- the hash as a library-shaped query, and back ---------------------------
+
+  number( name ) {
+    const value = this.params[ name ];
+    return value == null || value === "" || isNaN( Number( value ) ) ? null : Number( value );
+  },
+
+  // Genres in the facet's spelling: an old link says genre=drama.
+  genreValues() {
+    const known = ( this.facets.genres || [] ).map( ( g ) => g.id );
+    return this.list( "genre" ).map( ( g ) => { const at = this.find( known , g ); return at >= 0 ? known[ at ] : g; } );
+  },
+
+  toQuery() {
+    const filters = {};
+    const range = ( id , from , to ) => { const value = { from: this.number( from ) , to: this.number( to ) }; if ( value.from != null || value.to != null ) filters[ id ] = value; };
+    if ( this.params.genre ) filters.genre = { mode: this.value( "genremode" ) , values: this.genreValues() };
+    range( "year" , "from" , "to" );
+    range( "imdb" , "imdbfrom" , "imdbto" );
+    range( "votes" , "votesfrom" , "votesto" );
+    if ( this.params.rating ) filters.cert = { mode: "any" , values: this.list( "rating" ) };
+    if ( this.params.norating ) filters.nocert = { mode: "any" , values: this.list( "norating" ) };
+    if ( this.params.topic ) filters.topic = { value: this.params.topic };
+    if ( this.params.only ) filters.only = { value: this.params.only };
+    if ( this.value( "watched" ) !== "hide" ) filters.showwatched = { value: true };
+    if ( this.value( "skipped" ) !== "hide" ) filters.showskipped = { value: true };
+    const sort = this.value( "sort" ).split( "," ).filter( Boolean ).map( ( part ) => ( { key: part.replace( /^-/ , "" ) , dir: part.charAt( 0 ) === "-" ? "desc" : "asc" } ) ).filter( ( step ) => this.SORT_KEYS.indexOf( step.key ) >= 0 );
+    return { list: "all" , text: this.params.q || "" , filters: filters , sort: sort.length ? sort : [ { key: "notable" , dir: "desc" } ] , group: { by: "none" , dir: "asc" } };
+  },
+
+  // A query from the sheet, the sort menu or a chip, back into the hash.
+  apply( next , sheetOnly ) {
+    if ( sheetOnly ) {
+      this.renderSheet();
+      return;
+    }
+    const f = next.filters || {};
+    const range = ( id , which ) => ( f[ id ] && f[ id ][ which ] != null ? String( f[ id ][ which ] ) : "" );
+    const keep = ( name , on ) => ( on ? ( this.params[ name ] && this.params[ name ] !== "hide" ? this.params[ name ] : "all" ) : "" );
+    this.set( {
+      q: next.text || "",
+      genre: f.genre ? f.genre.values.join( "," ) : "",
+      genremode: f.genre ? f.genre.mode : "",
+      from: range( "year" , "from" ),
+      to: range( "year" , "to" ),
+      imdbfrom: range( "imdb" , "from" ),
+      imdbto: range( "imdb" , "to" ),
+      votesfrom: range( "votes" , "from" ),
+      votesto: range( "votes" , "to" ),
+      rating: f.cert ? f.cert.values.join( "," ) : "",
+      norating: f.nocert ? f.nocert.values.join( "," ) : "",
+      topic: f.topic ? f.topic.value : "",
+      only: f.only ? f.only.value : "",
+      watched: keep( "watched" , Boolean( f.showwatched ) ),
+      skipped: keep( "skipped" , Boolean( f.showskipped ) ),
+      sort: next.sort.map( ( step ) => ( step.dir === "desc" ? "-" : "" ) + step.key ).join( "," ),
+    } );
+  },
+
+  // -- the chips and the sheet ----------------------------------------------
+
+  chipText( id , value ) {
+    switch ( id ) {
+      case "cert": case "nocert": return value.values.map( ( r ) => this.ratingLabel( r ) ).join( " " + I18n.get( "filters.joiner_any" ) + " " );
+      case "topic": return this.topicLabel( value.value );
+      case "only": return I18n.get( "discover.only_" + value.value );
+      default: return FilterBar.describe( id , value );
+    }
+  },
+
+  renderChips( query ) {
+    const box = Dom.get( "discover-chips" );
+    Dom.clear( box );
+    const without = ( id ) => { const next = Query.clone( query ); delete next.filters[ id ]; this.apply( next ); };
+    if ( query.text ) box.appendChild( FilterBar.chip( I18n.fill( "filters.chip_search" , { text: query.text } ) , () => this.set( { q: "" } ) , "search" ) );
+    this.SHEET.forEach( ( id ) => {
+      const value = query.filters[ id ];
+      if ( !value ) return;
+      const text = id === "showwatched" || id === "showskipped"
+        ? I18n.get( "discover." + ( id === "showwatched" ? "watched_" + this.value( "watched" ) : "skipped_" + this.value( "skipped" ) ) )
+        : I18n.get( "filters.name_" + id ) + ": " + this.chipText( id , value );
+      box.appendChild( FilterBar.chip( text , () => without( id ) ) );
+    } );
+    if ( this.params.actor ) box.appendChild( FilterBar.chip( I18n.get( "discover.actor" ) + ": " + this.params.actor , () => this.set( { actor: "" } ) ) );
+    if ( Object.keys( this.params ).length ) {
+      box.appendChild( Dom.el( "button" , { class: "btn btn-sm btn-link filter-clear" , text: I18n.get( "filters.clear_all" ) , attrs: { type: "button" } , on: { click: () => this.set( Object.fromEntries( this.FIELDS.map( ( name ) => [ name , "" ] ) ) ) } } ) );
+    }
+    Dom.show( box , box.childNodes.length > 0 );
+  },
+
+  // Filters the library does not have, for the shared sheet.
+  sheetDefs() {
+    return {
+      year: { kind: "range" , step: 1 , noUnknown: true },
+      imdb: { kind: "range" , step: 0.1 , noUnknown: true },
+      votes: { kind: "range" , step: 100 , noUnknown: true },
+      topic: { kind: "choice" , anyLabel: "discover.topic_any" , options: () => ( this.meta.topics || [] ).map( ( t ) => [ t.id , t.label ] ) },
+      only: { kind: "choice" , anyLabel: "discover.only_any" , options: () => [ [ "boxoffice" , I18n.get( "discover.only_boxoffice" ) ] , [ "awarded" , I18n.get( "discover.only_awarded" ) ] ] },
+      showwatched: { kind: "switch" , text: () => I18n.fill( "discover.show_watched" , { n: this.watchedCount || 0 } ) },
+      showskipped: { kind: "switch" , text: () => I18n.fill( "discover.show_skipped" , { n: this.skippedCount || 0 } ) },
+    };
+  },
+
+  renderSheet() {
+    const ratings = new Map( ( this.facets.ratings || [] ).map( ( r ) => [ r.id , r.count ] ) );
+    this.ratingNames = Object.fromEntries( ( this.facets.ratings || [] ).map( ( r ) => [ r.id , r.label || this.ratingLabel( r.id ) ] ) );
+    const counts = {
+      genre: new Map( ( this.facets.genres || [] ).filter( ( g ) => g.id ).map( ( g ) => [ g.id , g.count ] ) ),
+      cert: ratings,
+      nocert: ratings,
+    };
+    Dom.text( Dom.get( "filter-sheet-show" ) , I18n.fill( "filters.show_n" , { n: this.total.toLocaleString() } ) );
+    FilterSheet.render( Dom.get( "filter-sheet-body" ) , this.toQuery() , "movie" , [] , ( next , sheetOnly ) => this.apply( next , sheetOnly ) , {
+      ids: this.SHEET,
+      counts: counts,
+      defs: this.sheetDefs(),
+      // The scale reads G, PG, PG-13, R: kept in the server's order.
+      ordered: [ "cert" , "nocert" ],
+      label: ( id , value ) => ( id === "cert" || id === "nocert" ? this.ratingNames[ value ] || this.ratingLabel( value ) : FilterBar.valueLabel( id , value ) ),
+    } );
   },
 
   renderGrid() {
@@ -216,30 +352,6 @@ const DiscoverScreen = {
     return want( "skipped" , skipped ) && want( "watched" , watched );
   },
 
-  chip( text , onRemove ) {
-    return FilterBar.chip( text , onRemove );
-  },
-
-  renderChips() {
-    const box = Dom.get( "discover-chips" );
-    Dom.clear( box );
-    const p = this.params;
-    if ( p.q ) box.appendChild( this.chip( I18n.fill( "filters.chip_search" , { text: p.q } ) , () => this.set( { q: "" } ) ) );
-    if ( p.from || p.to ) box.appendChild( this.chip( I18n.get( "filters.name_year" ) + ": " + ( p.from || "…" ) + "–" + ( p.to || "…" ) , () => this.set( { from: "" , to: "" } ) ) );
-    if ( p.genre ) box.appendChild( this.chip( I18n.get( "filters.name_genre" ) + ": " + this.list( "genre" ).map( ( g ) => ( this.labels || {} )[ g.toLowerCase() ] || g ).join( " " + I18n.get( this.value( "genremode" ) === "all" ? "filters.joiner_all" : "filters.joiner_any" ) + " " ) , () => this.set( { genre: "" } ) ) );
-    if ( p.rating ) box.appendChild( this.chip( I18n.get( "filters.name_cert" ) + ": " + this.list( "rating" ).map( ( r ) => this.ratingLabel( r ) ).join( " " + I18n.get( "filters.joiner_any" ) + " " ) , () => this.set( { rating: "" } ) ) );
-    if ( p.topic ) box.appendChild( this.chip( I18n.get( "discover.topic" ) + ": " + this.topicLabel( p.topic ) , () => this.set( { topic: "" } ) ) );
-    if ( p.only ) box.appendChild( this.chip( I18n.get( "discover.only_" + p.only ) , () => this.set( { only: "" } ) ) );
-    if ( p.actor ) box.appendChild( this.chip( I18n.get( "discover.actor" ) + ": " + p.actor , () => this.set( { actor: "" } ) ) );
-    if ( p.watched ) box.appendChild( this.chip( I18n.get( "discover.watched_" + p.watched ) , () => this.set( { watched: "" } ) ) );
-    if ( p.skipped ) box.appendChild( this.chip( I18n.get( "discover.skipped_" + p.skipped ) , () => this.set( { skipped: "" } ) ) );
-    const any = Object.keys( p ).some( ( name ) => name !== "sort" );
-    if ( any ) {
-      box.appendChild( Dom.el( "button" , { class: "btn btn-sm btn-link filter-clear" , text: I18n.get( "filters.clear_all" ) , attrs: { type: "button" } , on: { click: () => this.set( Object.fromEntries( this.FIELDS.map( ( name ) => [ name , "" ] ) ) ) } } ) );
-    }
-    Dom.show( box , box.childNodes.length > 0 );
-  },
-
   ratingLabel( id ) {
     return id === "none" ? I18n.get( "filters.cert_none" ) : id === "unknown" ? I18n.get( "discover.rating_unknown" ) : id;
   },
@@ -247,43 +359,6 @@ const DiscoverScreen = {
   topicLabel( id ) {
     const topic = ( this.meta.topics || [] ).find( ( entry ) => entry.id === id );
     return topic ? topic.label : id;
-  },
-
-  facetButtons( box , entries , name , label ) {
-    Dom.clear( box );
-    const chosen = this.list( name );
-    entries.forEach( ( entry ) => {
-      const on = this.find( chosen , entry.id ) >= 0;
-      box.appendChild( Dom.el( "button" , {
-        class: "btn btn-sm " + ( on ? "btn-soft-primary" : "btn-outline-secondary" ) + ( entry.count === 0 && !on ? " opacity-50" : "" ),
-        attrs: { type: "button" , "aria-pressed": String( on ) },
-        children: [ Dom.el( "span" , { text: label( entry ) + " " } ) , Dom.el( "span" , { class: "badge text-bg-light" , text: String( entry.count ) } ) ],
-        on: { click: () => this.toggle( name , entry.id ) },
-      } ) );
-    } );
-  },
-
-  renderFacets() {
-    const genres = ( this.facets.genres || [] ).filter( ( g ) => g.id );
-    const short = Filters.defs.genre.short;
-    this.labels = Object.fromEntries( genres.map( ( g ) => [ g.id.toLowerCase() , g.label || g.id ] ) );
-    const chosen = this.list( "genre" );
-    const shown = genres.filter( ( g , at ) => this.showAllGenres || at < short || this.find( chosen , g.id ) >= 0 );
-    this.facetButtons( Dom.get( "discover-genres" ) , shown , "genre" , ( g ) => g.label || g.id );
-    Dom.show( Dom.get( "discover-genres-more" ) , genres.length > short );
-    Dom.text( Dom.get( "discover-genres-more" ) , this.showAllGenres ? I18n.get( "filters.show_fewer" ) : I18n.fill( "filters.show_all" , { n: genres.length } ) );
-    const mode = Dom.get( "discover-genremode" );
-    Dom.show( mode , this.list( "genre" ).length > 1 );
-    Dom.all( "button" , mode ).forEach( ( button ) => {
-      const on = button.getAttribute( "data-mode" ) === this.value( "genremode" );
-      button.className = "btn btn-sm " + ( on ? "btn-soft-primary" : "btn-outline-secondary" );
-    } );
-    this.facetButtons( Dom.get( "discover-ratings" ) , ( this.facets.ratings || [] ) , "rating" , ( r ) => r.label || this.ratingLabel( r.id ) );
-  },
-
-  fillTopics() {
-    const select = Dom.get( "discover-topic" );
-    ( this.meta.topics || [] ).forEach( ( topic ) => select.appendChild( Dom.el( "option" , { text: topic.label , attrs: { value: topic.id } } ) ) );
   },
 
   setCard( card ) {
@@ -304,15 +379,19 @@ const DiscoverScreen = {
       window.clearTimeout( timer );
       timer = window.setTimeout( () => this.set( { q: event.target.value.trim() } ) , 250 );
     } );
-    [ [ "discover-from" , "from" ] , [ "discover-to" , "to" ] , [ "discover-sort" , "sort" ] , [ "discover-topic" , "topic" ] , [ "discover-only" , "only" ] ].forEach( ( pair ) => {
-      Dom.get( pair[ 0 ] ).addEventListener( "change" , ( event ) => this.set( { [ pair[ 1 ] ]: event.target.value.trim() } ) );
-    } );
-    Dom.all( "#discover-genremode button" ).forEach( ( button ) => Dom.onPress( button , () => this.set( { genremode: button.getAttribute( "data-mode" ) } ) ) );
-    Dom.onPress( Dom.get( "discover-genres-more" ) , () => { this.showAllGenres = !this.showAllGenres; this.renderFacets(); } );
     Dom.get( "discover-more" ).addEventListener( "click" , () => this.load( true ) );
-    [ "watched" , "skipped" ].forEach( ( name ) => {
-      Dom.get( "discover-show-" + name ).addEventListener( "change" , ( event ) => this.set( { [ name ]: event.target.checked ? "all" : "" } ) );
+    // The Filters sheet is shared with the library: whichever screen is
+    // showing draws it and takes its changes.
+    const sheet = Dom.get( "filter-sheet" );
+    sheet.addEventListener( "show.bs.offcanvas" , () => { if ( Nav.screen() !== "discover" ) return; this.sheetOpen = true; this.renderSheet(); } );
+    sheet.addEventListener( "hidden.bs.offcanvas" , () => { this.sheetOpen = false; } );
+    Dom.get( "filter-sheet-clear" ).addEventListener( "click" , () => {
+      if ( Nav.screen() !== "discover" ) return;
+      const next = this.toQuery();
+      next.filters = {};
+      this.apply( next );
     } );
+    document.addEventListener( "keydown" , ( event ) => this.onKey( event ) );
     Dom.all( "[data-discover-layout]" ).forEach( ( button ) => Dom.onPress( button , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-discover-layout" ) } ) ) ) );
     this.grid.addEventListener( "click" , ( event ) => {
       const article = event.target.closest( ".media-card" );
@@ -332,6 +411,17 @@ const DiscoverScreen = {
       ids: () => CardMenu.discover(),
       run: ( id , row ) => this.act( id , row ),
     } );
+  },
+
+  onKey( event ) {
+    if ( Nav.screen() !== "discover" || event.ctrlKey || event.metaKey || event.altKey || Undo.typing( event.target ) ) return;
+    if ( document.querySelector( ".modal.show, .offcanvas.show" ) ) return;
+    if ( event.key === "/" ) {
+      event.preventDefault();
+      Dom.get( "discover-search" ).focus();
+    } else if ( event.key === "f" ) {
+      bootstrap.Offcanvas.getOrCreateInstance( Dom.get( "filter-sheet" ) ).show();
+    }
   },
 
   async act( action , row ) {

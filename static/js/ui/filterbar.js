@@ -14,7 +14,7 @@ const FilterBar = {
     switch ( id ) {
       case "type": return Vocab.typeLabel( value );
       case "status": return I18n.get( "status." + value );
-      case "cert": return value === "none" ? I18n.get( "filters.cert_none" ) : value;
+      case "cert": case "nocert": return value === "none" ? I18n.get( "filters.cert_none" ) : value;
       case "watchedby": return value === "nobody" ? I18n.get( "filters.nobody" ) : Vocab.personName( value );
       case "lovedby": case "addedby": return Vocab.personName( value );
       case "missing": return I18n.get( "filters.missing_" + value );
@@ -102,15 +102,35 @@ const FilterBar = {
   },
 };
 
+// Discover uses the same sheet with its own options (screens/discover.js):
+//   ids:    which sections, in order
+//   counts: { id: Map(value -> count) } worked out by the server
+//   defs:   filters the library does not have (topic, which films, show
+//           watched), looked up before Filters.defs
+//   label:  ( id , value ) -> text, for values only the server can spell
 const FilterSheet = {
   // How many values a long facet shows before "Show all".
   SHORT: 10,
   expanded: {},
+  options: {},
 
-  render( body , query , scope , pool , change ) {
+  def( id ) {
+    return ( this.options.defs || {} )[ id ] || Filters.defs[ id ];
+  },
+
+  active( id , value ) {
+    return Filters.isActive( id , value , this.def( id ) );
+  },
+
+  label( id , value ) {
+    return this.options.label ? this.options.label( id , value ) : FilterBar.valueLabel( id , value );
+  },
+
+  render( body , query , scope , pool , change , options ) {
+    this.options = options || {};
     Dom.clear( body );
-    const ids = Filters.available( query.list , scope );
-    const counts = Facets.count( pool , query.filters , ids );
+    const ids = this.options.ids || Filters.available( query.list , scope );
+    const counts = this.options.counts || Facets.count( pool , query.filters , ids );
     ids.forEach( ( id ) => {
       const section = this.section( id , query , counts[ id ] , change );
       if ( section ) body.appendChild( section );
@@ -118,12 +138,12 @@ const FilterSheet = {
   },
 
   section( id , query , counts , change ) {
-    const def = Filters.defs[ id ];
+    const def = this.def( id );
     const value = query.filters[ id ];
     const heading = Dom.el( "div" , { class: "filter-heading" , children: [
       Dom.el( "h3" , { class: "h6 mb-0" , text: I18n.get( "filters.name_" + id ) } ),
     ] } );
-    if ( Filters.isActive( id , value ) ) {
+    if ( this.active( id , value ) ) {
       heading.appendChild( Dom.el( "button" , {
         class: "btn btn-sm btn-link p-0",
         text: I18n.get( "filters.reset" ),
@@ -139,6 +159,8 @@ const FilterSheet = {
     if ( def.kind === "range" ) control = this.range( id , def , value , query , change );
     if ( def.kind === "rating" ) control = this.rating( id , value , query , change );
     if ( def.kind === "toggle" ) control = this.toggle( id , value , query , change );
+    if ( def.kind === "choice" ) control = this.choice( id , def , value , query , change );
+    if ( def.kind === "switch" ) control = this.switch( id , def , value , query , change );
     if ( !control ) return null;
     box.appendChild( control );
     return box;
@@ -146,7 +168,7 @@ const FilterSheet = {
 
   update( query , id , value , change ) {
     const next = Query.clone( query );
-    if ( value == null || !Filters.isActive( id , value ) ) delete next.filters[ id ];
+    if ( value == null || !this.active( id , value ) ) delete next.filters[ id ];
     else next.filters[ id ] = value;
     change( next );
   },
@@ -154,7 +176,10 @@ const FilterSheet = {
   multi( id , def , value , counts , query , change ) {
     const chosen = value ? value.values : [];
     const mode = value ? value.mode || "any" : "any";
-    const entries = Facets.ranked( counts || new Map() , chosen );
+    // Most common first, unless the screen keeps its own order (a scale).
+    const entries = ( this.options.ordered || [] ).indexOf( id ) >= 0
+      ? Array.from( ( counts || new Map() ).entries() ).concat( chosen.filter( ( v ) => !( counts || new Map() ).has( v ) ).map( ( v ) => [ v , 0 ] ) )
+      : Facets.ranked( counts || new Map() , chosen );
     if ( !entries.length ) return Dom.el( "p" , { class: "small text-body-secondary mb-0" , text: I18n.get( "filters.none_here" ) } );
     const wrap = Dom.el( "div" );
     if ( def.modes && chosen.length > 1 ) {
@@ -183,7 +208,7 @@ const FilterSheet = {
         attrs: { type: "button" , "aria-pressed": String( on ) },
         children: [
           Card.icon( on ? "check-square-fill" : "square" ),
-          Dom.el( "span" , { class: "facet-label" , text: FilterBar.valueLabel( id , facetValue ) } ),
+          Dom.el( "span" , { class: "facet-label" , text: this.label( id , facetValue ) } ),
           Dom.el( "span" , { class: "facet-count" , text: String( count ) } ),
         ],
         on: { click: () => {
@@ -221,7 +246,7 @@ const FilterSheet = {
     };
     const row = Dom.el( "div" , { class: "d-flex align-items-center gap-2" , children: [ input( "from" ) , Dom.el( "span" , { text: "–" } ) , input( "to" ) ] } );
     const wrap = Dom.el( "div" , { children: [ row ] } );
-    if ( id === "year" || id === "runtime" || id === "imdb" || id === "votes" ) {
+    if ( !def.noUnknown && ( id === "year" || id === "runtime" || id === "imdb" || id === "votes" ) ) {
       const check = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , id: "unknown-" + id } } );
       check.checked = Boolean( current.unknown );
       check.disabled = current.from == null && current.to == null;
@@ -269,5 +294,45 @@ const FilterSheet = {
       } ) );
     } );
     return group;
+  },
+
+  // One value or none: a row of buttons, or a select when there are many
+  // (Discover's topics). def.options() -> [ [ value , label ] ].
+  choice( id , def , value , query , change ) {
+    const current = value ? value.value : "";
+    const options = [ [ "" , I18n.get( def.anyLabel || "filters.either" ) ] ].concat( def.options() );
+    const pick = ( picked ) => this.update( query , id , picked ? { value: picked } : null , change );
+    if ( options.length > 4 ) {
+      const select = Dom.el( "select" , { class: "form-select form-select-sm" , attrs: { "aria-label": I18n.get( "filters.name_" + id ) } } );
+      options.forEach( ( option ) => {
+        const node = Dom.el( "option" , { text: option[ 1 ] , attrs: { value: option[ 0 ] } } );
+        if ( option[ 0 ] === current ) node.selected = true;
+        select.appendChild( node );
+      } );
+      select.addEventListener( "change" , () => pick( select.value ) );
+      return select;
+    }
+    const group = Dom.el( "div" , { class: "btn-group btn-group-sm w-100" , attrs: { role: "group" } } );
+    options.forEach( ( option ) => {
+      const on = option[ 0 ] === current;
+      group.appendChild( Dom.el( "button" , {
+        class: "btn " + ( on ? "btn-soft-primary" : "btn-outline-secondary" ),
+        text: option[ 1 ],
+        attrs: { type: "button" , "aria-pressed": String( on ) },
+        on: { click: () => pick( option[ 0 ] ) },
+      } ) );
+    } );
+    return group;
+  },
+
+  // On or off, with what turning it on would bring: def.text() -> label.
+  switch( id , def , value , query , change ) {
+    const box = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , role: "switch" , id: "switch-" + id } } );
+    box.checked = Boolean( value && value.value );
+    box.addEventListener( "change" , () => this.update( query , id , box.checked ? { value: true } : null , change ) );
+    return Dom.el( "div" , { class: "form-check form-switch mb-0" , children: [
+      box,
+      Dom.el( "label" , { class: "form-check-label small" , text: def.text() , attrs: { for: "switch-" + id } } ),
+    ] } );
   },
 };

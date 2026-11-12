@@ -329,7 +329,8 @@ const LibraryScreen = {
       } , 180 );
     } );
     const sheet = Dom.get( "filter-sheet" );
-    sheet.addEventListener( "show.bs.offcanvas" , () => { this.sheetOpen = true; this.renderSheet(); } );
+    // Shared with Discover, which draws it while it is the screen showing.
+    sheet.addEventListener( "show.bs.offcanvas" , () => { if ( Nav.screen() !== "library" ) return; this.sheetOpen = true; this.renderSheet(); } );
     sheet.addEventListener( "hidden.bs.offcanvas" , () => { this.sheetOpen = false; } );
     Dom.all( "[data-layout]" ).forEach( ( button ) => {
       Dom.onPress( button , () => this.setCard( Object.assign( {} , this.card , { layout: button.getAttribute( "data-layout" ) } ) ) );
@@ -337,6 +338,7 @@ const LibraryScreen = {
     Dom.onPress( Dom.get( "select-button" ) , () => this.setSelecting( !this.selecting ) );
     Dom.get( "library-empty-clear" ).addEventListener( "click" , () => this.setQuery( Query.defaults( this.query.list ) ) );
     Dom.get( "filter-sheet-clear" ).addEventListener( "click" , () => {
+      if ( Nav.screen() !== "library" ) return;
       const next = Query.clone( this.query );
       next.filters = {};
       this.setQuery( next );

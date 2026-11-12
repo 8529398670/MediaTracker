@@ -26,11 +26,17 @@ const SortControl = {
     return text;
   },
 
+  // Discover passes its own: { keys: [ ... ] , group: false }.
+  options: {},
+
   keys() {
-    return Sorter.ORDER;
+    return this.options.keys || Sorter.ORDER;
   },
 
-  render( button , menu , query , change ) {
+  render( button , menu , query , change , options ) {
+    this.options = options || {};
+    // Read now: the click below may come after another screen has drawn its own.
+    const keys = this.keys();
     Dom.clear( button );
     button.appendChild( Card.icon( "sort-down" ) );
     button.appendChild( Dom.el( "span" , { class: "btn-label" , text: this.summary( query ) } ) );
@@ -46,12 +52,13 @@ const SortControl = {
           event.stopPropagation();
           const next = Query.clone( query );
           const used = next.sort.map( ( s ) => s.key );
-          const key = this.keys().find( ( k ) => used.indexOf( k ) < 0 && k !== "random" ) || "title";
+          const key = keys.find( ( k ) => used.indexOf( k ) < 0 && k !== "random" ) || "title";
           next.sort.push( { key: key , dir: "asc" } );
           change( next );
         } },
       } ) );
     }
+    if ( this.options.group === false ) return;
     menu.appendChild( Dom.el( "hr" , { class: "my-2" } ) );
     menu.appendChild( Dom.el( "h3" , { class: "dropdown-header px-0" , text: I18n.get( "group.heading" ) } ) );
     menu.appendChild( this.groupRow( query , change ) );

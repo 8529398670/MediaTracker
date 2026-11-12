@@ -46,6 +46,12 @@ const Filters = {
       kind: "multi",
       values: ( row ) => [ row.t.certification || "none" ],
     },
+    // The inverse of cert: tick R and every R-rated title is left out.
+    nocert: {
+      kind: "multi",
+      exclude: true,
+      values: ( row ) => [ row.t.certification || "none" ],
+    },
     watchedby: {
       kind: "multi",
       values: ( row ) => {
@@ -107,7 +113,7 @@ const Filters = {
   },
 
   // The order the filter sheet lists them in.
-  ORDER: [ "genre" , "year" , "rating" , "imdb" , "votes" , "status" , "type" , "cert" , "runtime" , "tag" , "loved" , "watchedby" , "lovedby" , "addedby" , "missing" ],
+  ORDER: [ "genre" , "year" , "rating" , "imdb" , "votes" , "status" , "type" , "cert" , "nocert" , "runtime" , "tag" , "loved" , "watchedby" , "lovedby" , "addedby" , "missing" ],
 
   subsumed( id , list , scope ) {
     const def = this.defs[ id ];
@@ -118,14 +124,17 @@ const Filters = {
     return this.ORDER.filter( ( id ) => !this.subsumed( id , list , scope ) );
   },
 
-  isActive( id , value ) {
-    const def = this.defs[ id ];
+  // def: a filter from outside this registry (Discover's), to judge by kind.
+  isActive( id , value , def ) {
+    def = def || this.defs[ id ];
     if ( !def || value == null ) return false;
     switch ( def.kind ) {
       case "multi": return Array.isArray( value.values ) && value.values.length > 0;
       case "range": return value.from != null || value.to != null;
       case "rating": return ( value.mode && value.mode !== "any" ) || value.from != null || value.to != null;
       case "toggle": return value.value === true || value.value === false;
+      case "choice": return value.value != null && value.value !== "";
+      case "switch": return value.value === true;
       default: return false;
     }
   },
@@ -136,6 +145,7 @@ const Filters = {
     switch ( def.kind ) {
       case "multi": {
         const have = def.values( row );
+        if ( def.exclude ) return !value.values.some( ( unwanted ) => have.indexOf( unwanted ) >= 0 );
         if ( value.mode === "all" ) return value.values.every( ( wanted ) => have.indexOf( wanted ) >= 0 );
         return value.values.some( ( wanted ) => have.indexOf( wanted ) >= 0 );
       }

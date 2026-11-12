@@ -23,11 +23,18 @@ from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.subject import subject_from
 from app.routes.titles import _body, add_title, answer
 
-SORTS = ("notable", "title", "year", "year-asc", "imdb")
 
 
 def _int(value: str | None) -> int:
     return int(value) if value and value.isdigit() else 0
+
+
+def _float(value: str | None) -> float:
+    try:
+        number = float(value or 0)
+    except ValueError:
+        return 0.0
+    return number if 0 <= number <= 10 else 0.0
 
 
 def library_index(store: Store) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
@@ -73,7 +80,7 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         elif status == "dropped":
             passed.add(catalogue_key_for(title))
     watched = params.get("watched") if params.get("watched") in ("hide", "only", "all") else "hide"
-    sort = params.get("sort") if params.get("sort") in SORTS else "notable"
+    sort = params.get("sort") or "notable"
     query = dict(
         year_from=_int(params.get("from")),
         year_to=_int(params.get("to")),
@@ -85,6 +92,11 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         only=params.get("only", ""),
         skipped=params.get("skipped") if params.get("skipped") in ("hide", "only", "all") else "hide",
         ratings=[r for r in params.get("rating", "").split(",") if r],
+        no_ratings=[r for r in params.get("norating", "").split(",") if r],
+        imdb_from=_float(params.get("imdbfrom")),
+        imdb_to=_float(params.get("imdbto")),
+        votes_from=_int(params.get("votesfrom")),
+        votes_to=_int(params.get("votesto")),
         sort=sort,
         limit=min(_int(params.get("limit")) or 60, 200),
         offset=_int(params.get("offset")),

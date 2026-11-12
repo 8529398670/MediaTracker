@@ -910,12 +910,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .dupe-titles { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.75rem; }
 .dupe-title { display: flex; gap: 0.6rem; align-items: flex-start; }
 
-/* Discover. */
-.discover-years { width: auto; flex-wrap: nowrap; }
-.discover-years .form-control { width: 6rem; }
-.discover-facets { background: var(--app-card); border: 1px solid var(--app-border); border-radius: var(--bs-border-radius); padding: 0.6rem 0.8rem; }
-.facet-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
-
 /* Playlists: a numbered column, each title with its number box, grip,
    Move and Remove on the left. Dropping shows a bar where it will land. */
 .playlists-list .playlist-entry { display: flex; align-items: center; gap: 0.6rem; }
