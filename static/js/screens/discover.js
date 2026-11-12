@@ -10,6 +10,9 @@
 //   #discover?q=&from=1930&to=1949&genre=Comedy,Romance&genremode=all
 //            &rating=PG&topic=&only=awarded&watched=only&skipped=all&sort=imdb
 const DiscoverScreen = {
+  // Thrown when the person says no to adding a possible duplicate: stops the
+  // add without an error toast or an Undo step.
+  Cancelled: class extends Error {},
   card: null,
   params: {},
   films: [],
@@ -373,20 +376,31 @@ const DiscoverScreen = {
           label: I18n.fill( "undo.added_one" , { title: film.title } ),
           toast: true,
           do: async () => {
+            const send = ( force ) => Api.post( Api.forSubject( "/api/discover/add" ) , { film: film , status: status , force: force } );
             try {
-              created = await Api.post( Api.forSubject( "/api/discover/add" ) , { film: film , status: status } );
+              created = await send( false );
             } catch ( error ) {
               if ( error.status !== 409 ) throw error;
+              const dupes = error.payload.dupes || [];
               // Already in the library (perhaps under another name): put that
-              // one on the list rather than adding a second copy.
-              const same = ( error.payload.dupes || [] ).find( ( dupe ) => dupe.score >= 1 );
-              if ( !same ) throw error;
-              created = null;
-              film.title_id = same.id;
-              await Library.refresh();
-              if ( status ) await Library.setState( same.id , { status: status } , I18n.fill( "undo.watched" , { title: same.title.title } ) );
-              this.renderGrid();
-              return;
+              // one on the list rather than adding a second copy -- back out
+              // of Trash first, if that is where it is.
+              const same = dupes.find( ( dupe ) => dupe.score >= 1 );
+              if ( same ) {
+                created = null;
+                film.title_id = same.id;
+                if ( same.title.deleted_at ) await Api.restoreTitle( same.id );
+                await Library.refresh();
+                if ( status ) await Library.setState( same.id , { status: status } , I18n.fill( "undo.watched" , { title: same.title.title } ) );
+                this.renderGrid();
+                return;
+              }
+              // Only something like it (a near spelling, a remake): ask.
+              const near = dupes[ 0 ];
+              const named = ( t ) => "“" + t.title + "”" + ( t.year ? " (" + t.year + ")" : "" );
+              const question = I18n.fill( "discover.maybe_dupe" , { film: named( film ) , title: near ? named( near.title ) : "" } );
+              if ( !( await Dom.confirm( question ) ) ) throw new DiscoverScreen.Cancelled();
+              created = await send( true );
             }
             film.title_id = created.title.id;
             await Library.refresh();
@@ -402,7 +416,7 @@ const DiscoverScreen = {
         } );
       }
     } catch ( error ) {
-      Dom.toast( error.message , "error" );
+      if ( !( error instanceof DiscoverScreen.Cancelled ) ) Dom.toast( error.message , "error" );
     }
   },
 };

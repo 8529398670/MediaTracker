@@ -38,6 +38,13 @@ const Card = {
     // turned off on Account (Prefs ui.corner_watch).
     const watch = t.deleted_at || !Prefs.ui( "corner_watch" , true ) ? null : this.watchButton( row , "media-watch" );
     if ( watch ) article.appendChild( watch );
+    // Add to library, on the poster's top-left corner -- only where asked
+    // (Discover films under a library search), and only for a film not in
+    // the library yet.
+    if ( settings.addCorner && row.discover && !row.inLibrary ) {
+      const add = this.addCorner();
+      if ( add ) article.appendChild( add );
+    }
 
     const body = Dom.el( "div" , { class: "card-body media-body" } );
     body.appendChild( this.titleLine( row , card ) );
@@ -178,6 +185,15 @@ const Card = {
     // On the poster it is a bare checkmark, not a check in a circle.
     if ( extra === "media-watch" ) button.querySelector( ".bi" ).className = "bi bi-check-lg";
     return button;
+  },
+
+  addCorner() {
+    const text = I18n.get( "card.menu_add" );
+    return Dom.el( "button" , {
+      class: "btn media-add",
+      attrs: { type: "button" , "data-action": "add" , title: text , "aria-label": text },
+      children: [ this.icon( "check-lg" ) ],
+    } );
   },
 
   titleLine( row , card ) {

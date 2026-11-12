@@ -754,6 +754,19 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .layout-grid .media-card:has(> .media-poster) > .media-watch .bi { font-size: 1.6rem; -webkit-text-stroke: 1px currentColor; }
 .media-watch .btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .layout-grid .media-card:has(> .media-poster) .media-watch-face { display: none; }
+/* Add to library: the same bare check on the poster's top-left corner
+   (Discover films under a library search). Grid with a poster only. */
+.media-card > .media-add { display: none; }
+.layout-grid .media-card:has(> .media-poster) > .media-add {
+  position: absolute; top: 0.25rem; left: 0.3rem; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.2rem; height: 2.2rem; min-width: 0; padding: 0;
+  border: 0; background: none; box-shadow: none;
+  font-size: 1.6rem; color: #c4c8cc; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}
+.layout-grid .media-card:has(> .media-poster) > .media-add:hover,
+.layout-grid .media-card:has(> .media-poster) > .media-add:focus-visible { color: var(--app-accent-2); background: none; }
+.layout-grid .media-card:has(> .media-poster) > .media-add .bi { font-size: 1.6rem; -webkit-text-stroke: 1px currentColor; }
 
 .library-extras { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem; }
 .search-extra-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.6rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--app-border); }

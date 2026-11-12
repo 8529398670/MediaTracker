@@ -29,6 +29,12 @@ const CardMenu = {
     return this.ids( DiscoverScreen.card || Prefs.card( "discover" ) , false );
   },
 
+  // A Discover film found from the library's search: Add to library first,
+  // whatever the person chose for the Discover card, then the rest.
+  discoverExtras() {
+    return [ "add" ].concat( this.discover().filter( ( id ) => id !== "add" ) );
+  },
+
   node: null,
 
   // How long a finger rests on a card before its menu opens, and how far it
@@ -120,6 +126,7 @@ const CardMenu = {
   label( id , row ) {
     if ( id === "skip" ) return I18n.get( this.active( id , row ) ? "card.button_skipped" : "card.button_skip" );
     if ( id === "edit" ) return I18n.get( "card.menu_details" );
+    if ( id === "add" && row.discover && !row.inLibrary ) return I18n.get( "card.menu_add" );
     return Card.label( id , row );
   },
 

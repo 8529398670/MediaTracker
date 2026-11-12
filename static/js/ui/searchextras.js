@@ -35,6 +35,17 @@ const SearchExtras = {
       }
       Dom.steady( control , () => DiscoverScreen.act( action , row ).then( () => this.draw() ) );
     } );
+    // Right-click / long-press: a Discover film's menu (Add to library
+    // first), or a library title's own menu for the other sections.
+    CardMenu.wire( box , {
+      row: ( id ) => this.rows.find( ( r ) => r.t.id === id ) || Library.get( id ),
+      ids: ( row ) => row.discover ? CardMenu.discoverExtras() : CardMenu.library(),
+      run: ( id , row ) => {
+        if ( row.discover ) return DiscoverScreen.act( id , row ).then( () => this.draw() );
+        if ( id === "edit" ) return Editor.open( row );
+        return CardActions.run( id === "skip" ? "drop" : id , row , null , LibraryScreen );
+      },
+    } );
   },
 
   render( text , result ) {
@@ -109,7 +120,7 @@ const SearchExtras = {
       this.rows = films.map( ( film ) => DiscoverScreen.row( film ) );
       if ( this.rows.length ) {
         const discoverCard = Object.assign( {} , Prefs.card( "discover" ) , { layout: card.layout , size: card.size } );
-        const section = this.section( "library.search_discover" , found.fuzzy ? "library.search_discover_close_note" : "library.search_discover_note" , this.rows , discoverCard , "search-extra-discover" );
+        const section = this.section( "library.search_discover" , found.fuzzy ? "library.search_discover_close_note" : "library.search_discover_note" , this.rows , discoverCard , "search-extra-discover" , { addCorner: true } );
         section.querySelector( ".search-extra-head" ).appendChild( Dom.el( "a" , {
           class: "btn btn-sm btn-outline-primary ms-auto",
           attrs: { href: "#discover?q=" + encodeURIComponent( text ) },
@@ -121,9 +132,9 @@ const SearchExtras = {
     Dom.show( box , box.childNodes.length > 0 );
   },
 
-  section( headingKey , noteKey , rows , card , extra ) {
+  section( headingKey , noteKey , rows , card , extra , settings ) {
     const grid = Dom.el( "div" , { class: "media-grid layout-" + card.layout + " size-" + card.size } );
-    rows.forEach( ( row ) => grid.appendChild( Card.build( row , card , {} ) ) );
+    rows.forEach( ( row ) => grid.appendChild( Card.build( row , card , settings || {} ) ) );
     return Dom.el( "section" , { class: "search-extra " + extra , children: [
       Dom.el( "div" , { class: "search-extra-head" , children: [
         Dom.el( "h2" , { class: "search-extra-title" , text: I18n.get( headingKey ) } ),
