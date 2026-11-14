@@ -74,7 +74,10 @@ _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:\.(\d+))?\.jsonl(\.gz)?$")
 
 # The path prefixes whose next segment is a credential: a login link, an
-# invite link. Opening one is logged; the credential is not.
+# invite link. Opening one is logged; the credential is not. Matched without
+# regard to case: Starlette's routes are case-sensitive, so /LOGIN/<credential>
+# is a 404 here, but the request log still writes the path it was asked for,
+# and Go's router does route it.
 _SECRET_PATH_PREFIXES = ("/login/", "/join/")
 # Query parameters whose values are never written, whatever route they are on.
 _SECRET_QUERY_KEYS = {
@@ -134,8 +137,8 @@ def redact(path: str, raw_query: str = "") -> str:
     capped so a pathological URL cannot bloat a line."""
     result = path
     for prefix in _SECRET_PATH_PREFIXES:
-        if result.startswith(prefix) and len(result) > len(prefix):
-            result = prefix + "…"
+        if result.lower().startswith(prefix) and len(result) > len(prefix):
+            result = result[: len(prefix)] + "…"
             break
     if raw_query:
         pairs = parse_qsl(raw_query, keep_blank_values=True)

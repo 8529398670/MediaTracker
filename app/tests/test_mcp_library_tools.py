@@ -40,33 +40,34 @@ class MCPLibraryToolsTest(unittest.TestCase):
         return result["structuredContent"]["error"]
 
     def test_a_title_through_its_tools(self) -> None:
-        made = self.call("add_title", {"title": "Heat", "year": 1995})
+        made = self.call("add_title", {"title": {"title": "Heat", "year": 1995}})
         title_id = made["title"]["id"]
-        self.assertEqual(self.call("check_title", {"title": "Heat", "year": 1995})["matches"][0]["id"], title_id)
+        self.assertEqual(self.call("check_title", {"title": {"title": "Heat", "year": 1995}})["matches"][0]["id"], title_id)
         changed = self.call("update_title", {"title_id": title_id, "set": {"notes": "Mann"}})
         self.assertEqual(changed["title"]["notes"], "Mann")
         tagged = self.call("bulk_edit_titles", {"ids": [title_id], "op": "add_tags", "value": ["crime"]})
         self.assertIn(title_id, tagged["previous"])
         self.assertEqual(self.call("get_title", {"title_id": title_id})["tags"], ["crime"])
         self.call("delete_title", {"title_id": title_id})
-        self.assertEqual(self.refused("get_title", {"title_id": title_id}), "no such title")
+        # The tool is its route: a deleted title is still shown, marked, for its restore.
+        self.assertIsNotNone(self.call("get_title", {"title_id": title_id})["deleted_at"])
         status, _ = self.client.request("GET", f"/api/titles/{title_id}", self.mom_key)
-        self.assertEqual(status, 200)  # the route still shows a deleted title, for its restore
+        self.assertEqual(status, 200)
         self.call("restore_title", {"title_id": title_id})
         self.assertEqual(self.call("search_library", {"status": "up_next"})["titles"][0]["id"], title_id)
         self.assertEqual(self.refused("update_title", {"title_id": "0" * 32, "set": {"notes": "x"}}), "no such title")
 
     def test_bulk_state_and_refusals_in_the_routes_words(self) -> None:
-        title_id = self.call("add_title", {"title": "Alien"})["title"]["id"]
+        title_id = self.call("add_title", {"title": {"title": "Alien"}})["title"]["id"]
         done = self.call("set_states", {"changes": {title_id: {"status": "watched", "rating": 9}}})
         self.assertEqual(done["previous"][title_id]["status"], "queue")
         self.assertEqual(self.refused("set_states", {"changes": {}}), "no changes given")
         # Lookups are off in the test config: refused as the route does (503), not an internal error.
-        self.assertEqual(self.refused("lookup", {"text": "Heat 1995"}), "lookups_off")
+        self.assertEqual(self.refused("lookup", {"lines": ["Heat 1995"]}), "lookups_off")
         self.assertEqual(self.refused("enrich_title", {"title_id": title_id}), "lookups_off")
 
     def test_playlists_views_and_sources(self) -> None:
-        ids = [self.call("add_title", {"title": name, "force": True})["title"]["id"] for name in ("Heat", "Alien", "Arrival")]
+        ids = [self.call("add_title", {"title": {"title": name}, "force": True})["title"]["id"] for name in ("Heat", "Alien", "Arrival")]
         playlist = self.call("create_playlist", {"name": "Weekend", "items": ids[:2]})
         added = self.call("add_to_playlist", {"playlist_id": playlist["id"], "title_ids": [ids[2]], "position": 1})
         self.assertEqual((added["playlist"]["items"], added["previous_items"]), ([ids[2], *ids[:2]], ids[:2]))
@@ -87,16 +88,16 @@ class MCPLibraryToolsTest(unittest.TestCase):
         self.assertEqual([row["id"] for row in self.call("list_sources", {})["sources"]], [source["id"]])
 
         self.call("save_type", {"id": "radio", "label": "Radio"})
-        self.call("add_title", {"title": "The War of the Worlds", "type": "radio"})
+        self.call("add_title", {"title": {"title": "The War of the Worlds", "type": "radio"}})
         self.assertIn("type_in_use", self.refused("delete_type", {"type_id": "radio"}))
 
     def test_someone_elses_lists_need_showing(self) -> None:
         self.assertEqual(
-            self.refused("create_playlist", {"name": "Not mine", "user_id": self.admin.id}),
+            self.refused("create_playlist", {"name": "Not mine", "user": self.admin.id}),
             "only an admin, or someone given Showing, can act for someone else",
         )
-        self.assertEqual(self.refused("save_prefs", {"ui": {"dense": True}, "user_id": self.admin.id}), "only an admin, or someone given Showing, can act for someone else")
-        made = self.call("create_playlist", {"name": "For Mom", "user_id": self.mom.id}, key=self.admin_key)
+        self.assertEqual(self.refused("save_prefs", {"ui": {"dense": True}, "user": self.admin.id}), "only an admin, or someone given Showing, can act for someone else")
+        made = self.call("create_playlist", {"name": "For Mom", "user": self.mom.id}, key=self.admin_key)
         self.assertEqual([row["id"] for row in self.call("list_playlists", {})["playlists"]], [made["id"]])
 
     def test_job_controls_are_for_admin_keys_only(self) -> None:

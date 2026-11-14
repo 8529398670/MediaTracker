@@ -78,6 +78,7 @@ class ThemeRoutesTest(RoutesTestCase):
             [dict(good, button={"shape": "blob"})],
             [dict(good, button={"depth": "deep"})],
             [dict(good, button={"glow": "on"})],
+            [dict(good, button={"shape": "Pill"})],
             [dict(good, button="pill")],
             [dict(good, dark={"accent": "gold", "second": "#ffffff"})],
             [dict(good, dark={"accent": "#000000", "second": "#ffffff", "overrides": {"glow": "#000000"}})],
@@ -94,9 +95,10 @@ class ThemeRoutesTest(RoutesTestCase):
         self.assertEqual(self.mine(self.user_cookie)[0][0]["overrides"], {"link": "#abcdef", "infoBorder": "#000000"})
 
         # A button style, and a button variant's color, are kept; an empty
-        # button is the default and is not stored.
+        # button is the default and is not stored. A choice is one of the
+        # Theme schema's, as written there.
         styled = dict(good, overrides={"btnDanger": "#AA0000", "btnWarningFg": "#000000"},
-                      button={"shape": "Pill", "depth": "glossy"})
+                      button={"shape": "pill", "depth": "glossy"})
         plain = dict(theme_list("b")[0], button={})
         status, reply = self.post(self.user_cookie, "/api/account/themes", {"themes": [styled, plain]})
         self.assertEqual(status, 200, reply)

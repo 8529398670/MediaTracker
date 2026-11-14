@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from app.core import encryption
 from app.core.db import BUCKET_SESSIONS, Record, Store, Transaction
 from app.models import from_iso, to_iso, utc_now
-from app.models.users import User, get_user
+from app.models.users import User, get_user, may_act_on_id_tx
 from app.models.users import RenameConflictError
 
 # How stale last_seen_at is allowed to get: the same trade as
@@ -42,6 +42,11 @@ class Session:
     # and system rather than replacing them, so a name cannot hide what a
     # device says it is.
     label: str = ""
+    # The API key that made the login link this session came from, empty when
+    # a person made it. Revoking or deleting that key ends the session too
+    # (login_tokens.void_links_minted_by_key): a key that could sign a browser
+    # in must not leave one signed in after it dies.
+    minted_by_key: str = ""
     # The record's key. Filled in on the way out of the store and never written
     # into the record.
     id: str = ""
@@ -62,6 +67,8 @@ class Session:
             record["last_seen_at"] = to_iso(self.last_seen_at)
         if self.label:
             record["label"] = self.label
+        if self.minted_by_key:
+            record["minted_by_key"] = self.minted_by_key
         return record
 
     @classmethod
@@ -76,6 +83,7 @@ class Session:
             user_agent=record.get("user_agent", ""),
             last_seen_at=from_iso(record.get("last_seen_at")),
             label=record.get("label", ""),
+            minted_by_key=record.get("minted_by_key", ""),
         )
 
 
@@ -235,11 +243,14 @@ def label_session(store: Store, user_id: int, session_id: str, label: str, expec
     return store.update_value(BUCKET_SESSIONS, session_id, mutate) is not None and found
 
 
-def revoke_session(store: Store, user_id: int, session_id: str) -> bool:
+def revoke_session(store: Store, user_id: int, session_id: str, actor_id: int | None = None) -> bool:
     """End one of an account's sessions. False when it has no such session,
     which covers another account's: looking and deleting are one transaction,
-    so nothing can change hands between them."""
+    so nothing can change hands between them. actor_id, when given, is an
+    admin ending someone else's session, held to users.may_act_on_tx: only the
+    owner signs another admin out."""
     with store.transaction() as tx:
+        may_act_on_id_tx(tx, actor_id, user_id)
         record = tx.get(BUCKET_SESSIONS, session_id)
         if record is None or record["user_id"] != user_id:
             return False

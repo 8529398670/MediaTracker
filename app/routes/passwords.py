@@ -7,21 +7,27 @@ derived from one (static/js/password.js).
 """
 from __future__ import annotations
 
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from typing import Annotated
 
+from msgspec import UNSET, Meta, UnsetType
+from starlette.requests import Request
+
+from app.apidocs import OWNER, PUBLIC, SESSION_ONLY, Reply, route
+from app.apidocs import Request as RequestType
 from app.core.encryption import BadKeyError, CipherTextError
 from app.core.logs import KIND_ADMIN, KIND_AUTH, LEVEL_INFO, LEVEL_WARN, anonymous
 from app.core.middleware import client_ip, trusted_for
-from app.core.security import actor_from, check_csrf, decrypt_cookie
+from app.core.security import actor_from, decrypt_cookie
 from app.models import passwords
 from app.models import two_factor
 from app.models.attempts import AttemptGuard
 from app.models.sessions import split_credential
-from app.routes.auth import same_origin_json, sign_in_response, sign_in_rules
-from app.routes.helpers import bad_request, conflict, error, forbidden, get_config, get_store, not_found, parse_id, read_json, run, server_error
+from app.routes.admin import UserIDPath
+from app.routes.auth import SIGN_IN, SignedIn, sign_in_response, sign_in_rules
+from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.logs import audit, audit_as, user_actor
 from app.routes.two_factor import CODES
+from app.routes.auth import SameOriginLogin
 
 # Per name typed, not per account, so a lockout does not say which names are
 # real. A wrong guess from one address across many names is what the second
@@ -30,44 +36,64 @@ NAMES = AttemptGuard()
 ADDRESSES = AttemptGuard(max_failures=30)
 
 
-async def login_options(request: Request) -> Response:
+class LoginOptions(Reply, kw_only=True):
+    passwords: bool
+    two_factor: bool
+    salt: str | UnsetType = UNSET
+
+
+@route(
+    "GET /api/login/options", summary="What sign-in offers",
+    tag="Sign-in", access=PUBLIC, feature="passwords", no_switch=True,
+)
+def login_options(request: Request) -> LoginOptions:
     """What the signed-out page needs to know. Public, and the same for
     everyone: the salt is not a secret, and there is deliberately nothing here
     that depends on a username."""
     cfg = get_config(request)
-    payload = {"passwords": cfg.passwords_enabled, "two_factor": cfg.two_factor_enabled}
+    reply = LoginOptions(passwords=cfg.passwords_enabled, two_factor=cfg.two_factor_enabled)
     if cfg.passwords_enabled:
-        payload["salt"] = await run(passwords.install_salt, get_store(request))
-    return JSONResponse(payload)
+        reply.salt = passwords.install_salt(get_store(request))
+    return reply
 
 
-async def password_login(request: Request) -> Response:
+class PasswordLogin(RequestType):
+    username: Annotated[str, Meta(extra={"error": "invalid_login"})]
+    password_digest: Annotated[str, Meta(extra={"error": "invalid_login"})]
+
+
+@route(
+    "POST /api/login/password", summary="Sign in with a password",
+    tag="Sign-in", access=PUBLIC, feature="passwords", use=[SameOriginLogin],
+)
+async def password_login(request: Request, body: PasswordLogin) -> SIGN_IN:
     """Unknown name, wrong password, a blocked or disabled account: all the
     same answer, after the same bcrypt. No CSRF token, for the same reason as
     /api/login."""
-    if not same_origin_json(request):
-        return forbidden("login must be submitted from this site's own login page")
-    body = await read_json(request)
-    if body is None:
-        return bad_request("malformed request body")
-
     store, cfg = get_store(request), get_config(request)
-    name = passwords.normalize_username(body.get("username"))[:64]
+    name = passwords.normalize_username(body.username)[:64]
     address = client_ip(request.scope, cfg, trusted_for(cfg))
-    if NAMES.locked(name) or ADDRESSES.locked(address):
-        return error(429, "login_locked")
-
-    user = await run(passwords.check_password, store, name, body.get("password_digest"))
-    signed = None if user is None else await run(passwords.start_password_sign_in, store, user, sign_in_rules(cfg))
-    if signed is None:
-        NAMES.record(name, False)
-        ADDRESSES.record(address, False)
-        audit_as(request, anonymous(), KIND_AUTH, LEVEL_WARN, "password refused")
-        return bad_request("invalid_login")
-    NAMES.record(name, True)
+    # Reserved before the password is checked, so guesses sent in parallel
+    # cannot all get past the lockout (see app/models/attempts.py).
+    by_name = NAMES.reserve(name)
+    if by_name is None:
+        raise Refused(429, "login_locked")
+    with by_name:
+        by_address = ADDRESSES.reserve(address)
+        if by_address is None:
+            raise Refused(429, "login_locked")
+        with by_address:
+            user = await run(passwords.check_password, store, name, body.password_digest)
+            signed = None if user is None else await run(passwords.start_password_sign_in, store, user, sign_in_rules(cfg))
+            if signed is None:
+                by_name.failed()
+                by_address.failed()
+                audit_as(request, anonymous(), KIND_AUTH, LEVEL_WARN, "password refused")
+                raise Refused(400, "invalid_login")
+            by_name.passed()
     message = "password accepted, waiting for a code" if signed.challenge else "signed in with a password"
     audit_as(request, await run(user_actor, store, user.id, "session"), KIND_AUTH, LEVEL_INFO, message)
-    return await sign_in_response(request, signed, {"ok": True}, 200)
+    return await sign_in_response(request, signed, SignedIn(ok=True), 200)  # type: ignore[return-value]
 
 
 def _session_id(request: Request) -> str:
@@ -81,58 +107,78 @@ def _session_id(request: Request) -> str:
     return "" if parts is None else parts[0]
 
 
-async def set_password(request: Request) -> Response:
+def _set_password_refused(refusal: Exception) -> Refused:
+    if isinstance(refusal, passwords.BadUsernameError):
+        return Refused(400, "bad_username")
+    if isinstance(refusal, passwords.BadDigestError):
+        return Refused(400, "bad_digest")
+    if isinstance(refusal, passwords.UsernameTakenError):
+        return Refused(409, "username_taken")
+    return Refused(403, "password_blocked")
+
+
+class SetPassword(RequestType):
+    username: Annotated[str, Meta(extra={"error": "bad_username"})]
+    password_digest: Annotated[str, Meta(extra={"error": "bad_digest"})]
+    # The page sends it whether or not two-factor is part of the app.
+    code: str = ""
+
+
+class SetPasswordReply(Reply):
+    ok: bool
+    has_password: bool
+
+
+@route(
+    "POST /api/account/password", summary="Set or clear your password",
+    tag="Account", access=SESSION_ONLY, feature="passwords", errors=(409,),
+)
+def set_password(request: Request, body: SetPassword) -> SetPasswordReply:
     """Set the account's username and password, or with an empty
     password_digest remove the password. Session only: a key that could set
     one could turn itself into a session."""
-    body = await read_json(request)
-    if body is None:
-        return bad_request("malformed request body")
-    if not check_csrf(request, body.get("csrf_token")):
-        return forbidden("invalid csrf token")
-
     store, cfg = get_store(request), get_config(request)
     user = actor_from(request).user
-    if CODES.locked(user.id):
-        return error(429, "two_factor_locked")
-    digest = body.get("password_digest")
-    try:
-        found = await run(
-            passwords.set_password, store, user.id, body.get("username"), digest, _session_id(request),
-            body.get("code"), cfg.two_factor_enabled, cfg.secret_key,
-        )
-    except passwords.BadUsernameError:
-        return bad_request("bad_username")
-    except passwords.BadDigestError:
-        return bad_request("bad_digest")
-    except passwords.UsernameTakenError:
-        return conflict("username_taken")
-    except passwords.PasswordBlockedError:
-        return forbidden("password_blocked")
-    except two_factor.WrongCodeError:
-        CODES.record(user.id, False)
-        return forbidden("two_factor_wrong")
+    digest = body.password_digest
+    # Reserved before the code is checked (see app/models/attempts.py). A
+    # right code here forgives nothing, as before: only a wrong one counts.
+    attempt = CODES.reserve(user.id)
+    if attempt is None:
+        raise Refused(429, "two_factor_locked")
+    with attempt:
+        try:
+            found = passwords.set_password(
+                store, user.id, body.username, digest, _session_id(request),
+                body.code, cfg.two_factor_enabled, cfg.secret_key,
+            )
+        except two_factor.WrongCodeError:
+            attempt.failed()
+            raise Refused(403, "two_factor_wrong") from None
+        except (passwords.BadUsernameError, passwords.BadDigestError, passwords.UsernameTakenError, passwords.PasswordBlockedError) as refusal:
+            raise _set_password_refused(refusal) from None
     if not found:
-        return server_error(request, "set password: the signed-in account has no record")
+        raise Refused.internal("set password: the signed-in account has no record")
     audit(request, KIND_AUTH, "password removed" if digest == "" else "password changed")
-    return JSONResponse({"ok": True, "has_password": digest != ""})
+    return SetPasswordReply(ok=True, has_password=digest != "")
 
 
-async def set_password_access(request: Request) -> Response:
+class SetPasswordAccess(UserIDPath):
+    allowed: Annotated[bool, Meta(extra={"error": "allowed must be true or false"})]
+
+
+class SetPasswordAccessReply(Reply):
+    ok: bool
+    password_blocked: bool
+
+
+@route(
+    "POST /api/owner/users/{user_id}/password-access", summary="Allow or block an account's password",
+    tag="Owner", role=OWNER, feature="passwords",
+)
+def set_password_access(request: Request, body: SetPasswordAccess) -> SetPasswordAccessReply:
     """The owner's per-account switch (RequireOwner). {allowed: false} stops
     this account's password working and stops it setting one."""
-    body = await read_json(request)
-    if body is None:
-        return bad_request("malformed request body")
-    if not check_csrf(request, body.get("csrf_token")):
-        return forbidden("invalid csrf token")
-    user_id = parse_id(request.path_params["user_id"])
-    if user_id is None:
-        return bad_request("invalid user id")
-    allowed = body.get("allowed")
-    if not isinstance(allowed, bool):
-        return bad_request("allowed must be true or false")
-    if not await run(passwords.set_blocked, get_store(request), user_id, not allowed):
-        return not_found("no such user")
-    audit(request, KIND_ADMIN, "password access set", {"user_id": user_id, "allowed": allowed})
-    return JSONResponse({"ok": True, "password_blocked": not allowed})
+    if not passwords.set_blocked(get_store(request), body.user_id, not body.allowed):
+        raise Refused(404, "no such user")
+    audit(request, KIND_ADMIN, "password access set", {"user_id": body.user_id, "allowed": body.allowed})
+    return SetPasswordAccessReply(ok=True, password_blocked=not body.allowed)

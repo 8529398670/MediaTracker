@@ -60,6 +60,13 @@ class Actor:
         return self.api_key is not None
 
     @property
+    def key_id(self) -> str:
+        """The id of the API key this request came with, or "" for a browser
+        session. A login link or invite link a key makes records it, so
+        revoking the key voids them (see login_tokens.void_links_minted_by_key)."""
+        return self.api_key.id if self.api_key is not None else ""
+
+    @property
     def method(self) -> str:
         return METHOD_API_KEY if self.via_api_key else METHOD_SESSION
 
@@ -150,13 +157,25 @@ def _resolve_api_key(store: Store, cfg: Config, authorization: str) -> Actor | N
     return Actor(user=user, role=narrow_role(user.role, key.role), api_key=key)
 
 
+def _has_bearer(authorization: str) -> bool:
+    """True when the request carries "Authorization: Bearer ..."."""
+    scheme, space, _ = authorization.strip().partition(" ")
+    return bool(space) and scheme.lower() == "bearer"
+
+
 def resolve_actor(store: Store, cfg: Config, cookies: dict[str, str], authorization: str) -> Actor | None:
-    """The cookie is tried first and an API key only if there is no live
-    session. Either order is safe, but this one keeps the CSRF rule below
-    unambiguous: a request that arrives with ambient browser credentials is
-    always held to the token check, and cannot opt out of it by also carrying
-    a key."""
-    return _resolve_session(store, cfg, cookies) or _resolve_api_key(store, cfg, authorization)
+    """An Authorization: Bearer header decides it: the request is that key or
+    no one, and the cookie is not read. Otherwise the cookie. A script using
+    a narrow key must not quietly run as the full account whose cookie
+    happens to be in the jar, and a bad key is no one, not the cookie.
+
+    The CSRF rule below stays sound: a header is never ambient -- a page on
+    another site cannot add one without a CORS preflight this server does not
+    answer -- and a request that skips the token check by carrying a key
+    needed that key to begin with."""
+    if _has_bearer(authorization):
+        return _resolve_api_key(store, cfg, authorization)
+    return _resolve_session(store, cfg, cookies)
 
 
 class LoadActor:
@@ -233,6 +252,9 @@ class Guard:
     """Base for the guards: subclasses return a refusal, or None to let the
     request through."""
 
+    # The error statuses it can answer with, for the API docs.
+    statuses: tuple[int, ...] = ()
+
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
@@ -248,6 +270,8 @@ class Guard:
 
 
 class RequireLogin(Guard):
+    statuses = (401,)
+
     def refuse(self, request: Request) -> Response | None:
         if actor_from(request) is None:
             return _refuse(401, "not authenticated")
@@ -255,6 +279,8 @@ class RequireLogin(Guard):
 
 
 class RequireAdmin(Guard):
+    statuses = (401, 403)
+
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
         if actor is None:
@@ -266,26 +292,26 @@ class RequireAdmin(Guard):
 
 class RequireSession(Guard):
     """Refuses a request that authenticated with an API key, even a correctly
-    scoped one. It guards every route that creates a credential: minting and
-    revoking API keys, creating an account, and reissuing a login link (see
-    app/routes/__init__.py).
+    scoped one. It guards what a key must not reach (see
+    app/routes/__init__.py): minting, renaming and revoking API keys, your own
+    password, PIN and two-factor, other people's files, and the owner's
+    screens.
 
-    The reasoning is containment rather than privilege. A key is a bearer
-    credential that lives in a config file or a CI secret; if a leaked key
-    could create another credential -- a key directly, or a login link that
-    becomes a session that mints a key -- revoking it would not end the
-    compromise, because what it created while you were not looking survives.
-    Requiring a browser session for all of these means every credential
-    traces back to a person signing in, and revoking a key actually revokes
-    it.
+    Accounts and ways in are not on that list. An admin key may create and
+    delete accounts, change roles and hand out login links and invite links,
+    and any key may make its own account a login link -- so long as it carries
+    the account's full role, since the session the link becomes does. What
+    keeps revoking a leaked key meaningful is that every link records the key
+    that made it, and revoking or deleting the key voids those still usable
+    and ends every session one of its login links signed in
+    (login_tokens.void_links_minted_by_key). What it does not undo is anything
+    such a session did meanwhile, or the accounts made through an invite link
+    it handed out: those show in the activity log and the user list.
 
-    What a leaked admin-scoped key can still do is everything else an admin
-    can: list and disable accounts, revoke access. That is why admin keys have
-    to be asked for, and why the admin key list exists.
+    Keys themselves stay browser-only: a key that could mint a key would leave
+    a successor behind with nothing to tie it to the one revoked."""
 
-    Drop this from a route if an app genuinely needs to provision accounts or
-    keys programmatically -- but do it knowingly: such a key can then mint its
-    own successors, and that app's docs should say so."""
+    statuses = (401, 403)
 
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
@@ -302,6 +328,8 @@ class RequireAPIKey(Guard):
     header credential there means no ambient cookie can ride along on a
     request some other page caused, so the endpoint needs no CSRF token and
     the no-credentials rule for keys covers everything it can do."""
+
+    statuses = (401, 403)
 
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
@@ -328,6 +356,8 @@ class RequireOwner(Guard):
 
     Finding the owner reads SQLite, so unlike the guards above this one runs
     its check in a worker thread."""
+
+    statuses = (404,)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         request = Request(scope)

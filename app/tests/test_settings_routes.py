@@ -95,6 +95,21 @@ class SettingsRoutesTest(unittest.TestCase):
         self.assertEqual(reply["error"], "invalid_settings")
         self.assertTrue(reply["problems"][0].startswith("server.port"))
 
+    def test_settings_never_change_a_path(self) -> None:
+        """S2: a path is never set from Settings, inside a container or out.
+        Before, the owner's screen could point static_dir at the config
+        folder, and the static handler then served secret.key to anyone."""
+        for key in ("server.static_dir", "server.language_file", "server.app_dir", "docker.data_dir"):
+            with self.subTest(key=key):
+                version = self.call("GET", "/api/owner/settings", cookie=self.owner)[1]["version"]
+                body = {"csrf_token": self.csrf, "version": version, "changes": {key: "/s2-probe"}}
+                status, reply = self.call("POST", "/api/owner/settings", cookie=self.owner, body=body)
+                self.assertEqual((status, reply.get("error")), (403, "settings_file_only"), reply)
+        self.assertNotIn("s2-probe", self.path.read_text())
+        _, snapshot = self.call("GET", "/api/owner/settings", cookie=self.owner)
+        marked = {state["key"] for section in snapshot["sections"] for state in section["keys"] if state.get("file_only")}
+        self.assertIn("server.static_dir", marked)
+
     def test_mcp_follows_the_setting(self) -> None:
         ping = {"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}}
         self.assertNotEqual(self.call("POST", "/mcp", key=self.key, body=ping)[0], 404)

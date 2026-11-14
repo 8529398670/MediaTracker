@@ -279,6 +279,70 @@ def owner_id_tx(tx: Transaction) -> int | None:
     return None if record is None else record["user_id"]
 
 
+class OwnerProtectedError(Exception):
+    """Refusal for acting on the owner: deleting, disabling, revoking, or
+    (from the web) anything else may_act_on_tx guards. Move ownership first:
+    manage transfer-owner."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "the owner account cannot be deleted, disabled, or have its access revoked "
+            "-- transfer ownership first (manage transfer-owner)"
+        )
+
+
+class OwnerRequiredError(Exception):
+    """Refusal for an admin who is not the owner acting on another admin."""
+
+    def __init__(self) -> None:
+        super().__init__("only the owner can do this to an admin account")
+
+
+def may_act_on_tx(tx: Transaction, actor_id: int | None, target: User | dict | None) -> None:
+    """The one rule for an admin acting on someone else's account, read
+    inside the caller's transaction so ownership cannot move between the
+    check and the change:
+
+    - nobody acts on the owner (OwnerProtectedError);
+    - only the owner acts on another admin (OwnerRequiredError).
+
+    An actor_id of None is the operator, through the CLI, and acting on your
+    own account is your own business; neither is refused here. A route that
+    also refuses acting on yourself (deleting, changing your own role) checks
+    that first, with its own error. A missing target passes: the caller
+    answers "no such user" itself.
+
+    Every route that changes another account goes through this -- deleting,
+    role, 2FA reset, login links, disabling, revoking, ending sessions, and
+    minting, revoking, deleting or restoring an API key for someone else -- so
+    the rule cannot be forgotten on one door and kept on the others."""
+    if target is None or actor_id is None:
+        return
+    user = target if isinstance(target, User) else User.from_record(target)
+    if actor_id == user.id:
+        return
+    owner_id = owner_id_tx(tx)
+    if user.id == owner_id:
+        raise OwnerProtectedError()
+    if user.is_admin and actor_id != owner_id:
+        raise OwnerRequiredError()
+
+
+def may_act_on_id_tx(tx: Transaction, actor_id: int | None, user_id: int) -> None:
+    """may_act_on_tx for a caller holding only the target's id."""
+    if actor_id is None or actor_id == user_id:
+        return
+    may_act_on_tx(tx, actor_id, tx.get(BUCKET_USERS, user_id))
+
+
+def may_act_on(store: Store, actor_id: int | None, user_id: int) -> None:
+    """may_act_on_tx in its own transaction, for a route that must refuse
+    before it does anything else. Where the change is a write, check inside
+    it instead."""
+    with store.transaction() as tx:
+        may_act_on_id_tx(tx, actor_id, user_id)
+
+
 def _set_owner_tx(tx: Transaction, user_id: int) -> None:
     tx.put(BUCKET_META, META_OWNER_KEY, {"user_id": user_id})
 

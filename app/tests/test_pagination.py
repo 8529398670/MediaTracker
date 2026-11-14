@@ -8,15 +8,15 @@ from typing import Any
 from app.core.db import BUCKET_API_KEYS
 from app.models import users
 from app.models import api_keys, to_iso, utc_now
-from app.routes.helpers import match_rows, page_body, sort_rows
+from app.routes.helpers import Page, cut_page, match_rows, sort_rows
 from app.tests.route_support import RoutesTestCase
 
 
-class PageBodyTests(unittest.TestCase):
+class CutPageTests(unittest.TestCase):
     def test_cuts_and_points_at_the_next_page(self) -> None:
         rows = [1, 2, 3, 4, 5]
         for limit, offset, count, following in [(2, 0, 2, 2), (2, 2, 2, 4), (2, 4, 1, None), (5, 0, 5, None), (2, 99, 0, None)]:
-            body = page_body("rows", rows, limit, offset)
+            body = cut_page(rows, Page(limit=limit, offset=offset))
             self.assertEqual(len(body["rows"]), count, (limit, offset))
             self.assertEqual(body["next"], following, (limit, offset))
             self.assertEqual(body["total"], 5)

@@ -5,66 +5,83 @@ make thousands of outbound calls, and that is a decision about the server,
 not about one person's list."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
+from msgspec import Meta
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
 
-from app.core.config import Config
+from app.apidocs import ADMIN, PATH, Reply, route
+from app.apidocs import Request as RequestType
 from app.jobs import runner
 from app.reference.images import CACHE
 from app.routes.helpers import Refused, get_config
-from app.routes.titles import _body
+
+TAG = "Jobs"
 
 
-def jobs_payload(cfg: Config) -> dict[str, Any]:
-    """GET /api/jobs, shared with MCP."""
-    return {"jobs": runner.statuses(), "images": CACHE.stats(), "network": cfg.providers.network}
+class Jobs(Reply, kw_only=True):
+    jobs: Annotated[list[dict[str, Any]], Meta(description="Each job's name, whether it runs by hand (manual), and what it is doing.")]
+    images: Annotated[dict[str, Any], Meta(description="The poster cache.")]
+    network: Annotated[bool, Meta(description="providers.network: whether lookups are on.")]
 
 
-async def list_jobs(request: Request) -> Response:
-    return JSONResponse(jobs_payload(get_config(request)))
+@route(
+    "GET /api/jobs", summary="Background jobs",
+    tag=TAG,
+    description="What the server is doing in the background (filling in titles, IMDb ratings, the "
+    "catalogue), the poster cache, and whether lookups are on.",
+    mcp="jobs_status", read_only=True,
+)
+def list_jobs(request: Request) -> Jobs:
+    return Jobs(jobs=runner.statuses(), images=CACHE.stats(), network=get_config(request).providers.network)
 
 
-def start_job_checked(cfg: Config, name: str, body: dict[str, Any]) -> dict[str, Any]:
-    """POST /api/jobs/{name}/start, shared with MCP."""
-    job = runner.REGISTRY.get(name)
+class JobPath(RequestType, kw_only=True):
+    name: Annotated[str, PATH, Meta(description="A job's name, from GET /api/jobs.")]
+
+
+class StartJob(JobPath, kw_only=True):
+    options: Annotated[dict[str, Any], Meta(description="The job's own settings.")] = {}
+
+
+class JobStarted(Reply, kw_only=True):
+    started: bool
+    job: dict[str, Any]
+
+
+@route(
+    "POST /api/jobs/{name}/start", summary="Start a job",
+    tag=TAG, role=ADMIN, errors=(404, 503),
+    description="Start a background job by its name (one marked manual). options are the job's own "
+    "settings. Each job can make thousands of outbound calls.",
+    mcp="admin_start_job",
+)
+def start_job(request: Request, body: StartJob) -> JobStarted:
+    job = runner.REGISTRY.get(body.name)
     if job is None or not job.manual:
         raise Refused(404, "no such job")
-    if not cfg.providers.network:
+    if not get_config(request).providers.network:
         raise Refused(503, "lookups_off")
-    options = {key: value for key, value in (body.get("options") or {}).items() if isinstance(key, str)}
     try:
-        started = job.start(**options)
+        started = job.start(**body.options)
     except TypeError:
         raise Refused(400, "unknown option") from None
-    return {"started": started, "job": job.status()}
+    return JobStarted(started=started, job=job.status())
 
 
-async def start_job(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    try:
-        return JSONResponse(start_job_checked(get_config(request), request.path_params["name"], body))
-    except Refused as refused:
-        return refused.response()
+class JobReply(Reply, kw_only=True):
+    job: dict[str, Any]
 
 
-def stop_job_checked(name: str) -> dict[str, Any]:
-    """POST /api/jobs/{name}/stop, shared with MCP."""
-    job = runner.REGISTRY.get(name)
+@route(
+    "POST /api/jobs/{name}/stop", summary="Stop a job",
+    tag=TAG, role=ADMIN, errors=(404,),
+    description="Ask a running background job to stop.",
+    mcp="admin_stop_job",
+)
+def stop_job(request: Request, body: JobPath) -> JobReply:
+    job = runner.REGISTRY.get(body.name)
     if job is None:
         raise Refused(404, "no such job")
     job.stop()
-    return {"job": job.status()}
-
-
-async def stop_job(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    try:
-        return JSONResponse(stop_job_checked(request.path_params["name"]))
-    except Refused as refused:
-        return refused.response()
+    return JobReply(job=job.status())

@@ -12,64 +12,98 @@ invite_link_invalid, whichever of those it was.
 """
 from __future__ import annotations
 
-from typing import Any
-
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
 
+from app.apidocs import PUBLIC, Reply, one_of, route
+from app.apidocs import Request as RequestType
 from app.core.logs import KIND_AUTH, LEVEL_INFO, LEVEL_WARN
 from app.models import invite_links, pins, users
 from app.models import passwords
 from app.models.attempts import AttemptGuard
 from app.models.invite_links import InviteLink, InviteLinkFullError, InviteLinkInvalidError, NotInviteAccountError
 from app.models.sign_in import SignIn
-from app.routes.auth import same_origin_json, sign_in_response, sign_in_rules
-from app.routes.helpers import bad_request, error, forbidden, get_config, get_store, not_found, read_json, run
+from app.routes.auth import TwoFactorChallenge, sign_in_response, sign_in_rules
+from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.logs import audit_as, user_actor
+from app.routes.auth import SameOriginJoin
 
 # Per process, like the rate limiter. See AttemptGuard.
 PINS = AttemptGuard()
 
 
-async def _join_link(request: Request) -> tuple[InviteLink | None, dict[str, Any], Response | None]:
-    """Check the request, decode the body, and load the link. Returns (link,
-    body, None), or (None, body, the response to send)."""
-    if not same_origin_json(request):
-        return None, {}, forbidden("invite links must be used from this site's own page")
-    body = await read_json(request)
-    if body is None:
-        return None, {}, bad_request("malformed request body")
+class Join(RequestType):
+    """What every join route takes; each reads the fields its step needs."""
+
+    credential: str
+    display_name: str = ""
+    user_id: int = 0
+    pin: str = ""
+
+
+class JoinedReply(Reply):
+    ok: bool
+    display_name: str
+
+
+# What joining or claiming an account answers.
+JOINED = one_of("Joined", JoinedReply, TwoFactorChallenge, doc="Either the sign-in finished, or a two-factor code is needed.")
+
+
+def _join_link(request: Request, body: Join) -> InviteLink:
+    """Check where the request came from, and load the link."""
     try:
-        link = await run(invite_links.load_invite_link, get_store(request), body.get("credential"))
+        return invite_links.load_invite_link(get_store(request), body.credential)
     except InviteLinkInvalidError:
-        return None, body, not_found("invite_link_invalid")
-    return link, body, None
+        raise Refused(404, "invite_link_invalid") from None
 
 
-async def join_info(request: Request) -> Response:
-    link, _, refused = await _join_link(request)
-    if link is None:
-        return refused
-    return JSONResponse({"label": link.label, "remaining": link.remaining})
+class JoinInfoReply(Reply):
+    label: str
+    remaining: int
 
 
-async def join_match(request: Request) -> Response:
+@route(
+    "POST /api/join/info", summary="What an invite link is",
+    tag="Invite links", access=PUBLIC, feature="invite_links", use=[SameOriginJoin],
+)
+def join_info(request: Request, body: Join) -> JoinInfoReply:
+    link = _join_link(request, body)
+    return JoinInfoReply(label=link.label, remaining=link.remaining)
+
+
+class JoinMatch(Reply):
+    id: int
+    display_name: str
+    has_pin: bool
+
+
+class JoinMatchReply(Reply):
+    matches: list[JoinMatch]
+    can_create: bool
+
+
+@route(
+    "POST /api/join/match", summary="Accounts matching a name",
+    tag="Invite links", access=PUBLIC, feature="invite_links", use=[SameOriginJoin],
+)
+def join_match(request: Request, body: Join) -> JoinMatchReply:
     """The "did you mean...?": the accounts from this link whose names are
     close to what was typed. The page always shows this step before creating
     anyone, even with no matches, because a typo would otherwise use up a
     place."""
-    link, body, refused = await _join_link(request)
-    if link is None:
-        return refused
-    display_name = body.get("display_name")
-    if not users.valid_display_name(display_name):
-        return bad_request("display name must be 1-80 characters")
-    matches = await run(invite_links.invite_matches, get_store(request), link, display_name)
-    rows = [{"id": user.id, "display_name": user.display_name, "has_pin": pins.has_pin(user)} for user in matches]
-    return JSONResponse({"matches": rows, "can_create": link.remaining > 0})
+    link = _join_link(request, body)
+    if not users.valid_display_name(body.display_name):
+        raise Refused(400, "display name must be 1-80 characters")
+    matches = invite_links.invite_matches(get_store(request), link, body.display_name)
+    rows = [JoinMatch(id=user.id, display_name=user.display_name, has_pin=pins.has_pin(user)) for user in matches]
+    return JoinMatchReply(matches=rows, can_create=link.remaining > 0)
 
 
-async def join_claim(request: Request) -> Response:
+@route(
+    "POST /api/join/claim", summary="Sign in as an existing account",
+    tag="Invite links", access=PUBLIC, feature="invite_links", use=[SameOriginJoin],
+)
+async def join_claim(request: Request, body: Join) -> JOINED:
     """Sign in as an account this link created -- the same person on another
     device -- asking for the PIN if that person set one.
 
@@ -77,59 +111,56 @@ async def join_claim(request: Request) -> Response:
     can pick any name on it, and that must not walk around the password. The
     person signs in with it instead. An account with two-factor on still has
     to give its code after this, PIN or not."""
-    link, body, refused = await _join_link(request)
-    if link is None:
-        return refused
+    link = await run(_join_link, request, body)
     store, cfg = get_store(request), get_config(request)
     try:
-        user = await run(invite_links.invite_account, store, link, body.get("user_id"))
+        user = await run(invite_links.invite_account, store, link, body.user_id)
     except NotInviteAccountError:
-        return not_found("no_such_account")
+        raise Refused(404, "no_such_account") from None
 
     if pins.has_pin(user):
-        if PINS.locked(user.id):
-            return error(429, "pin_locked")
-        pin = body.get("pin")
-        ok = await run(pins.check_pin, user, pin)
-        PINS.record(user.id, ok)
+        attempt = PINS.reserve(user.id)
+        if attempt is None:
+            raise Refused(429, "pin_locked")
+        with attempt:
+            ok = await run(pins.check_pin, user, body.pin)
+            attempt.passed() if ok else attempt.failed()
         if not ok:
             audit_as(request, await run(user_actor, store, user.id, "anon"), KIND_AUTH, LEVEL_WARN, "wrong pin on an invite link", {"link_id": link.id})
-            return forbidden("pin_needed" if not pin else "pin_wrong")
+            raise Refused(403, "pin_needed" if not body.pin else "pin_wrong")
     elif passwords.usable(user, cfg.passwords_enabled):
-        return forbidden("use_password")
+        raise Refused(403, "use_password")
 
     try:
-        signed, user = await run(
-            invite_links.claim_invite_account, store, body.get("credential"), user.id, sign_in_rules(cfg)
-        )
+        signed, user = await run(invite_links.claim_invite_account, store, body.credential, user.id, sign_in_rules(cfg))
     except InviteLinkInvalidError:
-        return not_found("invite_link_invalid")
+        raise Refused(404, "invite_link_invalid") from None
     except NotInviteAccountError:
-        return not_found("no_such_account")
+        raise Refused(404, "no_such_account") from None
     message = "invite link accepted, waiting for a code" if signed.challenge else "signed back in through an invite link"
     audit_as(request, await run(user_actor, store, user.id, "session"), KIND_AUTH, LEVEL_INFO, message, {"link_id": link.id})
-    return await sign_in_response(request, signed, {"ok": True, "display_name": user.display_name}, 200)
+    return await sign_in_response(request, signed, JoinedReply(ok=True, display_name=user.display_name), 200)  # type: ignore[return-value]
 
 
-async def join_create(request: Request) -> Response:
+@route(
+    "POST /api/join/create", summary="Join as a new account",
+    tag="Invite links", access=PUBLIC, feature="invite_links", status=201, errors=(409,),
+    use=[SameOriginJoin],
+)
+async def join_create(request: Request, body: Join) -> JOINED:
     """Make a new account through the link, if it has places left, and sign
     it in."""
-    link, body, refused = await _join_link(request)
-    if link is None:
-        return refused
-    display_name = body.get("display_name")
-    if not users.valid_display_name(display_name):
-        return bad_request("display name must be 1-80 characters")
+    link = await run(_join_link, request, body)
+    if not users.valid_display_name(body.display_name):
+        raise Refused(400, "display name must be 1-80 characters")
 
     store, cfg = get_store(request), get_config(request)
     try:
-        session_credential, user = await run(
-            invite_links.join_invite_link, store, body.get("credential"), display_name, cfg.session_ttl_seconds
-        )
+        session_credential, user = await run(invite_links.join_invite_link, store, body.credential, body.display_name, cfg.session_ttl_seconds)
     except InviteLinkInvalidError:
-        return not_found("invite_link_invalid")
+        raise Refused(404, "invite_link_invalid") from None
     except InviteLinkFullError:
-        return error(409, "invite_link_full")
+        raise Refused(409, "invite_link_full") from None
     audit_as(request, await run(user_actor, store, user.id, "session"), KIND_AUTH, LEVEL_INFO, "joined through an invite link", {"link_id": link.id})
     signed = SignIn(user_id=user.id, session_credential=session_credential)
-    return await sign_in_response(request, signed, {"ok": True, "display_name": user.display_name}, 201)
+    return await sign_in_response(request, signed, JoinedReply(ok=True, display_name=user.display_name), 201)  # type: ignore[return-value]

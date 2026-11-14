@@ -19,15 +19,16 @@ uses (read from used_at), so they keep meaning "once".
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from app.core import encryption
-from app.core.db import BUCKET_LOGIN_TOKENS, BUCKET_USERS, Record, Store, Transaction
+from app.core.db import BUCKET_LOGIN_TOKENS, BUCKET_SESSIONS, BUCKET_USERS, Record, Store, Transaction
+from app.core.db import BUCKET_SIGN_IN_CHALLENGES
 from app.models import from_iso, to_iso, utc_now
 from app.models.sessions import split_credential
 from app.models.sign_in import SignIn, SignInRules, start_sign_in_tx
-from app.models.users import User
+from app.models.users import User, may_act_on_id_tx
 
 LOGIN_LINK_MAX_USES = 1000
 LOGIN_LINK_MAX_DAYS = 365
@@ -48,6 +49,10 @@ class LoginToken:
     max_uses: int = 1
     unlimited: bool = False
     uses: int = 0
+    # The API key that asked for this link, "" when a person did. Revoking or
+    # deleting that key voids the link while it can still be used
+    # (void_links_minted_by_key).
+    minted_by_key: str = ""
 
     def used_up(self) -> bool:
         return not self.unlimited and self.uses >= self.max_uses
@@ -79,6 +84,7 @@ class LoginToken:
             "max_uses": self.max_uses,
             "unlimited": self.unlimited,
             "uses": self.uses,
+            "minted_by_key": self.minted_by_key,
         }
 
     @classmethod
@@ -94,6 +100,7 @@ class LoginToken:
             max_uses=max(1, record.get("max_uses") or 1),
             unlimited=bool(record.get("unlimited")),
             uses=uses,
+            minted_by_key=record.get("minted_by_key") or "",
         )
 
 
@@ -105,6 +112,13 @@ class LinkOptions:
     max_uses: int = 1
     unlimited: bool = False
     ttl_seconds: int = 0
+    # The id of the API key asking, if one is. See LoginToken.minted_by_key.
+    minted_by_key: str = ""
+    # The account asking for a link to someone else's account, checked with
+    # users.may_act_on_tx inside the issuing transaction: a link is a way in,
+    # so minting one is as much power over the account as deleting it. None
+    # is the operator, or an account being created just now.
+    actor_id: int | None = None
 
     def valid(self) -> bool:
         uses_ok = self.unlimited or 1 <= self.max_uses <= LOGIN_LINK_MAX_USES
@@ -230,10 +244,12 @@ def issue_login_link(store: Store, user_id: int, options: LinkOptions) -> tuple[
         expires_at=now + timedelta(seconds=options.ttl_seconds) if options.ttl_seconds > 0 else None,
         max_uses=1 if options.unlimited else options.max_uses,
         unlimited=options.unlimited,
+        minted_by_key=options.minted_by_key,
     )
     with store.transaction() as tx:
         if tx.get(BUCKET_USERS, user_id) is None:
             raise UnknownUserError(user_id)
+        may_act_on_id_tx(tx, options.actor_id, user_id)
         delete_pending_login_tokens(tx, user_id)
         tx.put(BUCKET_LOGIN_TOKENS, token_id, token.to_record())
     return f"{token_id}.{secret}", token.info()
@@ -284,7 +300,7 @@ def redeem_login_token(store: Store, credential: str, rules: SignInRules) -> Sig
         current.uses += 1
         current.used_at = utc_now()
         tx.put(BUCKET_LOGIN_TOKENS, token_id, current.to_record())
-        return start_sign_in_tx(tx, User.from_record(owner), rules)
+        return start_sign_in_tx(tx, User.from_record(owner), replace(rules, minted_by_key=current.minted_by_key))
 
 
 def live_login_links(store: Store) -> dict[int, dict]:
@@ -303,10 +319,13 @@ def live_login_link(store: Store, user_id: int) -> dict | None:
     return live_login_links(store).get(user_id)
 
 
-def cancel_login_link(store: Store, user_id: int) -> int:
+def cancel_login_link(store: Store, user_id: int, actor_id: int | None = None) -> int:
     """Stop the account's live link working. Sessions it already made stay
-    signed in, as with reissuing."""
+    signed in, as with reissuing. actor_id is who is asking, held to
+    users.may_act_on_tx: None for the operator, the account itself for its
+    own link."""
     with store.transaction() as tx:
+        may_act_on_id_tx(tx, actor_id, user_id)
         return delete_pending_login_tokens(tx, user_id)
 
 
@@ -319,6 +338,31 @@ def delete_pending_login_tokens(tx: Transaction, user_id: int) -> int:
         BUCKET_LOGIN_TOKENS,
         lambda _key, record: record["user_id"] == user_id and LoginToken.from_record(record).usable(),
     )
+
+
+def void_links_minted_by_key(tx: Transaction, key_id: str) -> int:
+    """What keeps revoking a key meaningful now that a key may hand out login
+    links and invite links: inside the caller's transaction (the one revoking
+    or deleting the key), every login link the key made that could still sign
+    someone in is deleted, every browser session one of those links signed in
+    is ended, along with a sign-in still waiting on its two-factor code, and
+    every invite link it made is switched off. Restoring a deleted key brings
+    none of them back.
+
+    Sessions made through an invite link the key made stay: those are the
+    accounts of the people who joined, not a way into an existing one."""
+    if not key_id:
+        return 0
+    voided = tx.delete_where(
+        BUCKET_LOGIN_TOKENS,
+        lambda _key, record: record.get("minted_by_key") == key_id and LoginToken.from_record(record).usable(),
+    )
+    voided += tx.delete_where(BUCKET_SESSIONS, lambda _key, record: record.get("minted_by_key") == key_id)
+    voided += tx.delete_where(BUCKET_SIGN_IN_CHALLENGES, lambda _key, record: record.get("minted_by_key") == key_id)
+    from app.models import invite_links
+
+    voided += invite_links.revoke_invite_links_minted_by_key(tx, key_id)
+    return voided
 
 
 def delete_login_tokens_for_user(tx: Transaction, user_id: int) -> int:

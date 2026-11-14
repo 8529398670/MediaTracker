@@ -58,6 +58,31 @@ class LockedError(ConfigError):
     container, and what the image pins."""
 
 
+class FileOnlyError(LockedError):
+    """A key that names a path, which only config.yaml may set (see
+    FILE_ONLY_KEYS)."""
+
+
+# The keys that name a path on disk. The Settings screen never changes them,
+# inside a container or out: a path decides what the server reads, writes or
+# serves, so letting a web session pick one turns a stolen owner session into
+# reading secret.key -- server.static_dir is served to anyone, without
+# signing in. The person with the file in front of them can still change any
+# of these by editing it. Add a key here when you add a path-typed key to
+# defaults.yaml; test_config_schema.py fails until you do.
+FILE_ONLY_KEYS = frozenset({
+    "server.app_dir",
+    "server.static_dir",
+    "server.language_file",
+    "docker.data_dir",
+})
+
+
+def file_only(key: config_schema.KeySchema) -> bool:
+    """True for a key the Settings screen never changes (FILE_ONLY_KEYS)."""
+    return key.path in FILE_ONLY_KEYS
+
+
 class ConflictError(ConfigError):
     """config.yaml changed since the client read it."""
 
@@ -163,6 +188,8 @@ def edit_changes(raw: str, changes: dict[str, Any], label: str, from_server: boo
         for key in section.keys:
             if key.path not in changes:
                 continue
+            if from_server and file_only(key):
+                raise FileOnlyError(f"{key.path}: this setting names a path, so it can only be changed in config.yaml")
             if from_server and locked(key):
                 raise LockedError(f"{key.path}: this setting cannot be changed from inside the container")
             try:
@@ -189,10 +216,12 @@ def edit_changes(raw: str, changes: dict[str, Any], label: str, from_server: boo
 
 
 def locked(key: config_schema.KeySchema) -> bool:
-    """True for a key that cannot be changed from inside the container:
-    docker.* (a compromised container must not be able to choose what
-    docker/run.sh mounts and chowns on the host next time), and the keys the
-    image pins."""
+    """True for a key the Settings screen cannot change: a file-only key (see
+    FILE_ONLY_KEYS) anywhere, and inside the container docker.* (a
+    compromised container must not be able to choose what docker/run.sh
+    mounts and chowns on the host next time) and the keys the image pins."""
+    if file_only(key):
+        return True
     if not in_container():
         return False
     return key.mode == MODE_SCRIPTS or _pinned_key(key.path)
@@ -434,6 +463,7 @@ class Holder:
                         "pending_restart": pending,
                         "running": running[key.path],
                         "locked": locked(key),
+                        "file_only": file_only(key),
                     })
                 sections.append({"name": section.name, "help": section.help, "keys": keys})
             return {

@@ -18,6 +18,17 @@ class SchemaTest(unittest.TestCase):
                 self.assertTrue(key.tagged, f"{key.path} has no [live], [restart] or [scripts] tag in defaults.yaml")
         self.assertEqual(seen, set(config_schema.field_types()), "defaults.yaml and config.py's dataclasses differ")
 
+    def test_every_path_key_is_file_only(self) -> None:
+        """Every key that names a path is file-only (config_live.FILE_ONLY_KEYS):
+        a path set from the Settings screen is how S2 served secret.key. A new
+        *_dir, *_file or *_path key fails here until it is listed."""
+        for section in config_schema.schema():
+            for key in section.keys:
+                if key.name.endswith(("_dir", "_file", "_path")):
+                    self.assertTrue(config_live.file_only(key), f"{key.path} names a path but is not in FILE_ONLY_KEYS")
+                if config_live.file_only(key):
+                    self.assertTrue(config_live.locked(key), f"{key.path} is file-only but not locked")
+
     def test_live_tags_match_live_config(self) -> None:
         """Changing a [live] key changes the running Config, and changing any
         other key does not. A new live key live_config forgets fails here."""

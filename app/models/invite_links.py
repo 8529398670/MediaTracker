@@ -79,6 +79,10 @@ class InviteLink:
     expires_at: datetime
     accounts: list[int] = field(default_factory=list)
     revoked_at: datetime | None = None
+    # The API key that made this link, "" when a person did. Revoking or
+    # deleting that key switches the link off (see
+    # login_tokens.void_links_minted_by_key).
+    minted_by_key: str = ""
     # Set by delete_invite_link; restorable for RESTORE_WINDOW, like a key.
     deleted_at: datetime | None = None
     deleted_by: int | None = None
@@ -107,6 +111,7 @@ class InviteLink:
             "revoked_at": to_iso(self.revoked_at),
             "deleted_at": to_iso(self.deleted_at),
             "deleted_by": self.deleted_by,
+            "minted_by_key": self.minted_by_key,
         }
 
     @classmethod
@@ -123,6 +128,7 @@ class InviteLink:
             revoked_at=from_iso(record.get("revoked_at")),
             deleted_at=from_iso(record.get("deleted_at")),
             deleted_by=record.get("deleted_by"),
+            minted_by_key=record.get("minted_by_key") or "",
         )
 
 
@@ -152,9 +158,10 @@ def valid_invite_limits(max_uses: object, days: object) -> bool:
     )
 
 
-def issue_invite_link(store: Store, label: str, max_uses: int, ttl: timedelta, created_by: int) -> tuple[str, InviteLink]:
+def issue_invite_link(store: Store, label: str, max_uses: int, ttl: timedelta, created_by: int, minted_by_key: str = "") -> tuple[str, InviteLink]:
     """Returns (credential, link). The credential exists exactly once, like a
-    login link: only its hash is stored."""
+    login link: only its hash is stored. minted_by_key is the id of the API
+    key asking, or ""."""
     link_id = encryption.url_token(12)
     secret = encryption.url_token(24)
     now = utc_now()
@@ -166,6 +173,7 @@ def issue_invite_link(store: Store, label: str, max_uses: int, ttl: timedelta, c
         created_by=created_by,
         created_at=now,
         expires_at=now + ttl,
+        minted_by_key=minted_by_key,
     )
     store.put(BUCKET_INVITE_LINKS, link_id, link.to_record())
     return f"{link_id}.{secret}", link
@@ -314,6 +322,19 @@ def revoke_invite_link(store: Store, link_id: str) -> bool:
     return store.update_value(BUCKET_INVITE_LINKS, link_id, mutate) is not None
 
 
+def revoke_invite_links_minted_by_key(tx: Transaction, key_id: str) -> int:
+    """Switch off, inside the caller's transaction, every live invite link
+    the given API key made."""
+    switched_off = 0
+    now = to_iso(utc_now())
+    for link_id, record in tx.all(BUCKET_INVITE_LINKS):
+        if record.get("minted_by_key") == key_id and record.get("revoked_at") is None:
+            record["revoked_at"] = now
+            tx.put(BUCKET_INVITE_LINKS, link_id, record)
+            switched_off += 1
+    return switched_off
+
+
 def rename_invite_link(store: Store, link_id: str, label: str, expect: str | None = None) -> bool:
     """Change a link's label, on a dead link too. People see it on the join
     page. False if there is no such link or it is deleted.
@@ -334,14 +355,18 @@ def rename_invite_link(store: Store, link_id: str, label: str, expect: str | Non
     return store.update_value(BUCKET_INVITE_LINKS, link_id, mutate) is not None and found
 
 
-def set_invite_link_limits(store: Store, link_id: str, max_uses: int, ttl: timedelta | None) -> InviteLink | None:
+def set_invite_link_limits(store: Store, link_id: str, max_uses: int, ttl: timedelta | None, minted_by_key: str = "") -> InviteLink | None:
     """Change how many places a link has and, when ttl is given, give it a new
     expiry counted from now. Places cannot drop below the people already in
     (InvitePlacesError). None if there is no such link or it is deleted.
 
-    An expired link can be extended, which an API key cannot. A link owns the
-    accounts that joined through it, and it is how they sign back in on a new
-    device, so a replacement would lock them out."""
+    An expired link can be extended. A link owns the accounts that joined
+    through it, and it is how they sign back in on a new device, so a
+    replacement would lock them out.
+
+    minted_by_key is the id of the API key asking, or "". A key that widens a
+    link takes it over: revoking that key switches the link off, the same as
+    one it made."""
     found = False
 
     def mutate(record: Record) -> None:
@@ -354,17 +379,20 @@ def set_invite_link_limits(store: Store, link_id: str, max_uses: int, ttl: timed
         record["max_uses"] = max_uses
         if ttl is not None:
             record["expires_at"] = to_iso(utc_now() + ttl)
+        if minted_by_key:
+            record["minted_by_key"] = minted_by_key
 
     record = store.update_value(BUCKET_INVITE_LINKS, link_id, mutate)
     return InviteLink.from_record(record) if record is not None and found else None
 
 
-def switch_on_invite_link(store: Store, link_id: str) -> InviteLink | None:
+def switch_on_invite_link(store: Store, link_id: str, minted_by_key: str = "") -> InviteLink | None:
     """Undo revoke_invite_link, for the same reason an expired link can be
     extended: the accounts it made have no other way back in on a new device.
     Anyone still holding the link can use it again, so the caller asks first.
     It does nothing for a link that has expired or whose maker has lost their
-    rights. None if there is no such link or it is deleted."""
+    rights. None if there is no such link or it is deleted. A key that
+    switches a link on takes it over, as in set_invite_link_limits."""
     found = False
 
     def mutate(record: Record) -> None:
@@ -373,6 +401,8 @@ def switch_on_invite_link(store: Store, link_id: str) -> InviteLink | None:
             return
         found = True
         record["revoked_at"] = None
+        if minted_by_key:
+            record["minted_by_key"] = minted_by_key
 
     record = store.update_value(BUCKET_INVITE_LINKS, link_id, mutate)
     return InviteLink.from_record(record) if record is not None and found else None
@@ -396,13 +426,16 @@ def delete_invite_link(store: Store, link_id: str, actor_id: int | None) -> bool
     return store.update_value(BUCKET_INVITE_LINKS, link_id, mutate) is not None and found
 
 
-def restore_invite_link(store: Store, link_id: str, actor_id: int, actor_is_admin: bool) -> InviteLink:
+def restore_invite_link(store: Store, link_id: str, actor_id: int, actor_is_admin: bool, minted_by_key: str = "") -> InviteLink:
     """Undo delete_invite_link. Raises a RestoreError when the window has
     passed or the actor may not. Only admins reach this today, so in practice
-    any admin may restore any link."""
+    any admin may restore any link. A key that restores a link takes it over,
+    as in set_invite_link_limits."""
 
     def mutate(record: Record) -> None:
         unmark_deleted(record, actor_id, actor_is_admin)
+        if minted_by_key:
+            record["minted_by_key"] = minted_by_key
 
     record = store.update_value(BUCKET_INVITE_LINKS, link_id, mutate)
     if record is None:

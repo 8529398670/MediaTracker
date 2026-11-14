@@ -23,25 +23,15 @@ from app.models import playlists, prefs, user_state, verdicts, views
 from app.models.revision import bump
 from app.models.sign_in import delete_challenges_for_user
 from app.models.two_factor import clear_record
-from app.models.users import ROLE_ADMIN, RenameConflictError, User, owner_id_tx
-
-
-class OwnerProtectedError(Exception):
-    """Refusal for deleting, disabling, or (from the web) revoking the owner.
-    Move ownership first: manage transfer-owner."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            "the owner account cannot be deleted, disabled, or have its access revoked "
-            "-- transfer ownership first (manage transfer-owner)"
-        )
-
-
-class OwnerRequiredError(Exception):
-    """Refusal for an admin who is not the owner deleting another admin."""
-
-    def __init__(self) -> None:
-        super().__init__("only the owner can delete an admin account")
+from app.models.users import (  # noqa: F401 -- the errors are re-exported for the routes
+    ROLE_ADMIN,
+    OwnerProtectedError,
+    OwnerRequiredError,
+    RenameConflictError,
+    User,
+    may_act_on_tx,
+    owner_id_tx,
+)
 
 
 class SelfDeleteError(Exception):
@@ -87,7 +77,7 @@ class Revoked:
         return asdict(self)
 
 
-def set_user_disabled(store: Store, user_id: int, disabled: bool) -> bool:
+def set_user_disabled(store: Store, user_id: int, disabled: bool, actor_id: int | None = None) -> bool:
     """Disable or re-enable an account; False if there is no such account.
 
     Disabling also deletes every session the account holds and every login
@@ -99,11 +89,16 @@ def set_user_disabled(store: Store, user_id: int, disabled: bool) -> bool:
 
     The owner cannot be disabled by any route, the CLI included: the owner is
     always an enabled admin. Raises OwnerProtectedError; transfer ownership
-    first."""
+    first.
+
+    actor_id is the admin asking through the web, held to may_act_on_tx both
+    ways: only the owner switches another admin off, or back on. None is the
+    operator."""
     with store.transaction() as tx:
         record = tx.get(BUCKET_USERS, user_id)
         if record is None:
             return False
+        may_act_on_tx(tx, actor_id, record)
         if disabled:
             _refuse_owner(tx, user_id)
         record["disabled_at"] = to_iso(utc_now()) if disabled else None
@@ -157,13 +152,10 @@ def set_user_role(store: Store, user_id: int, actor_id: int, role: str) -> bool 
             return None
         if user_id == actor_id:
             raise SelfRoleError()
-        owner_id = owner_id_tx(tx)
-        if user_id == owner_id:
-            raise OwnerProtectedError()
+        _refuse_owner(tx, user_id)
         if record["role"] == role:
             return False
-        if User.from_record(record).is_admin and actor_id != owner_id:
-            raise OwnerRequiredError()
+        may_act_on_tx(tx, actor_id, record)
         record["role"] = role
         tx.put(BUCKET_USERS, user_id, record)
         if role == ROLE_ADMIN:
@@ -173,7 +165,7 @@ def set_user_role(store: Store, user_id: int, actor_id: int, role: str) -> bool 
     return True
 
 
-def revoke_all_credentials(store: Store, user_id: int, allow_owner: bool = False) -> Revoked | None:
+def revoke_all_credentials(store: Store, user_id: int, allow_owner: bool = False, actor_id: int | None = None) -> Revoked | None:
     """The "this account may be compromised" operation: every session is
     deleted, the live login link is deleted, the password is removed, and
     every live API key is revoked, in one transaction. Afterwards nothing
@@ -194,13 +186,17 @@ def revoke_all_credentials(store: Store, user_id: int, allow_owner: bool = False
 
     allow_owner is False for the web route, so no admin can cut the owner off
     (OwnerProtectedError), and True for the CLI: when it is the owner's own
-    credentials that leaked, an operator with shell access still needs this."""
+    credentials that leaked, an operator with shell access still needs this.
+
+    actor_id is the admin asking through the web: only the owner revokes
+    another admin (may_act_on_tx). None is the operator."""
     with store.transaction() as tx:
         record = tx.get(BUCKET_USERS, user_id)
         if record is None:
             return None
         if not allow_owner:
             _refuse_owner(tx, user_id)
+        may_act_on_tx(tx, actor_id, record)
         revoked = Revoked(
             sessions=destroy_sessions_for_user(tx, user_id),
             login_links=delete_pending_login_tokens(tx, user_id),
@@ -242,11 +238,10 @@ def delete_user(store: Store, user_id: int, actor_id: int | None) -> Revoked | N
             return None
         if actor_id is not None and actor_id == user_id:
             raise SelfDeleteError()
-        owner_id = owner_id_tx(tx)
-        if owner_id == user_id:
-            raise OwnerProtectedError()
-        if actor_id is not None and User.from_record(record).is_admin and actor_id != owner_id:
-            raise OwnerRequiredError()
+        # The operator may delete anyone but the owner; an admin goes by the
+        # rule every account action does.
+        _refuse_owner(tx, user_id)
+        may_act_on_tx(tx, actor_id, record)
 
         removed = Revoked(
             sessions=destroy_sessions_for_user(tx, user_id),
@@ -286,14 +281,9 @@ def reset_two_factor(store: Store, user_id: int, actor_id: int | None) -> bool:
         record = tx.get(BUCKET_USERS, user_id)
         if record is None:
             return False
-        if actor_id is not None:
-            if actor_id == user_id:
-                raise SelfResetError()
-            owner_id = owner_id_tx(tx)
-            if owner_id == user_id:
-                raise OwnerProtectedError()
-            if User.from_record(record).is_admin and actor_id != owner_id:
-                raise OwnerRequiredError()
+        if actor_id is not None and actor_id == user_id:
+            raise SelfResetError()
+        may_act_on_tx(tx, actor_id, record)
         clear_record(record)
         tx.put(BUCKET_USERS, user_id, record)
         delete_challenges_for_user(tx, user_id)

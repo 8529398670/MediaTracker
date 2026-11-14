@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from app.core.db import BUCKET_INVITE_LINKS
 from app.models import invite_links, to_iso, utc_now
+from app.models import api_keys, users
 from app.tests.route_support import RoutesTestCase
 
 
@@ -87,15 +88,30 @@ class EditInviteLinkTest(RoutesTestCase):
         invite_links.delete_invite_link(self.store, self.link.id, self.owner.id)
         self.assertEqual(self.post(self.owner_cookie, "/switch-on")[0], 404)
 
-    def test_a_key_cannot_reopen_or_grow_a_link(self) -> None:
+    def test_a_key_that_reopens_or_grows_a_link_owns_it(self) -> None:
+        credential, key = api_keys.issue_api_key(self.store, self.owner.id, "script", users.ROLE_ADMIN, 3600)
         invite_links.revoke_invite_link(self.store, self.link.id)
-        for route in ("/rename", "/limits", "/switch-on"):
+        for route, body in (("/rename", {"label": "x"}), ("/limits", {"max_uses": 999}), ("/switch-on", {})):
             with self.subTest(route):
-                status, _ = self.call("POST", self.base + route, key=self.admin_key, body={"label": "x", "max_uses": 999})
-                self.assertEqual(status, 403)
+                status, reply = self.call("POST", self.base + route, key=credential, body=body)
+                self.assertEqual(status, 200, reply)
         stored = self.stored()
-        self.assertIsNotNone(stored.revoked_at)
-        self.assertEqual((stored.max_uses, stored.label), (10, "Book club"))
+        self.assertIsNone(stored.revoked_at)
+        self.assertEqual((stored.max_uses, stored.label, stored.minted_by_key), (999, "x", key.id))
+
+        # The link is the key's now: revoking the key switches it off again.
+        api_keys.revoke_api_key(self.store, key.id)
+        self.assertIsNotNone(self.stored().revoked_at)
+
+    def test_deleting_a_key_switches_off_the_invite_links_it_made(self) -> None:
+        credential, key = api_keys.issue_api_key(self.store, self.owner.id, "script", users.ROLE_ADMIN, 3600)
+        status, reply = self.call("POST", "/api/admin/invite-links", key=credential, body={"label": "Club", "max_uses": 5, "days": 1})
+        self.assertEqual(status, 201, reply)
+        join = reply["join_path"].removeprefix("/join/")
+        api_keys.delete_api_key(self.store, key.id, self.owner.id)
+        with self.assertRaises(invite_links.InviteLinkInvalidError):
+            invite_links.load_invite_link(self.store, join)
+        self.assertIsNone(self.stored().revoked_at, "a person's invite link was switched off")
 
 
 if __name__ == "__main__":

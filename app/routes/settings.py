@@ -11,53 +11,122 @@ server/routes/settings.go is the same for the Go template.
 """
 from __future__ import annotations
 
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from typing import Annotated, Any, ClassVar
 
+import msgspec
+from msgspec import Meta
+from starlette.requests import Request
+
+from app.apidocs import OWNER, Reply, route
+from app.apidocs import Request as RequestType
 from app.core import config_live
 from app.core.config import ValidationError
 from app.core.logs import KIND_ADMIN
-from app.core.security import check_csrf
 from app.core.yaml_edit import HandEditError
-from app.routes.helpers import bad_request, conflict, forbidden, read_json, run
+from app.routes.admin import DateTime
+from app.routes.helpers import Refused
 from app.routes.helpers import get_settings as holder
 from app.routes.logs import audit
 
 
-async def get_settings(request: Request) -> Response:
-    return JSONResponse(await run(holder(request).snapshot))
+class SettingsError(Reply):
+    """Why config.yaml on disk is not what is running."""
+
+    message: str
+    at: DateTime
+    origin: str
 
 
-async def save_settings(request: Request) -> Response:
+class SettingKey(Reply):
+    key: str
+    name: str
+    type: str
+    value: Any
+    default: Any
+    in_file: bool
+    help: str
+    apply: str
+    pending_restart: bool
+    running: Any
+    locked: bool
+    file_only: Annotated[bool, Meta(description="A path: change it in config.yaml, never here.")]
+
+
+class SettingsSection(Reply):
+    name: str
+    help: str
+    keys: list[SettingKey]
+
+
+class SettingsSnapshot(Reply):
+    """config_live.Holder.snapshot, as the Settings screen reads it."""
+
+    api_name: ClassVar[str] = "SettingsSnapshot"
+    file: str
+    secret_file: str
+    version: Annotated[str, Meta(description="Send it back when saving: a changed file is refused with a 409.")]
+    writable: bool
+    stale: bool
+    in_container: bool
+    error: SettingsError | None
+    sections: list[SettingsSection]
+
+
+class SettingsResult(Reply):
+    """What a save changed (config_live.Holder.save)."""
+
+    api_name: ClassVar[str] = "SettingsResult"
+    changes: list[dict[str, Any]] | None
+    applied: list[str] | None
+    restart: list[str] | None
+    scripts: list[str] | None
+    unchanged: list[str] | None
+    version: str
+
+
+@route(
+    "GET /api/owner/settings", summary="config.yaml, as a form",
+    tag="Owner", role=OWNER, feature="settings",
+)
+def get_settings(request: Request) -> SettingsSnapshot:
+    return msgspec.convert(holder(request).snapshot(), SettingsSnapshot)
+
+
+class SaveSettings(RequestType):
+    version: str
+    changes: Annotated[dict[str, Any], Meta(description="Setting paths and their new values.", extra={"error": "malformed request body"})]
+
+
+@route(
+    "POST /api/owner/settings", summary="Save settings",
+    tag="Owner", role=OWNER, feature="settings", errors=(409,),
+)
+def save_settings(request: Request, body: SaveSettings) -> SettingsResult:
     """Apply {version, changes: {"section.key": value}}. version is the one
     get_settings returned; a file changed since is a 409 with the current
     version, so the page can offer to reload rather than overwrite."""
-    body = await read_json(request)
-    if body is None or not isinstance(body.get("changes"), dict):
-        return bad_request("malformed request body")
-    if not check_csrf(request, body.get("csrf_token")):
-        return forbidden("invalid csrf token")
     try:
-        result = await run(holder(request).save, str(body.get("version") or ""), body["changes"])
+        result = holder(request).save(body.version, body.changes)
     except config_live.ConflictError as changed:
-        return conflict("settings_changed", version=changed.version)
+        raise Refused(409, "settings_changed", version=changed.version) from None
     except config_live.StaleError:
-        return conflict("settings_stale")
+        raise Refused(409, "settings_stale") from None
     except config_live.ReadOnlyError:
-        return conflict("settings_read_only")
+        raise Refused(409, "settings_read_only") from None
+    except config_live.FileOnlyError:
+        raise Refused(403, "settings_file_only") from None
     except config_live.LockedError:
-        return forbidden("settings_locked")
+        raise Refused(403, "settings_locked") from None
     except config_live.UnknownSettingError as unknown:
-        return JSONResponse({"error": "unknown_setting", "key": unknown.key}, status_code=400)
+        raise Refused(400, "unknown_setting", key=unknown.key) from None
     except HandEditError as refusal:
-        return JSONResponse({"error": "settings_hand_edit", "problems": [str(refusal)]}, status_code=400)
+        raise Refused(400, "settings_hand_edit", problems=[str(refusal)]) from None
     except ValidationError as invalid:
-        return JSONResponse({"error": "invalid_settings", "problems": invalid.problems}, status_code=400)
+        raise Refused(400, "invalid_settings", problems=invalid.problems) from None
     if result["changes"]:
         audit(request, KIND_ADMIN, "settings changed", {
             "changes": result["changes"],
             "restart": result["restart"],
             "scripts": result["scripts"],
         })
-    return JSONResponse(result)
-
+    return msgspec.convert(result, SettingsResult)

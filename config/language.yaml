@@ -535,6 +535,9 @@ api_keys:
   # app.repo, or this server's own copy.
   spec_text: "What a key can call:"
   spec_link: "API reference (openapi.json)"
+  # Beside it when app.repo is set: the same reference as tables, config/api.md,
+  # which the repository's site shows as a readable page.
+  doc_link: "readable version (api.md)"
   days_label: "Expires in (days)"
   days_placeholder: "leave blank for the default, 0 for never"
   create_button: "Create key"
@@ -573,6 +576,9 @@ mcp:
   # in app.repo, or this server's own copy.
   spec_text: "What an agent can call:"
   spec_link: "MCP reference (mcp.json)"
+  # Beside it when app.repo is set: the same reference as tables, config/mcp.md,
+  # which the repository's site shows as a readable page.
+  doc_link: "readable version (mcp.md)"
   endpoint_label: "Endpoint"
   client_label: "Set up for"
   # Also the name a new key is given, until someone types another.
@@ -742,6 +748,7 @@ settings:
   empty: "(empty)"
   list_help: "One per line."
   locked: "Fixed inside the container. Change it in config/config.yaml on the host."
+  file_only: "A path, so it can only be changed in config/config.yaml."
   save_button: "Save changes"
   reload_button: "Reload from file"
   # Empty this string to stop asking for confirmation.
@@ -822,6 +829,7 @@ errors:
   settings_stale: "config.yaml was replaced on the host. Restart the container first."
   settings_read_only: "The server cannot write config.yaml."
   settings_locked: "That setting cannot be changed from inside the container."
+  settings_file_only: "That setting names a path, so it can only be changed in config.yaml."
   invalid_settings: "That value is not allowed."
   unknown_setting: "There is no such setting."
   settings_hand_edit: "config.yaml is written in a way this screen cannot change. Edit the file by hand."

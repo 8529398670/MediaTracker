@@ -170,6 +170,14 @@ if RoutesTestCase is not None:
             credential = reply["login_path"].removeprefix("/login/")
             return TestClient(self.app).post("/api/login", json={"credential": credential}).status_code
 
+        def test_a_login_path_is_case_sensitive(self) -> None:
+            """S6 (Go only): Fiber routes /LOGIN/<credential> like /login/, so
+            Go's log redaction had to learn to ignore case. Starlette's routes
+            are case-sensitive, so here it is a 404 and never opens the page;
+            logs.redact ignores case anyway, so the path it writes is safe."""
+            self.assertEqual(self.client.get("/login/abc.def").status_code, 200)
+            self.assertEqual(self.client.get("/LOGIN/abc.def").status_code, 404)
+
         def row(self, user_id: int) -> dict:
             rows = self.call("GET", "/api/admin/users", cookie=self.owner_cookie)[1]["users"]
             return next(row for row in rows if row["id"] == user_id)

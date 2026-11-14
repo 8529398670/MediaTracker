@@ -197,7 +197,7 @@ class SlowReadyTest(unittest.IsolatedAsyncioTestCase):
 
     def request(self, state: object) -> Request:
         app = type("App", (), {"state": state})()
-        return Request({"type": "http", "app": app, "headers": []})
+        return Request({"type": "http", "method": "GET", "app": app, "headers": []})
 
     async def test_times_out_without_stacking_threads(self) -> None:
         release = threading.Event()

@@ -139,7 +139,8 @@ const DiscoverScreen = {
     const batches = [];
     for ( let i = 0; i < articles.length; i += 30 ) batches.push( articles.slice( i , i + 30 ) );
     await Promise.all( batches.map( async ( batch ) => {
-      const query = batch.map( ( a ) => "a=" + encodeURIComponent( a ) ).join( "&" );
+      // One parameter, the articles separated by | (no article name has one).
+      const query = "articles=" + encodeURIComponent( batch.join( "|" ) );
       let facts;
       try { facts = await Api.request( "/api/discover/facts?" + query ); } catch ( error ) { return; }
       if ( token !== this.token ) return;

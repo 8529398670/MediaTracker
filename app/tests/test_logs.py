@@ -48,6 +48,10 @@ class RedactTest(LogsTestCase):
         self.assertEqual(logs.redact("/join/xyz"), "/join/…")
         self.assertEqual(logs.redact("/api/me"), "/api/me")
         self.assertEqual(logs.redact("/login/"), "/login/")
+        # S6: in any case. Starlette answers /LOGIN/... with a 404 (see
+        # test_a_login_path_is_case_sensitive), but the log still writes it.
+        self.assertEqual(logs.redact("/LOGIN/abc.def"), "/LOGIN/…")
+        self.assertEqual(logs.redact("/Join/xyz"), "/Join/…")
         self.assertNotIn("s3cret", logs.redact("/api/thing", "token=s3cret&page=2"))
         self.assertIn("page=2", logs.redact("/api/thing", "token=s3cret&page=2"))
         self.assertLessEqual(len(logs.redact("/" + "a" * 1000)), logs.MAX_PATH_LENGTH + 1)

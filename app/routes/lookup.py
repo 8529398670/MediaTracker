@@ -9,19 +9,22 @@ providers.lookups_per_minute lines a minute.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Callable
 
+from msgspec import Meta
 from starlette.requests import Request
-from starlette.responses import Response
 
+from app.apidocs import Reply, route
+from app.apidocs import Request as RequestType
 from app.core.config import Config
 from app.core.db import Store
 from app.core.security import actor_from
+from app.mcp.registry import Call
 from app.models import library_cache, titles
 from app.models.revision import NotFoundError
 from app.providers import enrich, fields, net, resolve
 from app.routes.helpers import Refused, get_config, get_store
-from app.routes.titles import _body, answer, check_dupes
+from app.routes.titles import TAG, Record, TitlePath, check_dupes
 
 MAX_LINES = 25
 _limiter: net.RateLimiter | None = None
@@ -52,25 +55,51 @@ def resolve_line(store: Store, line: str, kind: str) -> dict[str, Any]:
     }
 
 
-def resolve_checked(store: Store, cfg: Config, actor_id: int, body: dict[str, Any]) -> dict[str, Any]:
-    """POST /api/resolve, shared with the MCP lookup tool."""
-    lines = [str(line).strip() for line in body.get("lines") or [] if str(line).strip()][:MAX_LINES]
+def compact_results(call: Call, body: Any, serve: Callable[[Any, Any], Any]) -> dict[str, Any]:
+    """The call of the lookup tool: each line's answer without the provider
+    detail an agent does not need."""
+    return {"results": [
+        {
+            "input": result["input"],
+            "confident": result["confident"],
+            "note": result["note"],
+            "candidates": [candidate["fields"] for candidate in result["candidates"]],
+            "already_in_library": [{"id": dupe["id"], "title": dupe["title"]["title"], "score": dupe["score"]} for dupe in result["dupes"]],
+        }
+        for result in serve(call.request, body).results
+    ]}
+
+
+class Resolve(RequestType, kw_only=True):
+    lines: Annotated[list[str], Meta(description="Up to 25 lines, each a name, a name and year, an IMDb id, or a link (IMDb, Wikipedia, TMDB, TVmaze...).")]
+    kind: Annotated[str, Meta(description="movie, tv, book, ... or any.")] = "any"
+
+
+class Resolved(Reply, kw_only=True):
+    results: Annotated[list[Record], Meta(description="One per line: the best candidates, whether the match is confident, and library titles it may duplicate.")]
+
+
+@route(
+    "POST /api/resolve", summary="Look titles up",
+    tag=TAG, errors=(429, 503),
+    description="Identify names, names and years, or links with the configured providers, and say whether "
+    "the library already has each. Writes nothing. Counts against the per-person lookup allowance "
+    "(providers.lookups_per_minute); 503 lookups_off while the network is off.",
+    mcp="lookup", read_only=True, call=compact_results,
+)
+def resolve_lines(request: Request, body: Resolve) -> Resolved:
+    cfg = get_config(request)
+    lines = [line.strip() for line in body.lines if line.strip()][:MAX_LINES]
     if not lines:
         raise Refused(400, "nothing to look up")
     if not cfg.providers.network:
         raise Refused(503, "lookups_off")
     gate = limiter(cfg.providers.lookups_per_minute)
+    actor_id = actor_from(request).user.id
     if not all(gate.allow(f"user:{actor_id}") for _line in lines):
         raise Refused(429, "lookup_rate_limited")
-    kind = str(body.get("kind") or "any")
-    return {"results": [resolve_line(store, line, kind) for line in lines]}
-
-
-async def resolve_lines(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    return await answer(request, resolve_checked, get_store(request), get_config(request), actor_from(request).user.id, body)
+    store = get_store(request)
+    return Resolved(results=[resolve_line(store, line, body.kind or "any") for line in lines])
 
 
 def enrich_one(store: Store, title_id: str, refresh: bool) -> dict[str, Any]:
@@ -81,18 +110,26 @@ def enrich_one(store: Store, title_id: str, refresh: bool) -> dict[str, Any]:
     return {"title": titles.get_title(store, title_id), "previous": previous}
 
 
-def enrich_checked(store: Store, cfg: Config, title_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    """POST /api/titles/{title_id}/enrich, shared with MCP."""
-    if not cfg.providers.network:
+class Enrich(TitlePath, kw_only=True):
+    refresh: Annotated[bool, Meta(description="Overwrite what is there, not just fill in what is missing.")] = False
+
+
+class Enriched(Reply, kw_only=True):
+    title: Record
+    previous: Annotated[Record, Meta(description="What the changed fields were before.")]
+
+
+@route(
+    "POST /api/titles/{title_id}/enrich", summary="Fill a title in",
+    tag=TAG, errors=(404, 503),
+    description="Look the title up with the configured providers now and fill in missing details (refresh: "
+    "true overwrites what is there). Returns the previous values.",
+    mcp="enrich_title",
+)
+def enrich_title(request: Request, body: Enrich) -> Enriched:
+    if not get_config(request).providers.network:
         raise Refused(503, "lookups_off")
     try:
-        return enrich_one(store, title_id, bool(body.get("refresh")))
+        return Enriched(**enrich_one(get_store(request), body.title_id, body.refresh))
     except NotFoundError:
         raise Refused(404, "no such title") from None
-
-
-async def enrich_title(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    return await answer(request, enrich_checked, get_store(request), get_config(request), request.path_params["title_id"], body)

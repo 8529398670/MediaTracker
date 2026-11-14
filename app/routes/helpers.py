@@ -2,22 +2,30 @@
 error shape, and the rule for calling synchronous code.
 
 The rule: SQLite and bcrypt are synchronous, and an async handler that calls
-them directly stalls every other request while it waits. So handlers reach the
-models through `await run(...)`, which runs the call in a worker thread.
+them directly stalls every other request while it waits. A plain-function
+@route handler already runs in a worker thread and calls the models directly;
+an async one reaches them through `await run(...)`, which runs the call in a
+worker thread.
 """
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Annotated, Any, Literal
+
+from msgspec import Meta
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.apidocs.route import QUERY, Reply, Request as RequestType
 from app.core.config import Config
 from app.core.config_live import Holder
 from app.core.db import Store
 from app.core.middleware import internal_error
 from app.models import RestoreError, RestoreForbiddenError, RestoreGoneError
+from app.models.users import OwnerProtectedError, OwnerRequiredError
 
 run = run_in_threadpool
 
@@ -37,11 +45,15 @@ run = run_in_threadpool
 #
 # A list a screen can sort also takes ?sort=<field>&dir=asc|desc, and one it can
 # search takes ?q=, both on the whole list before it is cut, since the browser
-# only ever holds a page of it. See send_page and match_rows.
+# only ever holds a page of it. See Page, sorted_page and match_rows.
 PAGE_DEFAULT = 200
 PAGE_MAX = 1000
 PAGE_LIMIT_MESSAGE = "limit must be 1-1000"
 PAGE_OFFSET_MESSAGE = "offset must be 0 or more"
+
+
+# A date and time, as ISO text in UTC.
+DateTime = Annotated[str, Meta(extra_json_schema={"format": "date-time"})]
 
 
 def get_store(request: Request) -> Store:
@@ -59,44 +71,18 @@ def get_config(request: Request) -> Config:
     return request.app.state.settings.get()
 
 
-async def read_json(request: Request) -> dict[str, Any] | None:
-    """The request body as a JSON object, or None if it is not one -- every
-    endpoint answers that the same way (bad_request "malformed request
-    body")."""
-    try:
-        body = await request.json()
-    except ValueError:
-        return None
-    return body if isinstance(body, dict) else None
+def field_of(row: Any, name: str) -> Any:
+    """A row's field: a dict's key or a Struct's attribute."""
+    return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
 
 
-def whole_number(raw: str | None, default: int) -> int | None:
-    """A query parameter as an int: default when it is absent, None when it
-    is not a number."""
-    if raw is None or raw == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
-
-def page_body(name: str, rows: list[Any], limit: int, offset: int) -> dict[str, Any]:
-    """One page cut out of rows, which must already be in their final order.
-    name is the field the rows go under."""
-    total = len(rows)
-    start = min(offset, total)
-    end = min(start + limit, total)
-    return {name: rows[start:end], "next": end if end < total else None, "total": total}
-
-
-def match_rows(rows: list[dict[str, Any]], query: str, *fields: str) -> list[dict[str, Any]]:
+def match_rows(rows: list[Any], query: str, *fields: str) -> list[Any]:
     """The rows with query in one of fields, in any case. An empty query keeps
     them all. Here rather than in the browser, like sorting."""
     wanted = query.strip().lower()
     if not wanted:
         return rows
-    return [row for row in rows if any(isinstance(row.get(field), str) and wanted in row[field].lower() for field in fields)]
+    return [row for row in rows if any(isinstance(field_of(row, field), str) and wanted in field_of(row, field).lower() for field in fields)]
 
 
 def sort_rows(rows: list[dict[str, Any]], field: str, descending: bool) -> list[dict[str, Any]]:
@@ -105,35 +91,56 @@ def sort_rows(rows: list[dict[str, Any]], field: str, descending: bool) -> list[
     the list's own order, so a page holds still. Dates are ISO text in UTC,
     which sorts as they read."""
 
-    def value(row: dict[str, Any]) -> Any:
-        found = row[field]
+    def value(row: Any) -> Any:
+        found = field_of(row, field)
         return found.lower() if isinstance(found, str) else found
 
-    present = [row for row in rows if row.get(field) not in (None, "")]
-    absent = [row for row in rows if row.get(field) in (None, "")]
+    present = [row for row in rows if field_of(row, field) not in (None, "")]
+    absent = [row for row in rows if field_of(row, field) in (None, "")]
     return sorted(present, key=value, reverse=descending) + absent
 
 
-def send_page(request: Request, name: str, rows: list[Any], sort_fields: tuple[str, ...] = ()) -> JSONResponse:
-    """The answer to a list route: the page its query asks for. sort_fields
-    are the row fields a screen may sort it by, and anything else is refused
-    rather than ignored, so a typo does not look like a list in its own order."""
-    if sort_fields:
-        direction = request.query_params.get("dir", "")
-        if direction not in ("", "asc", "desc"):
-            return bad_request("dir must be asc or desc")
-        field = request.query_params.get("sort", "")
-        if field:
-            if field not in sort_fields:
-                return bad_request("sort must be one of: " + ", ".join(sort_fields))
-            rows = sort_rows(rows, field, direction == "desc")
-    limit = whole_number(request.query_params.get("limit"), PAGE_DEFAULT)
-    if limit is None or not 1 <= limit <= PAGE_MAX:
-        return bad_request(PAGE_LIMIT_MESSAGE)
-    offset = whole_number(request.query_params.get("offset"), 0)
-    if offset is None or offset < 0:
-        return bad_request(PAGE_OFFSET_MESSAGE)
-    return JSONResponse(page_body(name, rows, limit, offset))
+# Page's two fields, for a request that cannot take Page as its base because
+# it already has one (a path type): limit: Limit = PAGE_DEFAULT, offset:
+# Offset = 0, written where Go embeds Page.
+Limit = Annotated[int, QUERY, Meta(ge=1, le=PAGE_MAX, description="Rows to return. Default 200.", extra={"error": PAGE_LIMIT_MESSAGE})]
+Offset = Annotated[int, QUERY, Meta(ge=0, description="Rows to skip: the next value of the previous page.", extra={"error": PAGE_OFFSET_MESSAGE})]
+
+
+class Page(RequestType):
+    """The query every paged list takes, and an MCP list tool's arguments."""
+
+    limit: Limit = PAGE_DEFAULT
+    offset: Offset = 0
+
+
+# The ?dir= of a list a screen can sort, declared last on its request, after
+# the list's own sort field: dir: Dir = "".
+Dir = Annotated[Literal["asc", "desc"], QUERY, Meta(description="Default asc.", extra={"error": "dir must be asc or desc"})]
+
+
+class Paged(Reply):
+    """What every paged reply carries beside its rows."""
+
+    next: Annotated[int | None, Meta(description="Offset of the next page, or null on the last one.")]
+    total: int
+
+
+def cut_page(rows: list[Any], page: Page) -> dict[str, Any]:
+    """One page of rows, which must already be in their final order: the
+    rows, next and total, for a reply's constructor."""
+    total = len(rows)
+    start = min(page.offset, total)
+    end = min(start + page.limit, total)
+    return {"rows": rows[start:end], "next": end if end < total else None, "total": total}
+
+
+def sorted_page(rows: list[Any], field: str, direction: str, page: Page) -> dict[str, Any]:
+    """cut_page for a list a screen can sort: field is a row field by name,
+    already checked against the route's sort Literal."""
+    if field:
+        rows = sort_rows(rows, field, direction == "desc")
+    return cut_page(rows, page)
 
 
 # One error shape for the whole API, so the frontend has one thing to handle
@@ -160,9 +167,24 @@ class Refused(Exception):
         return refused
 
     def response(self, request: Request | None = None) -> JSONResponse:
-        if self.status >= 500 and request is not None:
+        # Only a 500 is ours to log; a deliberate 503 (MediaTracker's
+        # lookups_off) is answered as itself.
+        if self.status == 500 and request is not None:
             return server_error(request, self.cause)
         return JSONResponse({"error": self.message, **self.extra}, status_code=self.status)
+
+
+@contextmanager
+def act_on_refusals(what: str) -> Iterator[None]:
+    """Turns users.may_act_on_tx's refusals into the 403 every account route
+    gives, with the same wording. what is the action, worded to follow
+    "cannot": "reissue a login link for"."""
+    try:
+        yield
+    except OwnerProtectedError:
+        raise Refused(403, f"nobody can {what} the owner account") from None
+    except OwnerRequiredError:
+        raise Refused(403, f"only the owner can {what} an admin account") from None
 
 
 def error(status: int, message: str) -> JSONResponse:
@@ -181,21 +203,8 @@ def not_found(message: str) -> JSONResponse:
     return error(404, message)
 
 
-def conflict(message: str, **extra: Any) -> JSONResponse:
-    """409: the request was fine but the record has moved on -- an undo whose
-    window has passed, or a rename that expected a name someone else has
-    since changed. extra carries the current state, so the caller can show
-    it."""
-    return JSONResponse({"error": message, **extra}, status_code=409)
-
-
-def restore_refused(refusal: RestoreError) -> JSONResponse:
-    """The answer for each way a restore can be refused."""
-    return restore_refusal(refusal).response()
-
-
 def restore_refusal(refusal: RestoreError) -> Refused:
-    """restore_refused for a helper an MCP tool shares."""
+    """The refusal for each way a restore can be refused."""
     if isinstance(refusal, RestoreGoneError):
         return Refused(404, str(refusal))
     if isinstance(refusal, RestoreForbiddenError):
@@ -207,8 +216,3 @@ def server_error(request: Request, cause: object) -> JSONResponse:
     """A 500 a handler decided on. cause says why: it is what the log line
     shows, and the client never sees it."""
     return internal_error(request, cause)
-
-
-def parse_id(raw: str) -> int | None:
-    """A positive integer path parameter, or None."""
-    return int(raw) if raw.isascii() and raw.isdigit() and int(raw) > 0 else None

@@ -28,6 +28,13 @@ const Mcp = {
     if ( me.mcp_url ) {
       Dom.get( "mcp-spec-link" ).setAttribute( "href" , me.mcp_url );
       Dom.show( Dom.get( "mcp-spec-line" ) , true );
+      // The same reference written for people, config/mcp.md, where the
+      // repository's site renders it. Only with app.repo: the server keeps no
+      // copy of its own.
+      if ( me.repo ) {
+        Dom.get( "mcp-doc-link" ).setAttribute( "href" , me.repo + "/blob/HEAD/config/mcp.md" );
+        Dom.show( Dom.get( "mcp-doc-part" ) , true );
+      }
     }
     Dom.text( Dom.get( "mcp-endpoint" ) , this.endpoint() );
     Dom.show( Dom.get( "mcp-key-role-field" ) , me.role === "admin" );
@@ -76,7 +83,7 @@ const Mcp = {
     const remote = { [ name ]: { type: "http" , url: url , headers: { Authorization: bearer } } };
     switch ( client ) {
       case "claude_code":
-        return "claude mcp add --transport http " + name + " " + url + " --header \"Authorization: " + bearer + "\"";
+        return "claude mcp add --scope user --transport http " + name + " " + url + " --header \"Authorization: " + bearer + "\"";
       case "claude_desktop":
         return json( { mcpServers: { [ name ]: {
           command: "npx",

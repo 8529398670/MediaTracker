@@ -11,6 +11,9 @@ rem   scripts\run.bat manage <command>   run an admin command against it (see be
 rem   scripts\run.bat <anything else>    same: passed straight to `python -m app`
 rem
 rem The server runs in the foreground: its log streams here and Ctrl-C stops it.
+rem Unlike scripts/run.sh it writes no log file, so a first run's owner login
+rem link is only ever on this screen, and there is no file whose access to
+rem narrow (run.sh keeps .run/ readable by its account alone).
 rem Running scripts\run.bat again from another window stops this one and takes over,
 rem so "edit, scripts\run.bat, reload the page" is the whole loop.
 rem

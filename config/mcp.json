@@ -1,15 +1,19 @@
 {
   "auth": "Authorization: Bearer <API key>",
-  "description": "Every tool POST /mcp offers. Written by scripts/mcp_json.sh from the registered tools; do not edit by hand. A key sees the tools its role allows (adminOnly ones need an admin key), and a tool whose feature is switched off answers like one that does not exist. route is the HTTP route the tool stands for, with the same rules; http_only are the routes a key may call that have no tool, and why.",
+  "description": "Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered tools; do not edit by hand. A key sees the tools its role allows (adminOnly ones need an admin key), and a tool whose feature is switched off answers like one that does not exist. route is the HTTP route the tool stands for, with the same rules; http_only are the routes a key may call that have no tool, and why.",
   "endpoint": "/mcp",
   "http_only": [
     {
-      "reason": "A file download (JSON, CSV or Markdown attachment); search_library, get_title and the list tools return the same records as JSON.",
+      "reason": "a file download",
       "route": "GET /api/export"
     },
     {
-      "reason": "Poster image bytes, not JSON: an agent fetches them here with the same key.",
+      "reason": "image bytes",
       "route": "GET /api/img/{key}"
+    },
+    {
+      "reason": "the whole library for the browser; search_library is the agent's version",
+      "route": "GET /api/library"
     },
     {
       "reason": "The MCP reference itself; tools/list gives the same list.",
@@ -18,14 +22,6 @@
     {
       "reason": "The API reference itself; GET /api/mcp.json is the MCP one.",
       "route": "GET /api/openapi.json"
-    },
-    {
-      "reason": "Sign-in: managed from a browser, not by agents.",
-      "route": "POST /api/account/login-link/cancel"
-    },
-    {
-      "reason": "Sign-in: managed from a browser, not by agents.",
-      "route": "POST /api/admin/users/{user_id}/cancel-login-link"
     },
     {
       "reason": "Ends a browser session; a key has none to end.",
@@ -51,109 +47,93 @@
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Who am I"
+        "readOnlyHint": false,
+        "title": "Add a title"
       },
-      "description": "The account this API key belongs to, the role it acts with (role -- never higher than the key's own scope), and the account's own role.",
+      "description": "Add a title to the family library and put it on a person's list (state.status: queue by default). Refused with 409 possible_duplicate and the dupes it resembles unless force is true. Details are filled in in the background. A possible duplicate answers created: false with possible_duplicates instead.",
       "inputSchema": {
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "force": {
+            "description": "Add it even if it looks like a title the library has.",
+            "type": "boolean"
+          },
+          "state": {
+            "description": "A person's state: status (queue, watching, watched, dropped, or null), rating 1-10 or null, heart, note, watched_at.",
+            "type": "object"
+          },
+          "title": {
+            "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+            "type": "object"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title"
+        ],
         "type": "object"
       },
-      "name": "whoami",
-      "route": "GET /api/me",
-      "title": "Who am I"
+      "name": "add_title",
+      "route": "POST /api/titles",
+      "title": "Add a title"
     },
     {
       "adminOnly": false,
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "List team"
-      },
-      "description": "People with an active account, a page at a time: id and display name. Use the id wherever another tool asks for a user. next is the offset of the following page, or null on the last one.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "limit": {
-            "description": "Rows to return. Default 200.",
-            "maximum": 1000,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "offset": {
-            "description": "Rows to skip: the next value of the previous page.",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "name": "list_team",
-      "route": "GET /api/team",
-      "title": "List team"
-    },
-    {
-      "adminOnly": true,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "List users (admin)"
-      },
-      "description": "Accounts, a page at a time, including disabled ones, with each one's role and which is the owner. next is the offset of the following page, or null on the last one.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "limit": {
-            "description": "Rows to return. Default 200.",
-            "maximum": 1000,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "offset": {
-            "description": "Rows to skip: the next value of the previous page.",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "name": "admin_list_users",
-      "route": "GET /api/admin/users",
-      "title": "List users (admin)"
-    },
-    {
-      "adminOnly": true,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Disable or enable a user (admin)"
+        "title": "Add to a playlist"
       },
-      "description": "Switch an account off (disabled: true) or back on (false). Disabling signs it out everywhere and voids its live login link; its API keys stop working while it is off. Reversible. The owner and your own account cannot be disabled.",
+      "description": "Add titles at position (the end by default); the rest renumber. Returns the items before, which setting the items takes back.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "disabled": {
-            "type": "boolean"
-          },
-          "user_id": {
-            "description": "The account's id, from list_team or admin_list_users.",
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
             "minimum": 1,
             "type": "integer"
+          },
+          "position": {
+            "description": "1-based; the end by default.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title_ids": {
+            "description": "Title ids, from GET /api/library (search_library over MCP).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
-          "user_id",
-          "disabled"
+          "playlist_id",
+          "title_ids"
         ],
         "type": "object"
       },
-      "name": "admin_set_user_disabled",
-      "route": "POST /api/admin/users/{user_id}/disabled",
-      "title": "Disable or enable a user (admin)"
+      "name": "add_to_playlist",
+      "route": "POST /api/playlists/{playlist_id}/add",
+      "title": "Add to a playlist"
     },
     {
       "adminOnly": true,
@@ -161,14 +141,14 @@
         "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Revoke a user's access (admin)"
+        "title": "Stop an account's login link working (admin)"
       },
-      "description": "For an account that may be compromised: ends every session and voids its live login link and every API key it holds, at once. The account stays enabled; someone with a browser session must issue a new login link to let its owner back in. The owner and your own account cannot be revoked.",
+      "description": "Void an account's live login link without making a new one: a link that went somewhere it should not have. Devices it already signed in stay signed in; admin_revoke_access ends those too. Answers with removed: 0 or 1.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "user_id": {
-            "description": "The account's id, from list_team or admin_list_users.",
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
             "minimum": 1,
             "type": "integer"
           }
@@ -178,97 +158,154 @@
         ],
         "type": "object"
       },
-      "name": "admin_revoke_access",
-      "route": "POST /api/admin/users/{user_id}/revoke-access",
-      "title": "Revoke a user's access (admin)"
+      "name": "admin_cancel_login_link",
+      "route": "POST /api/admin/users/{user_id}/cancel-login-link",
+      "title": "Stop an account's login link working (admin)"
     },
     {
-      "adminOnly": false,
+      "adminOnly": true,
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Rename your account"
+        "title": "Create an invite link (admin)"
       },
-      "description": "Change your own display name (1-80 characters). expect, when given, is the name you think it has now; if someone changed it meanwhile the rename is refused with the current name, so nothing is overwritten unseen.",
+      "description": "One link for a group: each person who opens it joins as a new user, up to max_uses people, for days days. Answers with join_url (shown only now) and the link's details. Revoking or deleting this API key switches the link off.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "label": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "max_uses": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days",
+          "label",
+          "max_uses"
+        ],
+        "type": "object"
+      },
+      "name": "admin_create_invite_link",
+      "route": "POST /api/admin/invite-links",
+      "title": "Create an invite link (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Create an account (admin)"
+      },
+      "description": "Make a new account and its first login link, to hand to the person. role is admin or user. Answers with user_id and the link. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
             "type": "string"
           },
-          "expect": {
-            "description": "The current name, from whoami. Optional.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "display_name"
-        ],
-        "type": "object"
-      },
-      "name": "rename_account",
-      "route": "POST /api/account/rename",
-      "title": "Rename your account"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Replace your own themes"
-      },
-      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "theme_id": {
-            "type": "string"
-          },
-          "themes": {
-            "items": {
-              "type": "object"
-            },
+          "expires_in_minutes": {
+            "description": "0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise.",
+            "maximum": 525600,
+            "minimum": 0,
             "type": [
-              "array",
+              "integer",
               "null"
             ]
-          }
-        },
-        "required": [
-          "themes"
-        ],
-        "type": "object"
-      },
-      "name": "set_themes",
-      "route": "POST /api/account/themes",
-      "title": "Replace your own themes"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Pick your theme"
-      },
-      "description": "Switch to another theme from your list (or the defaults), by its id.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "theme_id": {
+          },
+          "max_uses": {
+            "description": "Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1.",
+            "maximum": 1000,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "user"
+            ],
             "type": "string"
           }
         },
         "required": [
-          "theme_id"
+          "display_name",
+          "role"
         ],
         "type": "object"
       },
-      "name": "set_theme",
-      "route": "POST /api/account/theme",
-      "title": "Pick your theme"
+      "name": "admin_create_user",
+      "route": "POST /api/admin/users",
+      "title": "Create an account (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete an invite link (admin)"
+      },
+      "description": "Take an invite link off the list and stop it working. The accounts it made stay. admin_restore_invite_link undoes it for a few minutes.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_delete_invite_link",
+      "route": "POST /api/admin/invite-links/{link_id}/delete",
+      "title": "Delete an invite link (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete an account (admin)"
+      },
+      "description": "Remove an account for good, with its sessions, login link and API keys. Cannot be undone: admin_set_user_disabled is the reversible version. Only the owner deletes an admin; nobody deletes the owner or themselves.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_delete_user",
+      "route": "POST /api/admin/users/{user_id}/delete",
+      "title": "Delete an account (admin)"
     },
     {
       "adminOnly": true,
@@ -293,37 +330,6 @@
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Replace the default themes (admin)"
-      },
-      "description": "Replace the theme list everyone without their own list sees, 1 to 40 themes in the Theme schema of the API reference. null puts the built-in themes back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "themes": {
-            "items": {
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "themes"
-        ],
-        "type": "object"
-      },
-      "name": "admin_set_theme_defaults",
-      "route": "POST /api/admin/theme-defaults",
-      "title": "Replace the default themes (admin)"
-    },
-    {
-      "adminOnly": true,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
         "readOnlyHint": true,
         "title": "List invite links (admin)"
       },
@@ -331,7 +337,16 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "dir": {
+            "description": "Default asc.",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          },
           "limit": {
+            "default": 200,
             "description": "Rows to return. Default 200.",
             "maximum": 1000,
             "minimum": 1,
@@ -341,6 +356,19 @@
             "description": "Rows to skip: the next value of the previous page.",
             "minimum": 0,
             "type": "integer"
+          },
+          "q": {
+            "description": "Keep links whose label or maker contains this, in any case.",
+            "type": "string"
+          },
+          "sort": {
+            "description": "Field to sort the whole list by. Rows without it go last.",
+            "enum": [
+              "label",
+              "used",
+              "expires_at"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -348,6 +376,304 @@
       "name": "admin_list_invite_links",
       "route": "GET /api/admin/invite-links",
       "title": "List invite links (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "An account's signed-in devices (admin)"
+      },
+      "description": "Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner only, and only the owner sees the owner's.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 200,
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_list_user_sessions",
+      "route": "GET /api/admin/users/{user_id}/sessions",
+      "title": "An account's signed-in devices (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List users (admin)"
+      },
+      "description": "Accounts, a page at a time, including disabled ones, with each one's role and which is the owner. next is the offset of the following page, or null on the last one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dir": {
+            "description": "Default asc.",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "default": 200,
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "description": "Keep accounts whose name or username contains this, in any case.",
+            "type": "string"
+          },
+          "sort": {
+            "description": "Field to sort the whole list by. Rows without it go last.",
+            "enum": [
+              "display_name",
+              "role",
+              "disabled",
+              "created_at"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "admin_list_users",
+      "route": "GET /api/admin/users",
+      "title": "List users (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "A new login link for an account (admin)"
+      },
+      "description": "For someone who lost their device or their link: a fresh login link for their account. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_minutes": {
+            "description": "0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise.",
+            "maximum": 525600,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_uses": {
+            "description": "Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1.",
+            "maximum": 1000,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_reissue_login",
+      "route": "POST /api/admin/users/{user_id}/reissue-login",
+      "title": "A new login link for an account (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Rename an invite link (admin)"
+      },
+      "description": "Change the label people see on an invite link's join page (1-80 characters). expect, when given, is the label you think it has now.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expect": {
+            "description": "The label you think it has. Answers 409 if it has another.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "description": "1-80 characters.",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "link_id": {
+            "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "link_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_rename_invite_link",
+      "route": "POST /api/admin/invite-links/{link_id}/rename",
+      "title": "Rename an invite link (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Rename someone (admin)"
+      },
+      "description": "Change another account's display name (1-80 characters). Only the owner renames an admin. expect, when given, is the name you think it has now; if it changed meanwhile the rename is refused with the current name.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "description": "1-80 characters.",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expect": {
+            "description": "The name you think they have. Answers 409 if it is another.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "display_name",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_rename_user",
+      "route": "POST /api/admin/users/{user_id}/rename",
+      "title": "Rename someone (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Turn off an account's two-factor (admin)"
+      },
+      "description": "For someone who lost both their phone and their recovery codes: switches their two-factor sign-in off so a login link lets them in again. Only the owner resets an admin's; the owner's is reset from a shell.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_reset_two_factor",
+      "route": "POST /api/admin/users/{user_id}/reset-two-factor",
+      "title": "Turn off an account's two-factor (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Undo deleting an invite link (admin)"
+      },
+      "description": "Bring back an invite link deleted in the last few minutes, working as before. The link then counts as this key's: revoking the key switches it off.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_restore_invite_link",
+      "route": "POST /api/admin/invite-links/{link_id}/restore",
+      "title": "Undo deleting an invite link (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Revoke a user's access (admin)"
+      },
+      "description": "For an account that may be compromised: ends every session and voids its live login link and every API key it holds, at once. The account stays enabled; admin_reissue_login lets its owner back in. The owner and your own account cannot be revoked.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_access",
+      "route": "POST /api/admin/users/{user_id}/revoke-access",
+      "title": "Revoke a user's access (admin)"
     },
     {
       "adminOnly": true,
@@ -362,7 +688,7 @@
         "additionalProperties": false,
         "properties": {
           "link_id": {
-            "description": "The id from admin_list_invite_links.",
+            "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
             "type": "string"
           }
         },
@@ -376,835 +702,350 @@
       "title": "Switch off an invite link (admin)"
     },
     {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Search the library"
-      },
-      "description": "Titles in the family library, with your own state on each (status, rating, heart) and who else has watched or loved it. All arguments optional: text matches title, director, cast, genres, tags and notes; status is queue, watching, watched, dropped or none, or up_next for the Up next list (queue and watching, newest first).",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "limit": {
-            "maximum": 500,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "type": {
-            "description": "A type id such as movie or tv.",
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "name": "search_library",
-      "route": "GET /api/library",
-      "title": "Search the library"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Library vocabulary"
-      },
-      "description": "The fixed words: statuses, lookup kinds, and the canonical genre names.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "name": "get_vocab",
-      "route": "GET /api/vocab",
-      "title": "Library vocabulary"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Get a title"
-      },
-      "description": "Everything about one title, your state on it and the family's.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "title_id": {
-            "description": "A title id from search_library.",
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "title_id"
-        ],
-        "type": "object"
-      },
-      "name": "get_title",
-      "route": "GET /api/titles/{title_id}",
-      "title": "Get a title"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Add a title"
-      },
-      "description": "Add a title to the family library and put it on a list (status: queue by default, or watched, watching, dropped, none). Refuses with possible duplicates unless force is true. Details are filled in in the background.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "force": {
-            "type": "boolean"
-          },
-          "status": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "year": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "type": "object"
-      },
-      "name": "add_title",
-      "route": "POST /api/titles",
-      "title": "Add a title"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Check for a duplicate"
-      },
-      "description": "Would adding this title make a duplicate? The library titles it resembles, with a score. Writes nothing.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "title": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          },
-          "year": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "title"
-        ],
-        "type": "object"
-      },
-      "name": "check_title",
-      "route": "POST /api/titles/check",
-      "title": "Check for a duplicate"
-    },
-    {
-      "adminOnly": false,
+      "adminOnly": true,
       "annotations": {
         "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Change many titles"
+        "title": "Sign out one of an account's devices (admin)"
       },
-      "description": "One change to many titles at once. op: set_type (value: a type id), add_tags or remove_tags (value: a list of tags), delete, restore, or set_fields (value: {title id: fields}, the undo). Returns each title's previous values -- send them back with set_fields to undo. Deletes are soft and restorable.",
+      "description": "End one of an account's sessions, rather than all of them with admin_revoke_access.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "ids": {
-            "description": "Title ids from search_library.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+          "session_id": {
+            "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
+            "type": "string"
           },
-          "op": {
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_user_session",
+      "route": "POST /api/admin/users/{user_id}/sessions/{session_id}/revoke",
+      "title": "Sign out one of an account's devices (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change an invite link's places and expiry (admin)"
+      },
+      "description": "Set how many people the link may take in (never fewer than have joined) and, when days is given, a new expiry counted from now. The link then counts as this key's: revoking the key switches it off.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "description": "Counted from now. Leave out to keep the expiry.",
+            "maximum": 365,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "link_id": {
+            "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+            "type": "string"
+          },
+          "max_uses": {
+            "description": "Not fewer than have joined.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "link_id",
+          "max_uses"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_invite_link_limits",
+      "route": "POST /api/admin/invite-links/{link_id}/limits",
+      "title": "Change an invite link's places and expiry (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Replace the default themes (admin)"
+      },
+      "description": "Replace the theme list everyone without their own list sees, 1 to 40 themes in the Theme schema of the API reference. null puts the built-in themes back.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "themes": {
+            "description": "1 to 40 themes. null goes back to the built-in ones.",
+            "oneOf": [
+              {
+                "items": {
+                  "description": "A color scheme on the Appearance screen. Colors are #rrggbb. Anything not given is worked out by static/js/theme.js at readable contrast.",
+                  "properties": {
+                    "accent": {
+                      "description": "The main color: what you can press.",
+                      "type": "string"
+                    },
+                    "background": {
+                      "description": "The page. Left out: the mode's own.",
+                      "type": "string"
+                    },
+                    "button": {
+                      "description": "How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal).",
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "case": {
+                              "enum": [
+                                "normal",
+                                "upper"
+                              ],
+                              "type": "string"
+                            },
+                            "depth": {
+                              "enum": [
+                                "flat",
+                                "raised",
+                                "glossy"
+                              ],
+                              "type": "string"
+                            },
+                            "shape": {
+                              "enum": [
+                                "square",
+                                "soft",
+                                "rounded",
+                                "pill"
+                              ],
+                              "type": "string"
+                            },
+                            "weight": {
+                              "enum": [
+                                "normal",
+                                "medium",
+                                "bold"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dark": {
+                      "description": "A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped.",
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "accent": {
+                              "description": "The main color: what you can press.",
+                              "type": "string"
+                            },
+                            "background": {
+                              "description": "The page. Left out: the mode's own.",
+                              "type": "string"
+                            },
+                            "overrides": {
+                              "additionalProperties": {
+                                "type": "string"
+                              },
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "type": "object"
+                            },
+                            "second": {
+                              "description": "Says where you are: active nav item, headings, info.",
+                              "type": "string"
+                            },
+                            "surface": {
+                              "description": "Cards. Left out: the mode's own.",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "accent",
+                            "second"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Lower-case letters, digits, - and _, up to 32.",
+                      "type": "string"
+                    },
+                    "light": {
+                      "description": "A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in.",
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "accent": {
+                              "description": "The main color: what you can press.",
+                              "type": "string"
+                            },
+                            "background": {
+                              "description": "The page. Left out: the mode's own.",
+                              "type": "string"
+                            },
+                            "overrides": {
+                              "additionalProperties": {
+                                "type": "string"
+                              },
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "type": "object"
+                            },
+                            "second": {
+                              "description": "Says where you are: active nav item, headings, info.",
+                              "type": "string"
+                            },
+                            "surface": {
+                              "description": "Cards. Left out: the mode's own.",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "accent",
+                            "second"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "enum": [
+                        "light",
+                        "dark"
+                      ],
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1 to 60 characters.",
+                      "type": "string"
+                    },
+                    "overrides": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                      "type": "object"
+                    },
+                    "second": {
+                      "description": "Says where you are: active nav item, headings, info.",
+                      "type": "string"
+                    },
+                    "surface": {
+                      "description": "Cards. Left out: the mode's own.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accent",
+                    "id",
+                    "mode",
+                    "name",
+                    "second"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "admin_set_theme_defaults",
+      "route": "POST /api/admin/theme-defaults",
+      "title": "Replace the default themes (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Disable or enable a user (admin)"
+      },
+      "description": "Switch an account off (disabled: true) or back on (false). Disabling signs it out everywhere and voids its live login link; its API keys stop working while it is off. Reversible. The owner and your own account cannot be disabled.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "disabled",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_user_disabled",
+      "route": "POST /api/admin/users/{user_id}/disabled",
+      "title": "Disable or enable a user (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change an account's role (admin)"
+      },
+      "description": "Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
             "enum": [
-              "set_type",
-              "add_tags",
-              "remove_tags",
-              "delete",
-              "restore",
-              "set_fields"
+              "admin",
+              "user"
             ],
             "type": "string"
           },
-          "value": {}
-        },
-        "required": [
-          "ids",
-          "op"
-        ],
-        "type": "object"
-      },
-      "name": "bulk_edit_titles",
-      "route": "POST /api/titles/bulk",
-      "title": "Change many titles"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Edit a title"
-      },
-      "description": "Change shared details of a title (title, year, type, tags, notes, links, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url). Returns the previous values.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "expect": {
-            "description": "Optional: the value you think it has now (the rev from your last read); if it changed meanwhile the call is refused with the current one."
-          },
-          "set": {
-            "type": "object"
-          },
-          "title_id": {
-            "description": "A title id from search_library.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title_id",
-          "set"
-        ],
-        "type": "object"
-      },
-      "name": "update_title",
-      "route": "POST /api/titles/{title_id}/update",
-      "title": "Edit a title"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Delete a title"
-      },
-      "description": "Take a title out of the library for everyone. Soft: restore_title brings it back within the undo window.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "title_id": {
-            "description": "A title id from search_library.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title_id"
-        ],
-        "type": "object"
-      },
-      "name": "delete_title",
-      "route": "POST /api/titles/{title_id}/delete",
-      "title": "Delete a title"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Restore a title"
-      },
-      "description": "Bring back a deleted title, within the undo window.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "title_id": {
-            "description": "A title id from search_library.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title_id"
-        ],
-        "type": "object"
-      },
-      "name": "restore_title",
-      "route": "POST /api/titles/{title_id}/restore",
-      "title": "Restore a title"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Fill a title in"
-      },
-      "description": "Look the title up with the configured providers now and fill in missing details (refresh: true overwrites what is there). Returns the previous values.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "refresh": {
-            "type": "boolean"
-          },
-          "title_id": {
-            "description": "A title id from search_library.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title_id"
-        ],
-        "type": "object"
-      },
-      "name": "enrich_title",
-      "route": "POST /api/titles/{title_id}/enrich",
-      "title": "Fill a title in"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Merge duplicates"
-      },
-      "description": "Keep title_id and fold the drop_ids into it: everyone's state, playlists and details move over and the others are deleted. One undo step: undo_merge with the merge_id returned.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "drop_ids": {
-            "description": "Title ids from search_library.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "title_id": {
-            "description": "The title to keep.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title_id",
-          "drop_ids"
-        ],
-        "type": "object"
-      },
-      "name": "merge_titles",
-      "route": "POST /api/titles/{title_id}/merge",
-      "title": "Merge duplicates"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Possible duplicates"
-      },
-      "description": "Groups of library titles that look like the same work, minus pairs marked as different.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "name": "list_duplicates",
-      "route": "GET /api/dupes",
-      "title": "Possible duplicates"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Not duplicates"
-      },
-      "description": "Mark two or more titles as not the same, for the whole family. Returns the pairs, which undismiss_duplicates takes back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "ids": {
-            "description": "Title ids from search_library.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "ids"
-        ],
-        "type": "object"
-      },
-      "name": "dismiss_duplicates",
-      "route": "POST /api/dupes/dismiss",
-      "title": "Not duplicates"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Undo not duplicates"
-      },
-      "description": "Forget pairs dismiss_duplicates recorded.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "pairs": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "pairs"
-        ],
-        "type": "object"
-      },
-      "name": "undismiss_duplicates",
-      "route": "POST /api/dupes/undismiss",
-      "title": "Undo not duplicates"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Undo a merge"
-      },
-      "description": "Put a merge back as it was: the dropped titles, and everyone's state and playlists.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "merge_id": {
-            "description": "From merge_titles.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "merge_id"
-        ],
-        "type": "object"
-      },
-      "name": "undo_merge",
-      "route": "POST /api/merges/{merge_id}/undo",
-      "title": "Undo a merge"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Set status, rating or heart"
-      },
-      "description": "Change one person's state on a title: status (queue, watching, watched, dropped, or null for off the list), rating 1-10 or null, heart true/false, note, watched_at. Returns the previous values.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "expect": {
-            "description": "Optional: the value you think it has now (the rev from your last read); if it changed meanwhile the call is refused with the current one."
-          },
-          "set": {
-            "type": "object"
-          },
-          "title_id": {
-            "description": "A title id from search_library.",
-            "type": "string"
-          },
           "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "title_id",
-          "set"
+          "role",
+          "user_id"
         ],
         "type": "object"
       },
-      "name": "set_state",
-      "route": "POST /api/state/{title_id}",
-      "title": "Set status, rating or heart"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Set state on many titles"
-      },
-      "description": "changes is {title id: {status, rating, heart, note, watched_at}}, up to 2000 titles. Returns each title's previous values, which sent back are the undo.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "changes": {
-            "type": "object"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "changes"
-        ],
-        "type": "object"
-      },
-      "name": "set_states",
-      "route": "POST /api/state/bulk",
-      "title": "Set state on many titles"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Look a title up"
-      },
-      "description": "Identify a name, name and year, or link (IMDb, Wikipedia, TMDB, TVmaze...) with the configured providers, and say whether the library already has it. Writes nothing. Counts against the same per-person lookup allowance as the Add screen.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "kind": {
-            "description": "movie, tv, book, ... or any.",
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ],
-        "type": "object"
-      },
-      "name": "lookup",
-      "route": "POST /api/resolve",
-      "title": "Look a title up"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Read an import"
-      },
-      "description": "Read a pasted list or file's text (format auto, outline, csv or json) into rows of title fields, each with its likeliest duplicate. Writes nothing: send the rows you want to import_items.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "format": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ],
-        "type": "object"
-      },
-      "name": "import_parse",
-      "route": "POST /api/import/parse",
-      "title": "Read an import"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Import titles"
-      },
-      "description": "Create titles from rows ({fields, state}, at most 200 per call), skipping any the library certainly has unless skip_dupes is false, and put them on the person's lists. Send the same batch_id for every call of one import; undo_import takes the whole batch back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "batch_id": {
-            "type": "string"
-          },
-          "rows": {
-            "items": {
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "skip_dupes": {
-            "type": "boolean"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "rows"
-        ],
-        "type": "object"
-      },
-      "name": "import_items",
-      "route": "POST /api/import/items",
-      "title": "Import titles"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Undo an import"
-      },
-      "description": "Delete the titles one import created, and the importer's state on them.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "batch_id": {
-            "description": "From import_items.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "batch_id"
-        ],
-        "type": "object"
-      },
-      "name": "undo_import",
-      "route": "POST /api/import/{batch_id}/undo",
-      "title": "Undo an import"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Search Discover"
-      },
-      "description": "The Wikipedia film catalogue, minus films you skipped. genres is comma-separated; sort is notable, imdb, year, year-asc or title. Each film says whether it is already in the library (title_id) and your status on it.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "genres": {
-            "type": "string"
-          },
-          "limit": {
-            "maximum": 100,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "sort": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "year_from": {
-            "type": "integer"
-          },
-          "year_to": {
-            "type": "integer"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "name": "discover_search",
-      "route": "GET /api/discover",
-      "title": "Search Discover"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Discover catalogue"
-      },
-      "description": "What the Discover catalogue holds: its source lists and topics, coverage, and rating counts.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "name": "discover_meta",
-      "route": "GET /api/discover/meta",
-      "title": "Discover catalogue"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Discover film details"
-      },
-      "description": "Plot, cast and poster for up to 60 catalogue films, by Wikipedia article name (the film's url ends in it).",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "articles": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 60,
-            "type": "array"
-          }
-        },
-        "required": [
-          "articles"
-        ],
-        "type": "object"
-      },
-      "name": "discover_facts",
-      "route": "GET /api/discover/facts",
-      "title": "Discover film details"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Skip a Discover film"
-      },
-      "description": "verdict: skip (hide it from you), seen, or leave it out to clear.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "expect": {
-            "description": "Optional: the value you think it has now (the rev from your last read); if it changed meanwhile the call is refused with the current one."
-          },
-          "key": {
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "verdict": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "key"
-        ],
-        "type": "object"
-      },
-      "name": "set_verdict",
-      "route": "POST /api/discover/verdict",
-      "title": "Skip a Discover film"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Add a Discover film"
-      },
-      "description": "Add a film from discover_search (pass the film object as returned) to the library, with its Wikipedia details. status: watched for Seen it, or leave out for no list. Refuses with possible duplicates unless force is true.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "film": {
-            "type": "object"
-          },
-          "force": {
-            "type": "boolean"
-          },
-          "status": {
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "film"
-        ],
-        "type": "object"
-      },
-      "name": "discover_add",
-      "route": "POST /api/discover/add",
-      "title": "Add a Discover film"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Background jobs"
-      },
-      "description": "What the server is doing in the background (filling in titles, IMDb ratings, the catalogue), the poster cache, and whether lookups are on.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "name": "jobs_status",
-      "route": "GET /api/jobs",
-      "title": "Background jobs"
+      "name": "admin_set_user_role",
+      "route": "POST /api/admin/users/{user_id}/role",
+      "title": "Change an account's role (admin)"
     },
     {
       "adminOnly": true,
@@ -1214,14 +1055,16 @@
         "readOnlyHint": false,
         "title": "Start a job (admin)"
       },
-      "description": "Start a background job by its name from jobs_status (one marked manual). options are the job's own settings. Each job can make thousands of outbound calls.",
+      "description": "Start a background job by its name (one marked manual). options are the job's own settings. Each job can make thousands of outbound calls.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "A job's name, from GET /api/jobs.",
             "type": "string"
           },
           "options": {
+            "description": "The job's own settings.",
             "type": "object"
           }
         },
@@ -1247,6 +1090,7 @@
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "A job's name, from GET /api/jobs.",
             "type": "string"
           }
         },
@@ -1260,34 +1104,156 @@
       "title": "Stop a job (admin)"
     },
     {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Switch an invite link back on (admin)"
+      },
+      "description": "Undo admin_revoke_invite_link: anyone still holding the link can use it again. The link then counts as this key's: revoking the key switches it off.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_switch_on_invite_link",
+      "route": "POST /api/admin/invite-links/{link_id}/switch-on",
+      "title": "Switch an invite link back on (admin)"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change many titles"
+      },
+      "description": "One change to many titles at once. op: set_type (value: a type id), add_tags or remove_tags (value: a list of tags), delete, restore, or set_fields (value: {title id: fields}, the undo). Returns each title's previous values; send them back with set_fields to undo. Deletes are soft and restorable.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Title ids, at most 2000.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "op": {
+            "description": "The change.",
+            "enum": [
+              "set_type",
+              "add_tags",
+              "remove_tags",
+              "delete",
+              "restore",
+              "set_fields"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "description": "set_type: a type id. add_tags, remove_tags: a list of tags. set_fields: {title id: fields}, the undo."
+          }
+        },
+        "required": [
+          "ids",
+          "op"
+        ],
+        "type": "object"
+      },
+      "name": "bulk_edit_titles",
+      "route": "POST /api/titles/bulk",
+      "title": "Change many titles"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Stop your own login link working"
+      },
+      "description": "Void your account's live login link without making a new one. Devices it already signed in stay signed in. Answers with removed: 0 or 1.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "cancel_my_login_link",
+      "route": "POST /api/account/login-link/cancel",
+      "title": "Stop your own login link working"
+    },
+    {
       "adminOnly": false,
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": true,
-        "title": "Playlists"
+        "title": "Check for a duplicate"
       },
-      "description": "A person's playlists: id, name and how many titles each holds. With playlist_id, that one playlist's titles instead, numbered in its order.",
+      "description": "Would adding this title make a duplicate? The library titles it resembles, with a score. Writes nothing.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
+          "title": {
+            "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+            "type": "object"
           }
         },
-        "required": [],
+        "required": [
+          "title"
+        ],
         "type": "object"
       },
-      "name": "list_playlists",
-      "route": "GET /api/playlists",
-      "title": "Playlists"
+      "name": "check_title",
+      "route": "POST /api/titles/check",
+      "title": "Check for a duplicate"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "A login link for yourself"
+      },
+      "description": "A link that signs your own account in on a browser or another device. Only a key with your account's full role may ask: one scoped down to user on an admin account is refused. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_in_minutes": {
+            "description": "0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise.",
+            "maximum": 525600,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_uses": {
+            "description": "Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1.",
+            "maximum": 1000,
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "create_my_login_link",
+      "route": "POST /api/account/login-link",
+      "title": "A login link for yourself"
     },
     {
       "adminOnly": false,
@@ -1302,19 +1268,23 @@
         "additionalProperties": false,
         "properties": {
           "items": {
-            "description": "Title ids from search_library.",
+            "description": "Title ids, in order.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "name": {
+            "description": "Up to 80 characters.",
             "type": "string"
           },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
             "minimum": 1,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1332,325 +1302,40 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Order playlists"
+        "title": "Add a source"
       },
-      "description": "Put the playlists in this order (ids: every playlist id, first to last).",
+      "description": "Remember a list or page titles were found on.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "ids"
-        ],
-        "type": "object"
-      },
-      "name": "reorder_playlists",
-      "route": "POST /api/playlists/reorder",
-      "title": "Order playlists"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Rename a playlist"
-      },
-      "description": "Give a playlist a new name. Returns the previous one.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
+          "note": {
+            "description": "Up to 2000 characters.",
             "type": "string"
           },
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "playlist_id",
-          "name"
-        ],
-        "type": "object"
-      },
-      "name": "rename_playlist",
-      "route": "POST /api/playlists/{playlist_id}/update",
-      "title": "Rename a playlist"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Delete a playlist"
-      },
-      "description": "Delete a playlist. Soft: restore_playlist brings it back within the undo window.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "playlist_id"
-        ],
-        "type": "object"
-      },
-      "name": "delete_playlist",
-      "route": "POST /api/playlists/{playlist_id}/delete",
-      "title": "Delete a playlist"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Restore a playlist"
-      },
-      "description": "Bring back a deleted playlist, within the undo window.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "playlist_id"
-        ],
-        "type": "object"
-      },
-      "name": "restore_playlist",
-      "route": "POST /api/playlists/{playlist_id}/restore",
-      "title": "Restore a playlist"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Add to a playlist"
-      },
-      "description": "Add titles at position (the end by default); the rest renumber. Returns the items before, which set_playlist_items takes back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "position": {
-            "description": "1-based; the end by default.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "title_ids": {
-            "description": "Title ids from search_library.",
+          "tags": {
+            "description": "Up to 20.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "playlist_id",
-          "title_ids"
-        ],
-        "type": "object"
-      },
-      "name": "add_to_playlist",
-      "route": "POST /api/playlists/{playlist_id}/add",
-      "title": "Add to a playlist"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Remove from a playlist"
-      },
-      "description": "Take titles off a playlist; the rest renumber. Returns the items before, which set_playlist_items takes back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "title_ids": {
-            "description": "Title ids from search_library.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "playlist_id",
-          "title_ids"
-        ],
-        "type": "object"
-      },
-      "name": "remove_from_playlist",
-      "route": "POST /api/playlists/{playlist_id}/remove",
-      "title": "Remove from a playlist"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Move within a playlist"
-      },
-      "description": "Move one title to position; the rest renumber. Returns the items before, which set_playlist_items takes back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "position": {
-            "description": "1-based; the end by default.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "title_id": {
-            "description": "A title id from search_library.",
+          "title": {
+            "description": "Up to 300 characters.",
             "type": "string"
           },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
+          "url": {
+            "description": "An http(s) link.",
+            "type": "string"
           }
         },
         "required": [
-          "playlist_id",
-          "title_id",
-          "position"
+          "url"
         ],
         "type": "object"
       },
-      "name": "move_in_playlist",
-      "route": "POST /api/playlists/{playlist_id}/move",
-      "title": "Move within a playlist"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Set a playlist's titles"
-      },
-      "description": "Replace a playlist's titles with items, in order -- the undo of add, remove and move. Returns the items before.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "description": "Title ids from search_library.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "playlist_id": {
-            "description": "A playlist id from list_playlists.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "playlist_id",
-          "items"
-        ],
-        "type": "object"
-      },
-      "name": "set_playlist_items",
-      "route": "POST /api/playlists/{playlist_id}/set",
-      "title": "Set a playlist's titles"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": false,
-        "openWorldHint": false,
-        "readOnlyHint": true,
-        "title": "Saved views"
-      },
-      "description": "A person's saved views: a named query on the library or Discover screen, in their order.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [],
-        "type": "object"
-      },
-      "name": "list_views",
-      "route": "GET /api/views",
-      "title": "Saved views"
+      "name": "create_source",
+      "route": "POST /api/sources",
+      "title": "Add a source"
     },
     {
       "adminOnly": false,
@@ -1666,12 +1351,20 @@
         "properties": {
           "card": {
             "description": "How cards look in this view.",
-            "type": "object"
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "icon": {
             "type": "string"
           },
           "name": {
+            "description": "Up to 80 characters.",
             "type": "string"
           },
           "query": {
@@ -1679,19 +1372,20 @@
             "type": "string"
           },
           "scope": {
+            "description": "The library section it is on.",
             "type": "string"
           },
           "screen": {
-            "enum": [
-              "library",
-              "discover"
-            ],
+            "description": "library or discover.",
             "type": "string"
           },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
             "minimum": 1,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1706,91 +1400,122 @@
     {
       "adminOnly": false,
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Order views"
+        "title": "Delete a playlist"
       },
-      "description": "Put the saved views in this order (ids: view ids, first to last).",
+      "description": "Delete a playlist. Soft: restoring it brings it back within the undo window.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
             "minimum": 1,
             "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
-          "ids"
+          "playlist_id"
         ],
         "type": "object"
       },
-      "name": "reorder_views",
-      "route": "POST /api/views/reorder",
-      "title": "Order views"
+      "name": "delete_playlist",
+      "route": "POST /api/playlists/{playlist_id}/delete",
+      "title": "Delete a playlist"
     },
     {
       "adminOnly": false,
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Change a view"
+        "title": "Delete a source"
       },
-      "description": "Change a saved view's name, query, card layout or icon. Returns the previous values.",
+      "description": "Delete a source. Soft: restoring it brings it back within the undo window.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "card": {
-            "description": "How cards look in this view.",
-            "type": "object"
-          },
-          "icon": {
+          "source_id": {
+            "description": "A source's id, from GET /api/sources.",
             "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "query": {
-            "description": "The screen's address, such as #library/all/queue?runtime=..100.",
-            "type": "string"
-          },
-          "scope": {
-            "type": "string"
-          },
-          "screen": {
-            "enum": [
-              "library",
-              "discover"
-            ],
-            "type": "string"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "view_id": {
-            "description": "A view id from list_views.",
-            "minimum": 1,
-            "type": "integer"
           }
         },
         "required": [
-          "view_id"
+          "source_id"
         ],
         "type": "object"
       },
-      "name": "update_view",
-      "route": "POST /api/views/{view_id}/update",
-      "title": "Change a view"
+      "name": "delete_source",
+      "route": "POST /api/sources/{source_id}/delete",
+      "title": "Delete a source"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete a title"
+      },
+      "description": "Take a title out of the library for everyone. Soft: restoring it brings it back within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_title",
+      "route": "POST /api/titles/{title_id}/delete",
+      "title": "Delete a title"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete a type"
+      },
+      "description": "Delete a media type. One that still holds titles needs reassign_to, the type they move to (409 type_in_use with their count otherwise). Movies and TV cannot be deleted. Soft: restoring it brings it back.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "reassign_to": {
+            "description": "The type its titles move to. Needed while it holds any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type_id": {
+            "description": "A type's id, from GET /api/types.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_type",
+      "route": "POST /api/types/{type_id}/delete",
+      "title": "Delete a type"
     },
     {
       "adminOnly": false,
@@ -1800,17 +1525,20 @@
         "readOnlyHint": false,
         "title": "Delete a view"
       },
-      "description": "Delete a saved view. Soft: restore_view brings it back within the undo window.",
+      "description": "Delete a saved view. Soft: restoring it brings it back within the undo window.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
             "minimum": 1,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "view_id": {
-            "description": "A view id from list_views.",
+            "description": "A view's id, from GET /api/views.",
             "minimum": 1,
             "type": "integer"
           }
@@ -1830,31 +1558,251 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Restore a view"
+        "title": "Add a Discover film"
       },
-      "description": "Bring back a deleted saved view, within the undo window.",
+      "description": "Add a film from Discover (the film object as it was given) to the library, with its Wikipedia details. status: watched for Seen it, or leave it out for no list. Refused with 409 possible_duplicate and the dupes unless force is true. A possible duplicate answers created: false with possible_duplicates instead.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
-            "minimum": 1,
-            "type": "integer"
+          "film": {
+            "description": "A film as GET /api/discover gives it.",
+            "type": "object"
           },
-          "view_id": {
-            "description": "A view id from list_views.",
+          "force": {
+            "description": "Add it even if it looks like a title the library has.",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "watched for Seen it; leave out for no list.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
             "minimum": 1,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
-          "view_id"
+          "film"
         ],
         "type": "object"
       },
-      "name": "restore_view",
-      "route": "POST /api/views/{view_id}/restore",
-      "title": "Restore a view"
+      "name": "discover_add",
+      "route": "POST /api/discover/add",
+      "title": "Add a Discover film"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Discover film details"
+      },
+      "description": "Plot, cast and poster for up to 60 catalogue films, by article name (a film's url ends in it), keyed by article.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "articles": {
+            "description": "Wikipedia article names (a film's article), separated by |. At most 60.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "discover_facts",
+      "route": "GET /api/discover/facts",
+      "title": "Discover film details"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Discover catalogue"
+      },
+      "description": "What the Discover catalogue holds: its source lists and topics, coverage, and rating counts.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "discover_meta",
+      "route": "GET /api/discover/meta",
+      "title": "Discover catalogue"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Search Discover"
+      },
+      "description": "The Wikipedia film catalogue, minus films the person skipped or watched unless asked for. Each film says whether it is already in the library (title_id) and the person's status on it. Answers total, films and, when nothing matched the exact words, fuzzy: true.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "description": "A cast member's name.",
+            "type": "string"
+          },
+          "from": {
+            "description": "Earliest year.",
+            "type": "string"
+          },
+          "genre": {
+            "description": "Genres, comma-separated.",
+            "type": "string"
+          },
+          "genremode": {
+            "description": "all: every genre given. Default any.",
+            "type": "string"
+          },
+          "imdbfrom": {
+            "description": "Lowest IMDb score, 0-10.",
+            "type": "string"
+          },
+          "imdbto": {
+            "description": "Highest IMDb score, 0-10.",
+            "type": "string"
+          },
+          "library": {
+            "description": "hide: leave out films already in the library. Default all.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Films to return, at most 200. Default 60.",
+            "type": "string"
+          },
+          "norating": {
+            "description": "Certifications to leave out, comma-separated.",
+            "type": "string"
+          },
+          "offset": {
+            "description": "Films to skip.",
+            "type": "string"
+          },
+          "only": {
+            "description": "A source list id from GET /api/discover/meta.",
+            "type": "string"
+          },
+          "q": {
+            "description": "Words to find in the title, director or cast.",
+            "type": "string"
+          },
+          "rating": {
+            "description": "Certifications to keep, comma-separated.",
+            "type": "string"
+          },
+          "skipped": {
+            "description": "hide, only or all: films skipped, here or as dropped in the library. Default hide.",
+            "type": "string"
+          },
+          "sort": {
+            "description": "notable, imdb, year, year-asc or title. Default notable.",
+            "type": "string"
+          },
+          "to": {
+            "description": "Latest year.",
+            "type": "string"
+          },
+          "topic": {
+            "description": "A topic id from GET /api/discover/meta.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "votesfrom": {
+            "description": "Fewest IMDb votes.",
+            "type": "string"
+          },
+          "votesto": {
+            "description": "Most IMDb votes.",
+            "type": "string"
+          },
+          "watched": {
+            "description": "hide, only or all: films watched. Default hide.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "discover_search",
+      "route": "GET /api/discover",
+      "title": "Search Discover"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Not duplicates"
+      },
+      "description": "Mark two or more titles as not the same, for the whole family. Returns the pairs, which undismissing takes back.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Title ids, from GET /api/library (search_library over MCP).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "dismiss_duplicates",
+      "route": "POST /api/dupes/dismiss",
+      "title": "Not duplicates"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Fill a title in"
+      },
+      "description": "Look the title up with the configured providers now and fill in missing details (refresh: true overwrites what is there). Returns the previous values.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh": {
+            "description": "Overwrite what is there, not just fill in what is missing.",
+            "type": "boolean"
+          },
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title_id"
+        ],
+        "type": "object"
+      },
+      "name": "enrich_title",
+      "route": "POST /api/titles/{title_id}/enrich",
+      "title": "Fill a title in"
     },
     {
       "adminOnly": false,
@@ -1868,13 +1816,15 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
             "minimum": 1,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
-        "required": [],
         "type": "object"
       },
       "name": "get_prefs",
@@ -1886,37 +1836,34 @@
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Change settings"
+        "readOnlyHint": true,
+        "title": "Get a title"
       },
-      "description": "Change settings by section (cards, last_query, default_view, ui): each key given replaces that key within its section, and null removes it. Returns them all.",
+      "description": "Everything about one title, with the person's state on it (my_state) and who in the family has watched or loved it (family).",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "cards": {
-            "type": "object"
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
+            "type": "string"
           },
-          "default_view": {
-            "type": "object"
-          },
-          "last_query": {
-            "type": "object"
-          },
-          "ui": {
-            "type": "object"
-          },
-          "user_id": {
-            "description": "Whose state (an admin's key, or one given Showing); defaults to the key's own account.",
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
             "minimum": 1,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
-        "required": [],
+        "required": [
+          "title_id"
+        ],
         "type": "object"
       },
-      "name": "save_prefs",
-      "route": "POST /api/prefs",
-      "title": "Change settings"
+      "name": "get_title",
+      "route": "GET /api/titles/{title_id}",
+      "title": "Get a title"
     },
     {
       "adminOnly": false,
@@ -1924,17 +1871,17 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": true,
-        "title": "Media types"
+        "title": "Library vocabulary"
       },
-      "description": "The library's sections (Movies, TV, and any the family added), in order.",
+      "description": "The fixed words: statuses, lookup kinds, and the canonical genre names.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
         "type": "object"
       },
-      "name": "list_types",
-      "route": "GET /api/types",
-      "title": "Media types"
+      "name": "get_vocab",
+      "route": "GET /api/vocab",
+      "title": "Library vocabulary"
     },
     {
       "adminOnly": false,
@@ -1942,92 +1889,227 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Add or change a type"
+        "title": "Import titles"
       },
-      "description": "Create a media type, or change one by its id. Movies and TV keep their lookup.",
+      "description": "Create titles from rows ({fields, state}, at most 200 per call), skipping any the library certainly has unless skip_dupes is false, and put them on the person's lists. Send the same batch_id for every call of one import; undoing the import takes the whole batch back.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "icon": {
+          "batch_id": {
+            "description": "The same for every call of one import, so it is undone as one. Default: a new one.",
             "type": "string"
           },
-          "id": {
-            "description": "a-z, 0-9 and -; never changes once made.",
+          "rows": {
+            "description": "Up to 200 rows, each {fields, state}, as POST /api/import/parse gives them.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "skip_dupes": {
+            "default": true,
+            "description": "Skip rows the library certainly has. Default true.",
+            "type": "boolean"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "type": "object"
+      },
+      "name": "import_items",
+      "route": "POST /api/import/items",
+      "title": "Import titles"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Read an import"
+      },
+      "description": "Read a pasted list or a file's text (format auto, outline, csv or json) into rows of title fields, each with its likeliest duplicate (dupe). Writes nothing: send the rows wanted to POST /api/import/items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "default": "auto",
+            "description": "auto, outline, csv or json. Default auto.",
             "type": "string"
+          },
+          "status": {
+            "default": "queue",
+            "description": "The status rows without one get: queue, watching, watched or dropped. Default queue.",
+            "type": "string"
+          },
+          "text": {
+            "description": "A pasted list, or a file's text.",
+            "type": "string"
+          },
+          "type": {
+            "default": "movie",
+            "description": "The type id titles without one get. Default movie.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "import_parse",
+      "route": "POST /api/import/parse",
+      "title": "Read an import"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Background jobs"
+      },
+      "description": "What the server is doing in the background (filling in titles, IMDb ratings, the catalogue), the poster cache, and whether lookups are on.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "jobs_status",
+      "route": "GET /api/jobs",
+      "title": "Background jobs"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Name one of your devices"
+      },
+      "description": "Give one of your devices a name (at most 80 characters; empty clears it). expect, when given, is the name you think it has now.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expect": {
+            "description": "The name you think it has. Answers 409 if it has another.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "label": {
+            "description": "At most 80 characters.",
+            "maxLength": 80,
             "type": "string"
           },
-          "lookup": {
-            "description": "What titles of this type are looked up as: movie, tv, book, ... or other.",
+          "session_id": {
+            "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
             "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "session_id"
+        ],
+        "type": "object"
+      },
+      "name": "label_my_session",
+      "route": "POST /api/account/sessions/{session_id}/label",
+      "title": "Name one of your devices"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Possible duplicates"
+      },
+      "description": "Groups of library titles that look like the same work, minus pairs marked as different.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_duplicates",
+      "route": "GET /api/dupes",
+      "title": "Possible duplicates"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Your signed-in devices"
+      },
+      "description": "Where your account is signed in, a page at a time: id, when it started and was last seen, the browser, and the name you gave it. Through an API key no device is current. next is the offset of the following page, or null on the last one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 200,
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
           },
-          "position": {
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
             "type": "integer"
           }
         },
-        "required": [
-          "id",
-          "label"
-        ],
         "type": "object"
       },
-      "name": "save_type",
-      "route": "POST /api/types",
-      "title": "Add or change a type"
-    },
-    {
-      "adminOnly": false,
-      "annotations": {
-        "destructiveHint": true,
-        "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Delete a type"
-      },
-      "description": "Delete a media type. One that still holds titles needs reassign_to, the type they move to. Movies and TV cannot be deleted. Soft: restore_type brings it back.",
-      "inputSchema": {
-        "additionalProperties": false,
-        "properties": {
-          "reassign_to": {
-            "type": "string"
-          },
-          "type_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type_id"
-        ],
-        "type": "object"
-      },
-      "name": "delete_type",
-      "route": "POST /api/types/{type_id}/delete",
-      "title": "Delete a type"
+      "name": "list_my_sessions",
+      "route": "GET /api/account/sessions",
+      "title": "Your signed-in devices"
     },
     {
       "adminOnly": false,
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Restore a type"
+        "readOnlyHint": true,
+        "title": "Playlists"
       },
-      "description": "Bring back a deleted media type, within the undo window.",
+      "description": "A person's playlists: id, name and how many titles each holds. With playlist_id, that one playlist's titles instead, numbered in its order.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "type_id": {
-            "type": "string"
+          "playlist_id": {
+            "description": "Over MCP only: that one playlist's titles, numbered in its order, instead of the list.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
-        "required": [
-          "type_id"
-        ],
         "type": "object"
       },
-      "name": "restore_type",
-      "route": "POST /api/types/{type_id}/restore",
-      "title": "Restore a type"
+      "name": "list_playlists",
+      "route": "GET /api/playlists",
+      "title": "Playlists"
     },
     {
       "adminOnly": false,
@@ -2052,38 +2134,1191 @@
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
-        "readOnlyHint": false,
-        "title": "Add a source"
+        "readOnlyHint": true,
+        "title": "List team"
       },
-      "description": "Remember a list or page titles were found on.",
+      "description": "People with an active account, a page at a time: id and display name. Use the id wherever another tool asks for a user. next is the offset of the following page, or null on the last one.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "note": {
+          "limit": {
+            "default": 200,
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_team",
+      "route": "GET /api/team",
+      "title": "List team"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Media types"
+      },
+      "description": "The library's sections (Movies, TV, and any the family added), in order.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_types",
+      "route": "GET /api/types",
+      "title": "Media types"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Saved views"
+      },
+      "description": "A person's saved views: a named query on the library or Discover screen, in their order.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_views",
+      "route": "GET /api/views",
+      "title": "Saved views"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Look titles up"
+      },
+      "description": "Identify names, names and years, or links with the configured providers, and say whether the library already has each. Writes nothing. Counts against the per-person lookup allowance (providers.lookups_per_minute); 503 lookups_off while the network is off.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "default": "any",
+            "description": "movie, tv, book, ... or any.",
             "type": "string"
           },
-          "tags": {
+          "lines": {
+            "description": "Up to 25 lines, each a name, a name and year, an IMDb id, or a link (IMDb, Wikipedia, TMDB, TVmaze...).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "type": "object"
+      },
+      "name": "lookup",
+      "route": "POST /api/resolve",
+      "title": "Look titles up"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Merge duplicates"
+      },
+      "description": "Keep title_id and fold the drop_ids into it: everyone's state, playlists and details move over and the others are deleted. One undo step: undo the merge with the merge_id returned.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "drop_ids": {
+            "description": "Title ids, from GET /api/library (search_library over MCP).",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "title": {
-            "type": "string"
-          },
-          "url": {
-            "description": "An http(s) link.",
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
             "type": "string"
           }
         },
         "required": [
-          "url"
+          "drop_ids",
+          "title_id"
         ],
         "type": "object"
       },
-      "name": "create_source",
-      "route": "POST /api/sources",
-      "title": "Add a source"
+      "name": "merge_titles",
+      "route": "POST /api/titles/{title_id}/merge",
+      "title": "Merge duplicates"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Move within a playlist"
+      },
+      "description": "Move one title to position; the rest renumber. Returns the items before, which setting the items takes back.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "description": "1-based.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title_id": {
+            "description": "The title to move.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "playlist_id",
+          "position",
+          "title_id"
+        ],
+        "type": "object"
+      },
+      "name": "move_in_playlist",
+      "route": "POST /api/playlists/{playlist_id}/move",
+      "title": "Move within a playlist"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Remove from a playlist"
+      },
+      "description": "Take titles off a playlist; the rest renumber. Returns the items before, which setting the items takes back.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title_ids": {
+            "description": "Title ids, from GET /api/library (search_library over MCP).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "playlist_id",
+          "title_ids"
+        ],
+        "type": "object"
+      },
+      "name": "remove_from_playlist",
+      "route": "POST /api/playlists/{playlist_id}/remove",
+      "title": "Remove from a playlist"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Rename your account"
+      },
+      "description": "Change your own display name (1-80 characters). expect, when given, is the name you think it has now; if someone changed it meanwhile the rename is refused with the current name, so nothing is overwritten unseen.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expect": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "rename_account",
+      "route": "POST /api/account/rename",
+      "title": "Rename your account"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Rename a playlist"
+      },
+      "description": "Give a playlist a new name. Returns the previous one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Up to 80 characters.",
+            "type": "string"
+          },
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "playlist_id"
+        ],
+        "type": "object"
+      },
+      "name": "rename_playlist",
+      "route": "POST /api/playlists/{playlist_id}/update",
+      "title": "Rename a playlist"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Order playlists"
+      },
+      "description": "Put the playlists in this order (ids: every playlist id, first to last).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Ids, first to last.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "reorder_playlists",
+      "route": "POST /api/playlists/reorder",
+      "title": "Order playlists"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Order views"
+      },
+      "description": "Put the saved views in this order (ids: view ids, first to last).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Ids, first to last.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "reorder_views",
+      "route": "POST /api/views/reorder",
+      "title": "Order views"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a playlist"
+      },
+      "description": "Bring back a deleted playlist, within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "playlist_id"
+        ],
+        "type": "object"
+      },
+      "name": "restore_playlist",
+      "route": "POST /api/playlists/{playlist_id}/restore",
+      "title": "Restore a playlist"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a source"
+      },
+      "description": "Bring back a deleted source, within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "description": "A source's id, from GET /api/sources.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "type": "object"
+      },
+      "name": "restore_source",
+      "route": "POST /api/sources/{source_id}/restore",
+      "title": "Restore a source"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a title"
+      },
+      "description": "Bring back a deleted title, within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title_id"
+        ],
+        "type": "object"
+      },
+      "name": "restore_title",
+      "route": "POST /api/titles/{title_id}/restore",
+      "title": "Restore a title"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a type"
+      },
+      "description": "Bring back a deleted media type, within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "type_id": {
+            "description": "A type's id, from GET /api/types.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type_id"
+        ],
+        "type": "object"
+      },
+      "name": "restore_type",
+      "route": "POST /api/types/{type_id}/restore",
+      "title": "Restore a type"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a view"
+      },
+      "description": "Bring back a deleted saved view, within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "view_id": {
+            "description": "A view's id, from GET /api/views.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "view_id"
+        ],
+        "type": "object"
+      },
+      "name": "restore_view",
+      "route": "POST /api/views/{view_id}/restore",
+      "title": "Restore a view"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Sign out all your devices"
+      },
+      "description": "End every session your account has: through an API key there is no current device to keep, so every browser signs in again. API keys keep working. Answers with how many were removed.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "revoke_my_other_sessions",
+      "route": "POST /api/account/sessions/revoke-others",
+      "title": "Sign out all your devices"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Sign out one of your devices"
+      },
+      "description": "End one of your signed-in sessions; that browser has to sign in again.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "type": "object"
+      },
+      "name": "revoke_my_session",
+      "route": "POST /api/account/sessions/{session_id}/revoke",
+      "title": "Sign out one of your devices"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change settings"
+      },
+      "description": "Change settings by section (cards, last_query, default_view, ui): each key given replaces that key within its section, and null removes it. Returns them all.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "description": "Each key given replaces that key in the section; null removes it.",
+            "type": "object"
+          },
+          "default_view": {
+            "description": "Each key given replaces that key in the section; null removes it.",
+            "type": "object"
+          },
+          "last_query": {
+            "description": "Each key given replaces that key in the section; null removes it.",
+            "type": "object"
+          },
+          "ui": {
+            "description": "Each key given replaces that key in the section; null removes it.",
+            "type": "object"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "save_prefs",
+      "route": "POST /api/prefs",
+      "title": "Change settings"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Add or change a type"
+      },
+      "description": "Create a media type, or change one by its id. Movies and TV keep their lookup.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "type": "string"
+          },
+          "id": {
+            "description": "a-z, 0-9 and -, up to 32; never changes once made.",
+            "type": "string"
+          },
+          "label": {
+            "description": "Up to 40 characters.",
+            "type": "string"
+          },
+          "lookup": {
+            "default": "other",
+            "description": "What titles of this type are looked up as: movie, tv, book, ... or other.",
+            "type": "string"
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "name": "save_type",
+      "route": "POST /api/types",
+      "title": "Add or change a type"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Search the library"
+      },
+      "description": "Titles in the family library, with the person's own state on each (status, rating, heart) and who else has watched or loved it. Every argument is optional.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 50,
+            "description": "Rows to return. Default 50.",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "status": {
+            "description": "queue, watching, watched, dropped or none, or up_next for the Up next list (queue and watching, newest first).",
+            "type": "string"
+          },
+          "text": {
+            "description": "Words that must all appear in the title, director, cast, genres, tags or notes.",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "type": {
+            "description": "A type id such as movie or tv.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "search_library",
+      "route": "GET /api/library/search",
+      "title": "Search the library"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Set a playlist's titles"
+      },
+      "description": "Replace a playlist's titles with items, in order: the undo of add, remove and move. Returns the items before.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "Every title, in order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "playlist_id": {
+            "description": "A playlist's id, from GET /api/playlists.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "playlist_id"
+        ],
+        "type": "object"
+      },
+      "name": "set_playlist_items",
+      "route": "POST /api/playlists/{playlist_id}/set",
+      "title": "Set a playlist's titles"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Set status, rating or heart"
+      },
+      "description": "Change one person's state on a title: status (queue, watching, watched, dropped, or null for off the list), rating 1-10 or null, heart true/false, note, watched_at. Returns the previous values.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expect": {
+            "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+          },
+          "set": {
+            "description": "A person's state: status (queue, watching, watched, dropped, or null), rating 1-10 or null, heart, note, watched_at.",
+            "type": "object"
+          },
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "set",
+          "title_id"
+        ],
+        "type": "object"
+      },
+      "name": "set_state",
+      "route": "POST /api/state/{title_id}",
+      "title": "Set status, rating or heart"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Set state on many titles"
+      },
+      "description": "changes is {title id: {status, rating, heart, note, watched_at}}, up to 2000 titles: a bulk action sends the same change for every id. Returns each title's previous values, which sent back are the undo.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "additionalProperties": {
+              "description": "A person's state: status (queue, watching, watched, dropped, or null), rating 1-10 or null, heart, note, watched_at.",
+              "type": "object"
+            },
+            "description": "{title id: {status, rating, heart, note, watched_at}}, up to 2000 titles.",
+            "type": "object"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "type": "object"
+      },
+      "name": "set_states",
+      "route": "POST /api/state/bulk",
+      "title": "Set state on many titles"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Pick your theme"
+      },
+      "description": "Switch to another theme from your list (or the defaults), by its id.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "theme_id": {
+            "description": "A theme's id. Empty for the first in the list.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "theme_id"
+        ],
+        "type": "object"
+      },
+      "name": "set_theme",
+      "route": "POST /api/account/theme",
+      "title": "Pick your theme"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Replace your own themes"
+      },
+      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "theme_id": {
+            "description": "The theme you use.",
+            "type": "string"
+          },
+          "themes": {
+            "description": "Your whole list, 1 to 40 themes. null goes back to following the app's defaults.",
+            "oneOf": [
+              {
+                "items": {
+                  "description": "A color scheme on the Appearance screen. Colors are #rrggbb. Anything not given is worked out by static/js/theme.js at readable contrast.",
+                  "properties": {
+                    "accent": {
+                      "description": "The main color: what you can press.",
+                      "type": "string"
+                    },
+                    "background": {
+                      "description": "The page. Left out: the mode's own.",
+                      "type": "string"
+                    },
+                    "button": {
+                      "description": "How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal).",
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "case": {
+                              "enum": [
+                                "normal",
+                                "upper"
+                              ],
+                              "type": "string"
+                            },
+                            "depth": {
+                              "enum": [
+                                "flat",
+                                "raised",
+                                "glossy"
+                              ],
+                              "type": "string"
+                            },
+                            "shape": {
+                              "enum": [
+                                "square",
+                                "soft",
+                                "rounded",
+                                "pill"
+                              ],
+                              "type": "string"
+                            },
+                            "weight": {
+                              "enum": [
+                                "normal",
+                                "medium",
+                                "bold"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dark": {
+                      "description": "A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped.",
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "accent": {
+                              "description": "The main color: what you can press.",
+                              "type": "string"
+                            },
+                            "background": {
+                              "description": "The page. Left out: the mode's own.",
+                              "type": "string"
+                            },
+                            "overrides": {
+                              "additionalProperties": {
+                                "type": "string"
+                              },
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "type": "object"
+                            },
+                            "second": {
+                              "description": "Says where you are: active nav item, headings, info.",
+                              "type": "string"
+                            },
+                            "surface": {
+                              "description": "Cards. Left out: the mode's own.",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "accent",
+                            "second"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Lower-case letters, digits, - and _, up to 32.",
+                      "type": "string"
+                    },
+                    "light": {
+                      "description": "A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in.",
+                      "oneOf": [
+                        {
+                          "properties": {
+                            "accent": {
+                              "description": "The main color: what you can press.",
+                              "type": "string"
+                            },
+                            "background": {
+                              "description": "The page. Left out: the mode's own.",
+                              "type": "string"
+                            },
+                            "overrides": {
+                              "additionalProperties": {
+                                "type": "string"
+                              },
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "type": "object"
+                            },
+                            "second": {
+                              "description": "Says where you are: active nav item, headings, info.",
+                              "type": "string"
+                            },
+                            "surface": {
+                              "description": "Cards. Left out: the mode's own.",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "accent",
+                            "second"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "enum": [
+                        "light",
+                        "dark"
+                      ],
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "1 to 60 characters.",
+                      "type": "string"
+                    },
+                    "overrides": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                      "type": "object"
+                    },
+                    "second": {
+                      "description": "Says where you are: active nav item, headings, info.",
+                      "type": "string"
+                    },
+                    "surface": {
+                      "description": "Cards. Left out: the mode's own.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accent",
+                    "id",
+                    "mode",
+                    "name",
+                    "second"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "set_themes",
+      "route": "POST /api/account/themes",
+      "title": "Replace your own themes"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Skip a Discover film"
+      },
+      "description": "Set the person's verdict on a film: skip hides it from them only, seen marks it seen, null clears it.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expect": {
+            "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+          },
+          "key": {
+            "description": "The film's key, from GET /api/discover.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "verdict": {
+            "description": "skip (hide it from you), seen, or null to clear.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "set_verdict",
+      "route": "POST /api/discover/verdict",
+      "title": "Skip a Discover film"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Undo not duplicates"
+      },
+      "description": "Forget pairs that dismissing recorded.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "pairs": {
+            "description": "Pairs from dismissing.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pairs"
+        ],
+        "type": "object"
+      },
+      "name": "undismiss_duplicates",
+      "route": "POST /api/dupes/undismiss",
+      "title": "Undo not duplicates"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Undo an import"
+      },
+      "description": "Delete the titles one import created, and the importer's state on them.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "description": "From POST /api/import/items.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id"
+        ],
+        "type": "object"
+      },
+      "name": "undo_import",
+      "route": "POST /api/import/{batch_id}/undo",
+      "title": "Undo an import"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Undo a merge"
+      },
+      "description": "Put a merge back as it was: the dropped titles, and everyone's state and playlists.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "merge_id": {
+            "description": "From merging titles.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merge_id"
+        ],
+        "type": "object"
+      },
+      "name": "undo_merge",
+      "route": "POST /api/merges/{merge_id}/undo",
+      "title": "Undo a merge"
     },
     {
       "adminOnly": false,
@@ -2098,18 +3333,22 @@
         "additionalProperties": false,
         "properties": {
           "note": {
+            "description": "Up to 2000 characters.",
             "type": "string"
           },
           "source_id": {
+            "description": "A source's id, from GET /api/sources.",
             "type": "string"
           },
           "tags": {
+            "description": "Up to 20.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "title": {
+            "description": "Up to 300 characters.",
             "type": "string"
           },
           "url": {
@@ -2129,27 +3368,36 @@
     {
       "adminOnly": false,
       "annotations": {
-        "destructiveHint": true,
+        "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Delete a source"
+        "title": "Edit a title"
       },
-      "description": "Delete a source. Soft: restore_source brings it back within the undo window.",
+      "description": "Change shared details of a title (title, year, type, tags, notes, links, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url). Returns the previous values.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "source_id": {
+          "expect": {
+            "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+          },
+          "set": {
+            "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+            "type": "object"
+          },
+          "title_id": {
+            "description": "A title's id, from GET /api/library (search_library over MCP).",
             "type": "string"
           }
         },
         "required": [
-          "source_id"
+          "set",
+          "title_id"
         ],
         "type": "object"
       },
-      "name": "delete_source",
-      "route": "POST /api/sources/{source_id}/delete",
-      "title": "Delete a source"
+      "name": "update_title",
+      "route": "POST /api/titles/{title_id}/update",
+      "title": "Edit a title"
     },
     {
       "adminOnly": false,
@@ -2157,24 +3405,81 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
-        "title": "Restore a source"
+        "title": "Change a view"
       },
-      "description": "Bring back a deleted source, within the undo window.",
+      "description": "Change a saved view's name, query, card layout or icon. Returns the previous values.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "source_id": {
+          "card": {
+            "description": "How cards look in this view.",
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "icon": {
             "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "description": "The screen's address, such as #library/all/queue?runtime=..100.",
+            "type": "string"
+          },
+          "scope": {
+            "description": "The library section it is on.",
+            "type": "string"
+          },
+          "screen": {
+            "description": "library or discover.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "view_id": {
+            "description": "A view's id, from GET /api/views.",
+            "minimum": 1,
+            "type": "integer"
           }
         },
         "required": [
-          "source_id"
+          "view_id"
         ],
         "type": "object"
       },
-      "name": "restore_source",
-      "route": "POST /api/sources/{source_id}/restore",
-      "title": "Restore a source"
+      "name": "update_view",
+      "route": "POST /api/views/{view_id}/update",
+      "title": "Change a view"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Who am I"
+      },
+      "description": "The account this API key belongs to, the role it acts with (role -- never higher than the key's own scope), and the account's own role.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "whoami",
+      "route": "GET /api/me",
+      "title": "Who am I"
     }
   ],
   "transport": "Streamable HTTP, stateless: one JSON-RPC message per POST, a JSON reply"

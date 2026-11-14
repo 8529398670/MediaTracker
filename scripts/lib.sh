@@ -115,13 +115,23 @@ stop_our_server() {
   rm -f "$PID_FILE"
 }
 
+# .run/ holds the server's log, and a first run's log holds the owner's
+# one-time login link -- so only this account may read any of it, whatever the
+# umask: 0700 for the folder, 0600 for the log. chmod as well as umask, so a
+# .run/ from before this rule is closed too.
+private_run_dir() {
+  ( umask 077 && mkdir -p "$RUN_DIR" && : >> "$LOG_FILE" )
+  chmod 700 "$RUN_DIR"
+  chmod 600 "$LOG_FILE"
+}
+
 # Start scripts/run.sh detached, its output in .run/server.log, and wait until
 # the server answers. On success BACKGROUND_PID is the server's pid; on failure
 # the end of the log is shown and the script exits.
 LOG_FILE="${RUN_DIR}/server.log"
 start_in_background() {
   local launched
-  mkdir -p "$RUN_DIR"
+  private_run_dir
   # nohup so closing this terminal does not take the server with it. run.sh
   # execs the server, so the pid it writes is the server's.
   nohup scripts/run.sh > "$LOG_FILE" 2>&1 < /dev/null &

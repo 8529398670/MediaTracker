@@ -13,14 +13,19 @@ import json
 import threading
 import time
 from collections import deque
-from starlette.responses import JSONResponse, Response, StreamingResponse
+from typing import Annotated, ClassVar
 
+from msgspec import Meta
+from starlette.responses import Response, StreamingResponse
+
+from app.apidocs import OWNER, PATH, QUERY, Reply, route
+from app.apidocs import Request as RequestType
 from app.core import logs, request_id, sse
 from app.core.config import trusted_proxy_networks
 from app.core.middleware import client_ip
-from app.core.security import actor_from, check_csrf, decrypt_cookie, log_actor, still_owner
+from app.core.security import actor_from, decrypt_cookie, log_actor, still_owner
 from app.models import users
-from app.routes.helpers import PAGE_DEFAULT, PAGE_LIMIT_MESSAGE, PAGE_MAX, bad_request, conflict, error, forbidden, get_config, get_store, read_json, run, whole_number
+from app.routes.helpers import PAGE_DEFAULT, DateTime, Limit, Refused, error, get_config, get_store, run
 
 # Page events a browser may send per call, and per account per minute.
 EVENTS_PER_CALL = 50
@@ -50,75 +55,130 @@ def _settings(logger: logs.Logger) -> dict[str, Any]:
     }
 
 
-async def _query(request: Request, text: str = "") -> logs.Query:
+def _query(request: Request, text: str = "") -> logs.Query:
     """A search, as reading a day, searching and downloading all need it."""
     return logs.Query(text)
 
 
-async def list_log_days(request: Request) -> Response:
+# The Logs screen's search, which the routes that read the log take.
+Search = Annotated[str, QUERY, Meta(description="The Logs screen's search.")]
+
+
+class LogSearch(RequestType):
+    q: Search = ""
+
+
+class LogDays(Reply):
+    """The days on record, as the Logs screen lists them."""
+
+    api_name: ClassVar[str] = "LogDays"
+    days: list[dict[str, Any]]
+    total_bytes: int
+    dropped: int
+    settings: dict[str, Any]
+
+
+@route("GET /api/owner/logs/days", summary="The days on record", tag="Owner", role=OWNER, feature="logs")
+def list_log_days(request: Request, body: LogSearch) -> LogDays:
     logger = get_logs(request)
-    days, total = await run(logger.days, await _query(request, request.query_params.get("q", "")))
-    return JSONResponse({"days": days, "total_bytes": total, "dropped": logger.dropped, "settings": _settings(logger)})
+    days, total = logger.days(_query(request, body.q))
+    return LogDays(days=days, total_bytes=total, dropped=logger.dropped, settings=_settings(logger))
 
 
-async def get_log_day(request: Request) -> Response:
-    day = request.path_params["date"]
-    if not logs.valid_day(day):
-        return bad_request("bad_day")
-    before = whole_number(request.query_params.get("before"), -1)
-    if before is None or (before < 0 and request.query_params.get("before")):
-        return bad_request("before must be a line number")
-    limit = whole_number(request.query_params.get("limit"), PAGE_DEFAULT)
-    if limit is None or not 1 <= limit <= PAGE_MAX:
-        return bad_request(PAGE_LIMIT_MESSAGE)
-    query = await _query(request, request.query_params.get("q", ""))
-    records, following = await run(get_logs(request).read_day, day, query, before, limit)
-    return JSONResponse({"date": day, "entries": records, "next": following})
+class DatePath(RequestType):
+    """The day a route under .../days/{date} acts on. valid_day checks it:
+    it must be a real date, which no limit can say."""
+
+    date: Annotated[str, PATH, Meta(description="The day's date, from GET /api/owner/logs/days.")]
 
 
-async def download_log_day(request: Request) -> Response:
+class GetLogDay(DatePath):
+    q: Search = ""
+    before: Annotated[int, QUERY, Meta(ge=0, extra={"error": "before must be a line number"})] | None = None
+    limit: Limit = PAGE_DEFAULT
+
+
+class LogDay(Reply):
+    api_name: ClassVar[str] = "LogDay"
+    date: str
+    entries: list[dict[str, Any]]
+    next: int | None
+
+
+@route(
+    "GET /api/owner/logs/days/{date}", summary="One day's entries",
+    tag="Owner", role=OWNER, feature="logs",
+)
+def get_log_day(request: Request, body: GetLogDay) -> LogDay:
+    if not logs.valid_day(body.date):
+        raise Refused(400, "bad_day")
+    before = -1 if body.before is None else body.before
+    records, following = get_logs(request).read_day(body.date, _query(request, body.q), before, body.limit)
+    return LogDay(date=body.date, entries=records, next=following)
+
+
+@route(
+    "GET /api/owner/logs/days/{date}/download", summary="One day's entries as a file",
+    tag="Owner", role=OWNER, feature="logs", reply_type="application/x-ndjson",
+)
+async def download_log_day(request: Request, body: DatePath) -> Response:
     """A day as plain JSON lines, decrypted: the file a person can grep, or
     hand to whatever reads logs. Starlette walks the generator in a worker
     thread, so the file reads stay off the event loop."""
-    day = request.path_params["date"]
+    day = body.date
     if not logs.valid_day(day):
-        return bad_request("bad_day")
+        raise Refused(400, "bad_day")
     return StreamingResponse(
-        get_logs(request).download(day, await _query(request)),
+        get_logs(request).download(day, await run(_query, request)),
         media_type="application/x-ndjson",
         headers={"Content-Disposition": f'attachment; filename="logs-{day}.jsonl"'},
     )
 
 
-async def delete_log_day(request: Request) -> Response:
-    body = await read_json(request)
-    if body is None:
-        return bad_request("malformed request body")
-    if not check_csrf(request, body.get("csrf_token")):
-        return forbidden("invalid csrf token")
-    day = request.path_params["date"]
+class DeletedReply(Reply):
+    deleted: bool
+
+
+@route(
+    "POST /api/owner/logs/days/{date}/delete", summary="Delete one day",
+    tag="Owner", role=OWNER, feature="logs", errors=(409,),
+)
+def delete_log_day(request: Request, body: DatePath) -> DeletedReply:
     try:
-        await run(get_logs(request).delete_day, day)
+        get_logs(request).delete_day(body.date)
     except logs.BadDayError as refusal:
-        return bad_request(str(refusal))
+        raise Refused(400, str(refusal)) from None
     except logs.TodayError as refusal:
-        return conflict(str(refusal))
-    audit(request, logs.KIND_ADMIN, "log day deleted", {"date": day})
-    return JSONResponse({"deleted": True})
+        raise Refused(409, str(refusal)) from None
+    audit(request, logs.KIND_ADMIN, "log day deleted", {"date": body.date})
+    return DeletedReply(deleted=True)
 
 
-async def prune_logs(request: Request) -> Response:
-    body = await read_json(request)
-    if body is None:
-        return bad_request("malformed request body")
-    if not check_csrf(request, body.get("csrf_token")):
-        return forbidden("invalid csrf token")
-    result = await run(get_logs(request).prune)
+class PruneResult(Reply):
+    """What Logger.prune did."""
+
+    api_name: ClassVar[str] = "PruneResult"
+    compressed: int
+    deleted: int
+    bytes_before: int
+    bytes_after: int
+
+
+@route(
+    "POST /api/owner/logs/prune", summary="Apply the retention rules now",
+    tag="Owner", role=OWNER, feature="logs",
+)
+def prune_logs(request: Request) -> PruneResult:
+    result = get_logs(request).prune()
     audit(request, logs.KIND_ADMIN, "logs pruned", {"compressed": result["compressed"], "deleted": result["deleted"]})
-    return JSONResponse(result)
+    return PruneResult(**result)
 
 
-async def stream_log_changes(request: Request) -> Response:
+@route(
+    "GET /api/owner/logs/stream", summary="New log entries as they happen",
+    tag="Owner", role=OWNER, feature="logs", reply_type="text/event-stream",
+)
+async def stream_log_changes(request: Request, body: LogSearch) -> Response:
     """The Logs screen's live tail: "something changed" nudges, and logs.js
     runs its normal refresh. Sending the entries themselves would need a
     second filter and paging path through the same data. This route is under
@@ -189,23 +249,31 @@ def _ip(request: Request) -> str:
     return client_ip(request.scope, cfg, trusted_proxy_networks(cfg))
 
 
-async def record_ui_events(request: Request) -> Response:
+class RecordUIEvents(RequestType):
+    tab: str
+    # Each is checked on its own below: one a browser got wrong is skipped,
+    # not the batch refused.
+    events: Annotated[list[dict[str, Any]], Meta(extra={"error": "events must be a list"})]
+
+
+class RecordUIEventsReply(Reply):
+    accepted: int
+
+
+@route(
+    "POST /api/logs/events", summary="Record what happened on the page",
+    tag="Account", feature="logs",
+    mcp_http="The browser's own activity reports (track.js), not an action.",
+)
+def record_ui_events(request: Request, body: RecordUIEvents) -> RecordUIEventsReply:
     """A batch from track.js. The server stamps each with its own time, the
     signed-in account, the address and the user agent, so a browser can
     describe what it did but not who did it or when it arrived."""
-    body = await read_json(request)
-    if body is None:
-        return bad_request("malformed request body")
-    if not check_csrf(request, body.get("csrf_token")):
-        return forbidden("invalid csrf token")
-    events = body.get("events")
-    if not isinstance(events, list):
-        return bad_request("events must be a list")
-    events = events[:EVENTS_PER_CALL]
+    events = body.events[:EVENTS_PER_CALL]
     actor = actor_from(request)
     allowed = _budget.take(actor.user.id, len(events))
     logger = get_logs(request)
-    tab = logs.truncate(body.get("tab", ""), 32)
+    tab = logs.truncate(body.tab, 32)
     who, ip, ua = log_actor(actor), _ip(request), logs.truncate(request.headers.get("user-agent", ""), 300)
     accepted = 0
     for index, event in enumerate(events):
@@ -236,7 +304,7 @@ async def record_ui_events(request: Request) -> Response:
             )
         )
         accepted += 1
-    return JSONResponse({"accepted": accepted})
+    return RecordUIEventsReply(accepted=accepted)
 
 
 # ---------------------------------------------------------------------------

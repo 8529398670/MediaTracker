@@ -28,7 +28,7 @@ BUNDLED_LANGUAGE = CODE_ROOT / "config" / "language.yaml"
 # Bundled only, unlike language.yaml: it describes the routes in this code, so
 # a copy anywhere else could only disagree with them.
 OPENAPI_SPEC = CODE_ROOT / "config" / "openapi.json"
-# The tools /mcp offers, written by scripts/mcp_json.sh. Bundled only, for the
+# The tools /mcp offers, written by scripts/api_docs.sh. Bundled only, for the
 # same reason as openapi.json.
 MCP_MANIFEST = CODE_ROOT / "config" / "mcp.json"
 
@@ -70,3 +70,28 @@ def resolve(static_dir: str, language_file: str) -> Bundle:
         language_yaml=language_yaml,
         source=f"static={static_source} language={language_source}",
     )
+
+
+def check_static_dir(static_dir: str, *protected: Path | str | None) -> None:
+    """Refuse a static directory that would hand a secret to anyone:
+    everything in it is served without signing in. protected is the config
+    directory, the state directory, secret.key and the database. The static
+    directory may not be one of them, sit inside one, or hold one.
+
+    config.yaml is file-only for this key (see config_live.FILE_ONLY_KEYS), so
+    only a person editing the file can get here -- but a typo there must stop
+    the server with a clear message rather than publish the key. A static_dir
+    that does not exist is fine: the bundled copy is served instead. Raises
+    RuntimeError."""
+    if not static_dir or not Path(static_dir).is_dir():
+        return
+    static_path = Path(static_dir).resolve()
+    for item in protected:
+        if not item or not Path(item).exists():
+            continue
+        item_path = Path(item).resolve()
+        if static_path.is_relative_to(item_path) or item_path.is_relative_to(static_path):
+            raise RuntimeError(
+                f"refusing to start: server.static_dir ({static_path}) would serve {item_path} to anyone "
+                "-- point static_dir at the frontend files only, in config.yaml"
+            )

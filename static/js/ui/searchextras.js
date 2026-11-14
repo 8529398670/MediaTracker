@@ -77,7 +77,7 @@ const SearchExtras = {
     const articles = films.map( ( film ) => film.article ).filter( Boolean );
     if ( !articles.length ) return;
     let facts;
-    try { facts = await Api.request( "/api/discover/facts?" + articles.map( ( a ) => "a=" + encodeURIComponent( a ) ).join( "&" ) ); } catch ( error ) { return; }
+    try { facts = await Api.request( "/api/discover/facts?articles=" + encodeURIComponent( articles.join( "|" ) ) ); } catch ( error ) { return; }
     films.forEach( ( film ) => {
       const fact = facts[ film.article ];
       if ( !fact ) return;

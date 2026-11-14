@@ -6,23 +6,28 @@ the library. "Skip" is a personal verdict that hides a film from you only;
 from __future__ import annotations
 
 import urllib.parse
-from typing import Any
+from typing import Annotated, Any, Callable
 
+import msgspec
+from msgspec import UNSET, Meta
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
 
-from app.core.config import Config
+from app.apidocs import QUERY, Reply, route
+from app.apidocs import Request as RequestType
 from app.core.db import Store
 from app.core.security import actor_from
 from app.discover import catalogue, certs
+from app.mcp.registry import Call
 from app.media import dupes, normalize
 from app.models import library_cache, verdicts
 from app.models.revision import ConflictError
 from app.reference.images import CACHE
-from app.routes.helpers import Refused, get_config, get_store, run
-from app.routes.subject import subject_from
-from app.routes.titles import _body, add_title, answer
+from app.routes.helpers import Refused, get_config, get_store
+from app.routes.library import state_row
+from app.routes.subject import User, subject_of
+from app.routes.titles import Expect, Record, add_title, dupe_rows
 
+TAG = "Discover"
 
 
 def _int(value: str | None) -> int:
@@ -133,22 +138,62 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
     return result
 
 
-async def query(request: Request) -> Response:
-    subject = await subject_from(request)
-    if isinstance(subject, Response):
-        return subject
-    return JSONResponse(await run(search, get_store(request), subject, dict(request.query_params)))
+class DiscoverQuery(RequestType, kw_only=True):
+    q: Annotated[str, QUERY, Meta(description="Words to find in the title, director or cast.")] = ""
+    year_from: Annotated[str, QUERY, Meta(description="Earliest year.")] = msgspec.field(default="", name="from")
+    year_to: Annotated[str, QUERY, Meta(description="Latest year.")] = msgspec.field(default="", name="to")
+    topic: Annotated[str, QUERY, Meta(description="A topic id from GET /api/discover/meta.")] = ""
+    genre: Annotated[str, QUERY, Meta(description="Genres, comma-separated.")] = ""
+    genremode: Annotated[str, QUERY, Meta(description="all: every genre given. Default any.")] = ""
+    actor: Annotated[str, QUERY, Meta(description="A cast member's name.")] = ""
+    only: Annotated[str, QUERY, Meta(description="A source list id from GET /api/discover/meta.")] = ""
+    skipped: Annotated[str, QUERY, Meta(description="hide, only or all: films skipped, here or as dropped in the library. Default hide.")] = ""
+    watched: Annotated[str, QUERY, Meta(description="hide, only or all: films watched. Default hide.")] = ""
+    library: Annotated[str, QUERY, Meta(description="hide: leave out films already in the library. Default all.")] = ""
+    rating: Annotated[str, QUERY, Meta(description="Certifications to keep, comma-separated.")] = ""
+    norating: Annotated[str, QUERY, Meta(description="Certifications to leave out, comma-separated.")] = ""
+    imdbfrom: Annotated[str, QUERY, Meta(description="Lowest IMDb score, 0-10.")] = ""
+    imdbto: Annotated[str, QUERY, Meta(description="Highest IMDb score, 0-10.")] = ""
+    votesfrom: Annotated[str, QUERY, Meta(description="Fewest IMDb votes.")] = ""
+    votesto: Annotated[str, QUERY, Meta(description="Most IMDb votes.")] = ""
+    sort: Annotated[str, QUERY, Meta(description="notable, imdb, year, year-asc or title. Default notable.")] = ""
+    limit: Annotated[str, QUERY, Meta(description="Films to return, at most 200. Default 60.")] = ""
+    offset: Annotated[str, QUERY, Meta(description="Films to skip.")] = ""
+    user: User = None
 
 
-def meta_payload() -> dict[str, Any]:
-    """GET /api/discover/meta, shared with MCP: what the catalogue holds."""
+def compact_films(call: Call, body: Any, serve: Callable[[Any, Any], Any]) -> dict[str, Any]:
+    """The call of discover_search: each film's main facts, not everything
+    the grid draws."""
+    result = serve(call.request, body)
+    keep = ("key", "article", "title", "year", "director", "genres", "rating", "imdbScore", "url", "title_id", "my_status", "verdict")
+    return {"total": result["total"], "films": [{name: film.get(name) for name in keep} for film in result["films"]]}
+
+
+@route(
+    "GET /api/discover", summary="Search Discover",
+    tag=TAG,
+    description="The Wikipedia film catalogue, minus films the person skipped or watched unless asked for. "
+    "Each film says whether it is already in the library (title_id) and the person's status on it. "
+    "Answers total, films and, when nothing matched the exact words, fuzzy: true.",
+    mcp="discover_search", read_only=True, call=compact_films,
+)
+def query(request: Request, body: DiscoverQuery) -> dict[str, Any]:
+    subject = subject_of(request, body.user)
+    params = {name: value for name, value in msgspec.to_builtins(body).items() if name != "user"}
+    return search(get_store(request), subject, params)
+
+
+@route(
+    "GET /api/discover/meta", summary="Discover catalogue",
+    tag=TAG,
+    description="What the Discover catalogue holds: its source lists and topics, coverage, and rating counts.",
+    mcp="discover_meta", read_only=True,
+)
+def meta(request: Request) -> dict[str, Any]:
     data = {**catalogue.source_catalogue(), "coverage": catalogue.coverage(), "rating_counts": certs.STORE.counts()}
     data["coverage"].pop("pages", None)
     return data
-
-
-async def meta(request: Request) -> Response:
-    return JSONResponse(await run(meta_payload))
 
 
 def attach_known_facts(films: list[dict[str, Any]]) -> None:
@@ -178,31 +223,49 @@ def facts_for(articles: list[str]) -> dict[str, Any]:
     return found
 
 
-async def facts(request: Request) -> Response:
-    articles = [a for a in request.query_params.getlist("a") if a][:60]
-    return JSONResponse(await run(facts_for, articles))
+class Facts(RequestType, kw_only=True):
+    articles: Annotated[str, QUERY, Meta(description="Wikipedia article names (a film's article), separated by |. At most 60.")] = ""
 
 
-def verdict_checked(store: Store, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
-    """POST /api/discover/verdict, shared with MCP."""
-    kwargs = {"expect": body["expect"]} if "expect" in body else {}
+@route(
+    "GET /api/discover/facts", summary="Discover film details",
+    tag=TAG,
+    description="Plot, cast and poster for up to 60 catalogue films, by article name (a film's url ends in "
+    "it), keyed by article.",
+    mcp="discover_facts", read_only=True,
+)
+def facts(request: Request, body: Facts) -> dict[str, Any]:
+    return facts_for([article for article in body.articles.split("|") if article][:60])
+
+
+class SetVerdict(RequestType, kw_only=True):
+    key: Annotated[str, Meta(description="The film's key, from GET /api/discover.")]
+    verdict: Annotated[str | None, Meta(description="skip (hide it from you), seen, or null to clear.")] = None
+    expect: Expect = UNSET
+    user: User = None
+
+
+class VerdictReply(Reply, kw_only=True):
+    previous: Annotated[str | None, Meta(description="The verdict it replaced.")]
+
+
+@route(
+    "POST /api/discover/verdict", summary="Skip a Discover film",
+    tag=TAG, errors=(409,),
+    description="Set the person's verdict on a film: skip hides it from them only, seen marks it seen, null "
+    "clears it.",
+    mcp="set_verdict",
+)
+def set_verdict(request: Request, body: SetVerdict) -> VerdictReply:
+    subject = subject_of(request, body.user)
+    kwargs = {"expect": body.expect} if body.expect is not UNSET else {}
     try:
-        previous = verdicts.set_verdict(store, subject_id, str(body.get("key") or ""), body.get("verdict"), **kwargs)
+        previous = verdicts.set_verdict(get_store(request), subject, body.key, body.verdict, **kwargs)
     except ValueError as error:
         raise Refused(400, str(error)) from None
     except ConflictError as error:
         raise Refused(409, "changed_elsewhere", current=error.current) from None
-    return {"previous": previous}
-
-
-async def set_verdict(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    subject = await subject_from(request)
-    if isinstance(subject, Response):
-        return subject
-    return await answer(request, verdict_checked, get_store(request), subject, body)
+    return VerdictReply(previous=previous)
 
 
 def film_fields(film: dict[str, Any]) -> dict[str, Any]:
@@ -223,27 +286,49 @@ def film_fields(film: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def add_checked(store: Store, cfg: Config, actor_id: int, subject_id: int, body: dict[str, Any]) -> dict[str, Any]:
-    """POST /api/discover/add, shared with MCP."""
-    film = body.get("film") if isinstance(body.get("film"), dict) else None
-    if not film or not film.get("title"):
+def when_added(call: Call, body: Any, serve: Callable[[Any, Any], Any]) -> dict[str, Any]:
+    """The call of discover_add: a possible duplicate is an answer."""
+    try:
+        result = serve(call.request, body)
+    except Refused as refused:
+        if refused.status != 409 or "dupes" not in refused.extra:
+            raise
+        return {"created": False, "possible_duplicates": dupe_rows(refused.extra["dupes"]), "hint": "Use the existing title, or call again with force: true."}
+    return {"created": True, "title": result.title, "state": state_row(result.state)}
+
+
+class AddFilm(RequestType, kw_only=True):
+    film: Annotated[Record, Meta(description="A film as GET /api/discover gives it.")]
+    status: Annotated[str | None, Meta(description="watched for Seen it; leave out for no list.")] = None
+    force: Annotated[bool, Meta(description="Add it even if it looks like a title the library has.")] = False
+    user: User = None
+
+
+class FilmAdded(Reply, kw_only=True):
+    created: bool
+    title: Record
+    state: Record
+
+
+@route(
+    "POST /api/discover/add", summary="Add a Discover film",
+    tag=TAG, status=201, errors=(409,),
+    description="Add a film from Discover (the film object as it was given) to the library, with its "
+    "Wikipedia details. status: watched for Seen it, or leave it out for no list. Refused with 409 "
+    "possible_duplicate and the dupes unless force is true.",
+    mcp_note="A possible duplicate answers created: false with possible_duplicates instead.",
+    mcp="discover_add", call=when_added,
+)
+def add(request: Request, body: AddFilm) -> FilmAdded:
+    subject = subject_of(request, body.user)
+    if not body.film.get("title"):
         raise Refused(400, "no film given")
     # Add puts it in the library with no status; Seen it sends "watched".
-    status = body.get("status") if body.get("status") in normalize.STATUSES else None
+    status = body.status if body.status in normalize.STATUSES else None
     try:
-        result = add_title(store, cfg, actor_id, subject_id, film_fields(film), {"status": status}, bool(body.get("force")))
+        result = add_title(get_store(request), get_config(request), actor_from(request).user.id, subject, film_fields(body.film), {"status": status}, body.force)
     except ValueError as error:
         raise Refused(400, str(error)) from None
     if not result["created"]:
         raise Refused(409, "possible_duplicate", dupes=result["dupes"])
-    return result
-
-
-async def add(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    subject = await subject_from(request)
-    if isinstance(subject, Response):
-        return subject
-    return await answer(request, add_checked, get_store(request), get_config(request), actor_from(request).user.id, subject, body, status=201)
+    return FilmAdded(created=True, title=result["title"], state=result["state"])

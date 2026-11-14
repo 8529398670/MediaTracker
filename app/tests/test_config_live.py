@@ -120,7 +120,15 @@ class HolderTest(unittest.TestCase):
         holder, path = new_holder(self)
         with in_container(path, path.parent / "data"):
             with self.assertRaises(config_live.LockedError):
-                holder.save(version_of(path), {"docker.data_dir": "/home"})
+                holder.save(version_of(path), {"docker.memory": "1g"})
+
+    def test_paths_are_file_only_everywhere(self) -> None:
+        """S2: a path is file-only outside the container too."""
+        holder, path = new_holder(self)
+        for key in ("server.static_dir", "server.language_file", "server.app_dir", "docker.data_dir"):
+            with self.subTest(key=key):
+                with self.assertRaises(config_live.FileOnlyError):
+                    holder.save(version_of(path), {key: str(path.parent)})
 
     def test_write_in_place_keeps_the_file_and_a_backup(self) -> None:
         directory = tempfile.TemporaryDirectory()

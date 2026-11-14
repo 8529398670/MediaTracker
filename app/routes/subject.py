@@ -7,43 +7,59 @@ add ?user=<id> to read or change someone else's -- the "Acting for Mom" picker -
 which the family asked for so one person can keep the household's lists
 tidy. Anyone else naming another user gets 403; records still say who
 actually made the change (updated_by is always the actor).
+
+A personal route's request has a `user` field (the User type below): the
+?user= of the URL, and the same argument to its MCP tool.
 """
 from __future__ import annotations
 
-from starlette.requests import Request
-from starlette.responses import Response
+from typing import Annotated, Any
 
+import msgspec
+from msgspec import UNSET, Meta
+from starlette.requests import Request
+
+from app.apidocs import QUERY
 from app.core.security import actor_from
 from app.models import users
-from app.routes.helpers import forbidden, get_store, not_found, parse_id, run
+from app.routes.helpers import Refused, get_store
+
+User = Annotated[
+    Annotated[int, Meta(ge=1)] | None, QUERY,
+    Meta(description="Whose lists: a user id, for an admin or someone given Showing. Default: your own.", extra={"error": "no such user"}),
+]
 
 
-async def subject_from(request: Request) -> int | Response:
-    """The user id this request acts for, or the refusal to send back."""
+def subject_of(request: Request, wanted: int | None) -> int:
+    """The user id this request acts for, or Refused. Reads SQLite: from a
+    worker thread (every plain-function handler runs in one)."""
     actor = actor_from(request)
-    raw = request.query_params.get("user", "")
+    store = get_store(request)
     locked = users.locked_subject(actor.user)
     if locked is not None:
-        return await _locked_subject(request, actor.user.id, locked, raw)
-    if raw == "" or raw == str(actor.user.id):
+        # An admin has fixed whose lists this account sees. No ?user= means
+        # that person, so an old tab cannot write to the wrong lists; naming
+        # anyone else is refused. If that person's account is gone, it falls
+        # back to its own.
+        if locked != actor.user.id and users.get_user(store, locked) is None:
+            locked = actor.user.id
+        if wanted is not None and wanted != locked:
+            raise Refused(403, "an admin has set whose lists you see")
+        return locked
+    if wanted is None or wanted == actor.user.id:
         return actor.user.id
-    wanted = parse_id(raw)
-    if wanted is None:
-        return not_found("no such user")
     if not (actor.is_admin or actor.user.can_show_others):
-        return forbidden("only an admin, or someone given Showing, can act for someone else")
-    user = await run(users.get_user, get_store(request), wanted)
-    if user is None:
-        return not_found("no such user")
-    return user.id
+        raise Refused(403, "only an admin, or someone given Showing, can act for someone else")
+    if users.get_user(store, wanted) is None:
+        raise Refused(404, "no such user")
+    return wanted
 
 
-async def _locked_subject(request: Request, own_id: int, locked: int, raw: str) -> int | Response:
-    """An admin has fixed whose lists this account sees. No ?user= means that
-    person, so an old tab cannot write to the wrong lists; naming anyone else
-    is refused. If that person's account is gone, it falls back to its own."""
-    if locked != own_id and await run(users.get_user, get_store(request), locked) is None:
-        locked = own_id
-    if raw != "" and raw != str(locked):
-        return forbidden("an admin has set whose lists you see")
-    return locked
+def given(body: Any, *drop: str) -> dict[str, Any]:
+    """A request's body fields that were sent, as the dict the models take:
+    fields left out (UNSET), `user` and the names in drop are not in it."""
+    return {
+        name: value
+        for name, value in msgspec.structs.asdict(body).items()
+        if value is not UNSET and name not in ("user", *drop)
+    }

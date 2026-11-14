@@ -3,18 +3,22 @@ them (one undo step for the whole merge), and remembering "these are not the
 same" for the whole family."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
+from msgspec import Meta
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
 
+from app.apidocs import PATH, Reply, route
+from app.apidocs import Request as RequestType
 from app.core.db import Store
 from app.core.security import actor_from
 from app.media import dupes, normalize
 from app.models import library_cache, merges
 from app.models.revision import ConflictError, NotFoundError
-from app.routes.helpers import Refused, get_store, run
-from app.routes.titles import _body, answer
+from app.routes.helpers import Refused, get_store
+from app.routes.titles import TAG, Record, TitlePath
+
+TitleIDs = Annotated[list[str], Meta(description="Title ids, from GET /api/library (search_library over MCP).")]
 
 
 def groups(store: Store) -> list[dict[str, Any]]:
@@ -23,69 +27,103 @@ def groups(store: Store) -> list[dict[str, Any]]:
     return [{**group, "titles": [snapshot.titles[ident] for ident in group["ids"]]} for group in found]
 
 
-async def list_groups(request: Request) -> Response:
-    return JSONResponse({"groups": await run(groups, get_store(request))})
+class DupeGroups(Reply, kw_only=True):
+    groups: Annotated[list[Record], Meta(description="Each group: its ids, why they look alike, and the titles.")]
 
 
-def dismiss_checked(store: Store, body: dict[str, Any], actor_id: int) -> dict[str, Any]:
-    """POST /api/dupes/dismiss, shared with MCP."""
-    ids = [ident for ident in body.get("ids") or [] if normalize.valid_title_id(ident)]
+@route(
+    "GET /api/dupes", summary="Possible duplicates",
+    tag=TAG,
+    description="Groups of library titles that look like the same work, minus pairs marked as different.",
+    mcp="list_duplicates", read_only=True,
+)
+def list_groups(request: Request) -> DupeGroups:
+    return DupeGroups(groups=groups(get_store(request)))
+
+
+class Dismiss(RequestType, kw_only=True):
+    ids: TitleIDs
+
+
+class Pairs(Reply, kw_only=True):
+    pairs: Annotated[list[str], Meta(description="The pairs recorded: what undismissing takes back.")]
+
+
+@route(
+    "POST /api/dupes/dismiss", summary="Not duplicates",
+    tag=TAG,
+    description="Mark two or more titles as not the same, for the whole family. Returns the pairs, which "
+    "undismissing takes back.",
+    mcp="dismiss_duplicates",
+)
+def dismiss(request: Request, body: Dismiss) -> Pairs:
+    ids = [ident for ident in body.ids if normalize.valid_title_id(ident)]
     if len(ids) < 2:
         raise Refused(400, "two or more titles")
-    return {"pairs": merges.dismiss(store, ids, actor_id)}
+    return Pairs(pairs=merges.dismiss(get_store(request), ids, actor_from(request).user.id))
 
 
-async def dismiss(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    return await answer(request, dismiss_checked, get_store(request), body, actor_from(request).user.id)
+class Undismiss(RequestType, kw_only=True):
+    pairs: Annotated[list[str], Meta(description="Pairs from dismissing.")]
 
 
-def undismiss_checked(store: Store, body: dict[str, Any]) -> dict[str, Any]:
-    """POST /api/dupes/undismiss, shared with MCP."""
-    merges.undismiss(store, [str(pair) for pair in body.get("pairs") or []])
-    return {"ok": True}
+class OkReply(Reply, kw_only=True):
+    ok: bool
 
 
-async def undismiss(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    return await answer(request, undismiss_checked, get_store(request), body)
+@route(
+    "POST /api/dupes/undismiss", summary="Undo not duplicates",
+    tag=TAG,
+    description="Forget pairs that dismissing recorded.",
+    mcp="undismiss_duplicates",
+)
+def undismiss(request: Request, body: Undismiss) -> OkReply:
+    merges.undismiss(get_store(request), [str(pair) for pair in body.pairs])
+    return OkReply(ok=True)
 
 
-def merge_checked(store: Store, keep_id: str, body: dict[str, Any], actor_id: int) -> dict[str, Any]:
-    """POST /api/titles/{title_id}/merge, shared with MCP."""
-    drop = [ident for ident in body.get("drop_ids") or [] if normalize.valid_title_id(ident)]
+class Merge(TitlePath, kw_only=True):
+    drop_ids: TitleIDs
+
+
+class MergeReply(Reply, kw_only=True):
+    merge_id: Annotated[str, Meta(description="What undoing the merge takes.")]
+    title: Record
+    changed: Annotated[list[str], Meta(description="The kept title's fields the merge filled in.")]
+
+
+@route(
+    "POST /api/titles/{title_id}/merge", summary="Merge duplicates",
+    tag=TAG, errors=(404,),
+    description="Keep title_id and fold the drop_ids into it: everyone's state, playlists and details move "
+    "over and the others are deleted. One undo step: undo the merge with the merge_id returned.",
+    mcp="merge_titles", destructive=True,
+)
+def merge(request: Request, body: Merge) -> MergeReply:
+    drop = [ident for ident in body.drop_ids if normalize.valid_title_id(ident)]
     try:
-        return merges.merge(store, keep_id, drop, actor_id)
+        return MergeReply(**merges.merge(get_store(request), body.title_id, drop, actor_from(request).user.id))
     except NotFoundError:
         raise Refused(404, "no such title") from None
     except ValueError as error:
         raise Refused(400, str(error)) from None
 
 
-async def merge(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    return await answer(request, merge_checked, get_store(request), request.path_params["title_id"], body, actor_from(request).user.id)
+class MergePath(RequestType, kw_only=True):
+    merge_id: Annotated[str, PATH, Meta(description="From merging titles.")]
 
 
-def undo_merge_checked(store: Store, merge_id: str) -> dict[str, Any]:
-    """POST /api/merges/{merge_id}/undo, shared with MCP."""
+@route(
+    "POST /api/merges/{merge_id}/undo", summary="Undo a merge",
+    tag=TAG, errors=(404, 409),
+    description="Put a merge back as it was: the dropped titles, and everyone's state and playlists.",
+    mcp="undo_merge",
+)
+def undo_merge(request: Request, body: MergePath) -> OkReply:
     try:
-        merges.undo_merge(store, merge_id)
+        merges.undo_merge(get_store(request), body.merge_id)
     except NotFoundError:
         raise Refused(404, "no such merge") from None
     except ConflictError as error:
         raise Refused(409, "changed_elsewhere", current=error.current) from None
-    return {"ok": True}
-
-
-async def undo_merge(request: Request) -> Response:
-    body = await _body(request)
-    if isinstance(body, Response):
-        return body
-    return await answer(request, undo_merge_checked, get_store(request), request.path_params["merge_id"])
+    return OkReply(ok=True)

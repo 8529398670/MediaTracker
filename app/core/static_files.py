@@ -57,6 +57,19 @@ def has_dot_dot(request_path: str) -> bool:
     return ".." in request_path.replace("\\", "/").split("/")
 
 
+def has_dot_file(cleaned: str) -> bool:
+    """Spot a segment that starts with a dot: .env, .git/config, .htpasswd,
+    an editor's swap file. Nothing the app serves is named like that, and a
+    directory that ends up served by mistake is exactly where such files are,
+    so they are never served -- defense in depth behind the startup check
+    (assets.check_static_dir). .well-known/ is the exception: it is public
+    by definition (RFC 8615)."""
+    segments = cleaned.split("/")
+    if segments and segments[0] == ".well-known":
+        segments = segments[1:]
+    return any(segment.startswith(".") for segment in segments)
+
+
 def content_type(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
@@ -88,7 +101,7 @@ class StaticServer:
         if has_dot_dot(request_path):
             return None
         cleaned = posixpath.normpath("/" + request_path.replace("\\", "/")).lstrip("/")
-        if cleaned in ("", "."):
+        if cleaned in ("", ".") or has_dot_file(cleaned):
             return None
         candidate = (self.root / cleaned).resolve()
         if not candidate.is_relative_to(self.root):

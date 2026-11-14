@@ -133,11 +133,11 @@ class RouteTest(unittest.TestCase):
 
         found = call(self.mom_key, "search_library", {"text": "heat"})
         self.assertEqual(found["structuredContent"]["titles"][0]["my_state"]["status"], "queue")
-        refused = call(self.mom_key, "set_state", {"title_id": self.title_id, "set": {"heart": True}, "user_id": self.admin.id})
+        refused = call(self.mom_key, "set_state", {"title_id": self.title_id, "set": {"heart": True}, "user": self.admin.id})
         self.assertTrue(refused["isError"])
-        done = call(self.admin_key, "set_state", {"title_id": self.title_id, "set": {"heart": True}, "user_id": self.mom.id})
+        done = call(self.admin_key, "set_state", {"title_id": self.title_id, "set": {"heart": True}, "user": self.mom.id})
         self.assertFalse(done.get("isError"))
-        dupe = call(self.admin_key, "add_title", {"title": "Heat", "year": 1995})
+        dupe = call(self.admin_key, "add_title", {"title": {"title": "Heat", "year": 1995}})
         self.assertFalse(dupe["structuredContent"]["created"])
 
 
