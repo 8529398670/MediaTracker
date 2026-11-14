@@ -37,7 +37,7 @@ def http_only(spec: dict[str, Any]) -> list[dict[str, str]]:
 
 def build(registry: Registry, spec: dict[str, Any] | None) -> str:
     """The file's text: two-space JSON with sorted keys, the shape the Go
-    template writes too. spec is openapi.json, as app.apidocs.build makes it."""
+    template writes too. spec is api.json, as app.apidocs.build makes it."""
     tools = [{**tool.listing(), "adminOnly": tool.admin_only, "route": tool.route_name()} for tool in registry.tools()]
     document = {
         "auth": "Authorization: Bearer <API key>",

@@ -340,7 +340,7 @@ Switch to another theme from your list (or the defaults), by its id.
 
 Replace your own themes
 
-Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb.
+Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/api.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb.
 
 |  |  |
 |---|---|
@@ -2049,13 +2049,27 @@ Allow or block an account's password
 
 | Method | Path | Summary | Who may call |
 |---|---|---|---|
+| GET | [`/api/api.json`](#get-apiapijson) | This document | browser session or API key, anyone signed in |
 | GET | [`/api/health`](#get-apihealth) | Is the process up | anyone |
 | GET | [`/api/mcp.json`](#get-apimcpjson) | The MCP tools: every tool /mcp has, its arguments, and the route it stands for | browser session or API key, anyone signed in |
-| GET | [`/api/openapi.json`](#get-apiopenapijson) | This document | browser session or API key, anyone signed in |
 | GET | [`/api/ready`](#get-apiready) | Can the server do real work | anyone |
 | GET | [`/mcp`](#get-mcp) | Refused: this server has no stream | anyone |
 | POST | [`/mcp`](#post-mcp) | Model Context Protocol, at the key's role | API key only, anyone signed in |
 | DELETE | [`/mcp`](#delete-mcp) | Refused: this server keeps no sessions | anyone |
+
+### GET /api/api.json
+
+This document
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The API reference itself; GET /api/mcp.json is the MCP one. |
+| Errors | 401, 404, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
 
 ### GET /api/health
 
@@ -2080,20 +2094,6 @@ The MCP tools: every tool /mcp has, its arguments, and the route it stands for
 |---|---|
 | Who may call | browser session or API key, anyone signed in |
 | MCP tool | None, HTTP only: The MCP reference itself; tools/list gives the same list. |
-| Errors | 401, 404, 429, 503 |
-
-**Reply 200**: Success
-
-An empty object.
-
-### GET /api/openapi.json
-
-This document
-
-|  |  |
-|---|---|
-| Who may call | browser session or API key, anyone signed in |
-| MCP tool | None, HTTP only: The API reference itself; GET /api/mcp.json is the MCP one. |
 | Errors | 401, 404, 429, 503 |
 
 **Reply 200**: Success
@@ -4071,7 +4071,7 @@ One of these:
 | `maintenance` | string | yes | one of `none`, `read_only`, `full` |  |
 | `mcp_enabled` | boolean | yes |  | server.mcp: whether POST /mcp answers. |
 | `mcp_url` | string | yes |  | Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on. |
-| `openapi_url` | string | yes |  | Where to read this API's reference: config/openapi.json in app.repo, or /api/openapi.json when there is no repo. |
+| `openapi_url` | string | yes |  | Where to read this API's reference: config/api.json in app.repo, or /api/api.json when there is no repo. |
 | `password_blocked` | boolean | yes |  |  |
 | `passwords_enabled` | boolean | yes |  |  |
 | `repo` | string | yes |  | app.repo without a trailing / or .git: where the source lives. Empty when it is not set. |

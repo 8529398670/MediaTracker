@@ -55,7 +55,7 @@ def one_of(name: str, *shapes: Any, doc: str = "") -> OneOf:
 
 class Schemas:
     """The named schemas a build has written out so far: components/schemas
-    in openapi.json."""
+    in api.json."""
 
     def __init__(self) -> None:
         self.components: dict[str, Any] = {}

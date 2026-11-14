@@ -27,9 +27,9 @@ BUNDLED_STATIC = CODE_ROOT / "static"
 BUNDLED_LANGUAGE = CODE_ROOT / "config" / "language.yaml"
 # Bundled only, unlike language.yaml: it describes the routes in this code, so
 # a copy anywhere else could only disagree with them.
-OPENAPI_SPEC = CODE_ROOT / "config" / "openapi.json"
+OPENAPI_SPEC = CODE_ROOT / "config" / "api.json"
 # The tools /mcp offers, written by scripts/api_docs.sh. Bundled only, for the
-# same reason as openapi.json.
+# same reason as api.json.
 MCP_MANIFEST = CODE_ROOT / "config" / "mcp.json"
 
 

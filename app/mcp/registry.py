@@ -127,7 +127,7 @@ class Tool:
 
     def route_name(self) -> str:
         """The HTTP route the tool stands for, as "METHOD /path/{param}" the
-        way config/openapi.json writes it."""
+        way config/api.json writes it."""
         from app.apidocs.route import route_of
 
         return route_of(self.endpoint)

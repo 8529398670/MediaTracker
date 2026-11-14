@@ -1,6 +1,6 @@
 """Write the API reference from the code:
 
-    python -m app.apidocs        rewrite config/openapi.json, mcp.json, api.md and mcp.md
+    python -m app.apidocs        rewrite config/api.json, mcp.json, api.md and mcp.md
     scripts/api_docs.sh          the same
 
 It needs nothing but the app's own requirements: no database, no server, no

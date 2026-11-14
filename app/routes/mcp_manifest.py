@@ -3,7 +3,7 @@
 route it stands for, and the routes that stay HTTP only. scripts/api_docs.sh
 writes the reference from the registered tools (app/mcp/manifest.py), and
 app/tests/test_api_docs.py fails while it is out of date. Signed-in callers
-only, like openapi.json."""
+only, like api.json."""
 from __future__ import annotations
 
 from functools import cache

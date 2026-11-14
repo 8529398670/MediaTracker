@@ -23,7 +23,7 @@ The handler's second parameter's type is the whole of what the route takes.
 A field marked Annotated[T, PATH] or Annotated[T, QUERY] comes from the URL,
 every other field from the JSON body, and its name is the same in both and to
 MCP. The return type is what it answers. From the two come the route's entry
-in config/openapi.json, the input schema of the MCP tool that stands for it,
+in config/api.json, the input schema of the MCP tool that stands for it,
 and the checks every request goes through before the handler sees it:
 
 - The body must be a JSON object ("malformed request body" otherwise), and on

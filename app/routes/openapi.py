@@ -1,4 +1,4 @@
-"""Hands out config/openapi.json, which scripts/api_docs.sh writes from the
+"""Hands out config/api.json, which scripts/api_docs.sh writes from the
 routes as each handler declares them (@route, see app/apidocs);
 app/tests/test_api_docs.py fails while it is out of date. Signed-in callers
 only: it maps the admin surface, and nobody who cannot sign in has a use for
@@ -21,7 +21,7 @@ def spec() -> bytes:
 
 
 @route(
-    "GET /api/openapi.json", summary="This document",
+    "GET /api/api.json", summary="This document",
     tag="Monitoring", feature="openapi", errors=(404,),
     mcp_http="The API reference itself; GET /api/mcp.json is the MCP one.",
 )

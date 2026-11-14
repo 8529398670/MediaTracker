@@ -531,10 +531,10 @@ api_keys:
   role_label: "Permission"
   role_user: "user"
   role_admin: "admin (can manage accounts)"
-  # Under the description, with a link to the API reference: openapi.json in
+  # Under the description, with a link to the API reference: api.json in
   # app.repo, or this server's own copy.
   spec_text: "What a key can call:"
-  spec_link: "API reference (openapi.json)"
+  spec_link: "API reference (api.json)"
   # Beside it when app.repo is set: the same reference as tables, config/api.md,
   # which the repository's site shows as a readable page.
   doc_link: "readable version (api.md)"
@@ -603,7 +603,7 @@ about:
   version: "Version"
   source: "Source"
   api_reference: "API reference"
-  api_link: "openapi.json"
+  api_link: "api.json"
   mcp_reference: "MCP reference"
   mcp_link: "mcp.json"
 # Only offered to non-admin accounts: an admin can never be signed in to

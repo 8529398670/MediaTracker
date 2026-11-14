@@ -1,4 +1,4 @@
-"""The API reference -- config/openapi.json and config/api.md -- written from
+"""The API reference -- config/api.json and config/api.md -- written from
 the code, so nobody edits either by hand.
 
 Every route is declared once, by @route(...) on its handler (see route.py): a
@@ -105,7 +105,7 @@ def spec_path(path: str) -> str:
 
 
 def build(routes: list[tuple[str, str, Any]]) -> tuple[dict[str, Any], list[str]]:
-    """openapi.json for these (method, path, endpoint) routes, and what is
+    """api.json for these (method, path, endpoint) routes, and what is
     wrong with the docs: a route whose handler was not declared with @route."""
     builder = Schemas()
     paths: dict[str, Any] = {}
@@ -153,7 +153,7 @@ def build(routes: list[tuple[str, str, Any]]) -> tuple[dict[str, Any], list[str]
 
 
 def operation(builder: Schemas, method: str, path: str, declared: Any) -> tuple[dict[str, Any], list[str]]:
-    """One operation of openapi.json, and what is wrong with its docs."""
+    """One operation of api.json, and what is wrong with its docs."""
     from app.apidocs.reflect import typed
     from app.apidocs.route import body_schema
 

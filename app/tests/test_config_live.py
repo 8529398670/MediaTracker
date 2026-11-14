@@ -64,10 +64,10 @@ class HolderTest(unittest.TestCase):
         holder, path = new_holder(self)
         # A scaffold given --repo starts with one, so start from none.
         holder.save(version_of(path), {"app.repo": ""})
-        self.assertEqual(repo_file(holder.get(), "config/openapi.json"), "")
+        self.assertEqual(repo_file(holder.get(), "config/api.json"), "")
         holder.save(version_of(path), {"app.repo": "https://github.com/you/app.git/"})
         self.assertEqual(holder.get().repo, "https://github.com/you/app")
-        self.assertEqual(repo_file(holder.get(), "/config/openapi.json"), "https://github.com/you/app/blob/HEAD/config/openapi.json")
+        self.assertEqual(repo_file(holder.get(), "/config/api.json"), "https://github.com/you/app/blob/HEAD/config/api.json")
         for bad in ("http://github.com/you/app", "github.com/you/app", "https://github.com/you/app?x=1", "javascript:alert(1)"):
             with self.subTest(bad), self.assertRaises(ValidationError):
                 holder.save(version_of(path), {"app.repo": bad})

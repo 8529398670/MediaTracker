@@ -1,4 +1,4 @@
-"""The API reference is written from the code: config/openapi.json and
+"""The API reference is written from the code: config/api.json and
 config/api.md from each handler's @route(...) declaration and its request and
 reply types, and config/mcp.json from the registered MCP tools. scripts/api_docs.sh
 (python -m app.apidocs) rewrites them; these fail while a committed file is

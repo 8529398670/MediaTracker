@@ -44,7 +44,7 @@ class Me(Reply, kw_only=True):
     repo: Annotated[str, Meta(description="app.repo without a trailing / or .git: where the source lives. Empty when it is not set.")]
     description: Annotated[str, Meta(description="app.description. Empty when there is none.")]
     show_about: Annotated[bool, Meta(description="app.show_about: whether the menu has About.")]
-    openapi_url: Annotated[str, Meta(description="Where to read this API's reference: config/openapi.json in app.repo, or /api/openapi.json when there is no repo.")]
+    openapi_url: Annotated[str, Meta(description="Where to read this API's reference: config/api.json in app.repo, or /api/api.json when there is no repo.")]
     mcp_url: Annotated[str, Meta(description="Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on.")]
     themes: Annotated[list[Theme] | None, Meta(description="Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones.")]
     themes_custom: Annotated[bool, Meta(description="Whether you have your own list rather than following the defaults.")]
@@ -148,10 +148,10 @@ def me(request: Request) -> Me:
 
 
 def open_api_url(cfg: Config) -> str:
-    """Where the API reference is read: config/openapi.json in app.repo when
+    """Where the API reference is read: config/api.json in app.repo when
     that is set, so it opens as a page there, else this server's own copy,
     which needs the same sign-in."""
-    return repo_file(cfg, "config/openapi.json") or "/api/openapi.json"
+    return repo_file(cfg, "config/api.json") or "/api/api.json"
 
 
 def mcp_url(cfg: Config) -> str:

@@ -1,4 +1,4 @@
-"""config/api.md: the same reference as openapi.json, as tables a person
+"""config/api.md: the same reference as api.json, as tables a person
 reads, and config/mcp.md, the MCP tools the same way. Go's server/apidoc/markdown.go renders the same bytes from the same
 documents, so keep the two in step."""
 from __future__ import annotations
@@ -9,7 +9,7 @@ FIELD_HEADER = ["Field", "Type", "Required", "Limits", "Description"]
 
 
 def render(spec: dict[str, Any], manifest: dict[str, Any] | None) -> str:
-    """spec is openapi.json; manifest is mcp.json, or None without MCP."""
+    """spec is api.json; manifest is mcp.json, or None without MCP."""
     out: list[str] = []
     write = out.append
     info = spec.get("info", {})

@@ -1518,7 +1518,7 @@ Switch to another theme from your list (or the defaults), by its id.
 
 ## set_themes
 
-Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.
+Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/api.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.
 
 |  |  |
 |---|---|
@@ -1707,11 +1707,11 @@ Routes an API key may call that have no tool, and why.
 
 | Route | Why |
 |---|---|
+| [`GET /api/api.json`](api.md#get-apiapijson) | The API reference itself; GET /api/mcp.json is the MCP one. |
 | [`GET /api/export`](api.md#get-apiexport) | a file download |
 | [`GET /api/img/{key}`](api.md#get-apiimgkey) | image bytes |
 | [`GET /api/library`](api.md#get-apilibrary) | the whole library for the browser; search_library is the agent's version |
 | [`GET /api/mcp.json`](api.md#get-apimcpjson) | The MCP reference itself; tools/list gives the same list. |
-| [`GET /api/openapi.json`](api.md#get-apiopenapijson) | The API reference itself; GET /api/mcp.json is the MCP one. |
 | [`POST /api/logout`](api.md#post-apilogout) | Ends a browser session; a key has none to end. |
 | [`POST /api/logs/events`](api.md#post-apilogsevents) | The browser's own activity reports (track.js), not an action. |
 | [`POST /mcp`](api.md#post-mcp) | The MCP endpoint itself. |
