@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 LIB = Path(__file__).resolve().parents[2] / "scripts" / "lib.sh"
+DOCKER_LIB = Path(__file__).resolve().parents[2] / "docker" / "lib.sh"
 
 
 @unittest.skipIf(sys.platform == "win32", "run.sh is for unix shells")
@@ -33,6 +34,37 @@ class RunDirTest(unittest.TestCase):
                 )
                 self.assertEqual(os.stat(run_dir).st_mode & 0o777, 0o700)
                 self.assertEqual(os.stat(log_file).st_mode & 0o777, 0o600)
+
+
+@unittest.skipIf(sys.platform == "win32", "docker/run.sh is for unix shells")
+class DockerChangesTest(unittest.TestCase):
+    def test_changed_docker_settings_wait_for_a_yes(self) -> None:
+        """F12: config.yaml is writable from inside the container, so a docker:
+        section that changed since the last start waits for a yes at the host.
+        .run/docker.last is the copy that counts; the container never sees it."""
+        was = "docker_container='app'"
+        now = "docker_container='someone-elses'"
+        cases = [
+            ("first start", None, "false", True, None),
+            ("unchanged", now, "false", True, now),
+            ("changed, no terminal, no flag", was, "false", False, was),
+            ("changed, --accept-docker-changes", was, "true", True, now),
+        ]
+        for name, last, accept, ok, after in cases:
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                last_file = Path(directory) / ".run" / "docker.last"
+                if last is not None:
+                    last_file.parent.mkdir()
+                    last_file.write_text(last + "\n")
+                result = subprocess.run(
+                    ["bash", "-c",
+                     'set -euo pipefail; source "$1"; DOCKER_SETTINGS="$2"; ACCEPT_DOCKER_CHANGES="$3"; confirm_docker_changes',
+                     "bash", str(DOCKER_LIB), now, accept],
+                    cwd=directory, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
+                if after is not None:
+                    self.assertEqual(last_file.read_text(), after + "\n")
 
 
 if __name__ == "__main__":

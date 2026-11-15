@@ -28,6 +28,9 @@ rem it with scripts\run.bat stop), and the link comes from it once it answers.
 rem The local server and the container keep separate databases, so a link from
 rem one does nothing in the other. This says which one it used.
 setlocal
+rem Lines that print a URL turn delayed expansion on just for themselves and
+rem use !url!: that is expanded after cmd has parsed the line, so a & or | in
+rem the value is printed, not run. Validate already refuses those characters.
 cd /d "%~dp0.."
 
 
@@ -112,7 +115,9 @@ echo ERROR: the %docker_container% container is not running.
 echo        Start it with docker/run.sh, or see why it stopped: docker logs %docker_container%
 exit /b 1
 :docker_up
-echo Docker container %docker_container%, served at %docker_url%
+setlocal EnableDelayedExpansion
+echo(Docker container !docker_container!, served at !docker_url!
+endlocal
 echo.
 docker exec %docker_container% python -m app manage reissue-login --user-id %USER_ID%%LINK_FLAGS%
 if not errorlevel 1 exit /b 0
@@ -122,7 +127,9 @@ exit /b 1
 
 :local
 if not defined LOCAL_PID goto not_running
-echo Local server (pid %LOCAL_PID%), served at %url%
+setlocal EnableDelayedExpansion
+echo(Local server (pid !LOCAL_PID!), served at !url!
+endlocal
 echo   database %database%
 echo.
 call :issue_link
@@ -167,7 +174,9 @@ exit /b %errorlevel%
 :start_background
 if not "%secure_cookies%"=="true" goto cookies_ok
 if not "%url:~0,7%"=="http://" goto cookies_ok
-echo WARNING: server.secure_cookies is true but the URL is %url%.
+setlocal EnableDelayedExpansion
+echo(WARNING: server.secure_cookies is true but the URL is !url!.
+endlocal
 echo          The browser will drop the session cookie and this link will seem to do
 echo          nothing. Set it to false in %config_file%
 echo          for local use, or set server.public_url to the https:// address in front.
@@ -193,7 +202,9 @@ powershell -NoProfile -Command "Get-Content -Tail 20 -LiteralPath $env:LOG_FILE 
 exit /b 1
 
 :started
-echo Local server (pid %BACKGROUND_PID%), served at %url%
+setlocal EnableDelayedExpansion
+echo(Local server (pid !BACKGROUND_PID!), served at !url!
+endlocal
 echo   database %database%
 echo   log      %LOG_FILE%
 echo   stop it  scripts\run.bat stop

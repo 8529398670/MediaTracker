@@ -13,8 +13,25 @@
 # -- the container reads the same config.yaml, mounted writable so the owner's
 # Settings screen can save it, and the key in config/secret.key, mounted
 # read-only.
+#
+# Because config.yaml is writable from inside the container, a change to its
+# docker: section is not acted on until someone at the host agrees to it: the
+# script shows what changed and asks, or takes --accept-docker-changes.
 set -euo pipefail
 cd "$( dirname "${BASH_SOURCE[0]}" )/.."
+
+# --accept-docker-changes: apply changed docker: settings without asking (see
+# confirm_docker_changes in docker/lib.sh). Needed when there is no terminal.
+ACCEPT_DOCKER_CHANGES=false
+for arg in "$@"; do
+  case "$arg" in
+    --accept-docker-changes) ACCEPT_DOCKER_CHANGES=true ;;
+    *)
+      echo "usage: docker/run.sh [--accept-docker-changes]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 source docker/lib.sh
 build_image
@@ -64,7 +81,8 @@ resolve_data_dir
 # as something a compromised container could have chosen: this script hands
 # that directory to the container's user (chown -R below). The Settings screen
 # refuses to change docker.* from inside the container, but the file itself
-# could be written. So: never the root or a home directory, and only a
+# could be written. A changed data_dir waits for a yes at the host
+# (confirm_docker_changes), and on top of that: never the root or a home directory, and only a
 # directory that is new, empty, or already this app's (it has app.db, or the
 # marker this script leaves).
 DATA_MARKER=".media-tracker-data"
@@ -85,18 +103,9 @@ if [ -d "$DATA_DIR" ] && [ -n "$( ls -A "$DATA_DIR" 2>/dev/null )" ] \
 fi
 mkdir -p "$DATA_DIR"
 
-# docker: settings changed since the last start are worth a line: they are
-# what decides what this script mounts and publishes.
+# docker: settings that changed since the last start were shown, and agreed
+# to, by confirm_docker_changes inside build_image above.
 DOCKER_LAST=".run/docker.last"
-if [ -f "$DOCKER_LAST" ] && [ "$( cat "$DOCKER_LAST" )" != "$DOCKER_SETTINGS" ]; then
-  echo "docker: settings changed since the last run (config/config.yaml):"
-  # diff exits 1 when its inputs differ, which they always do here. Under
-  # pipefail that would end the script silently, before the container is
-  # replaced, so the notice is made unable to fail.
-  diff <( cat "$DOCKER_LAST" ) <( printf '%s\n' "$DOCKER_SETTINGS" ) \
-    | sed -n 's/^< /  was  /p; s/^> /  now  /p' || true
-  echo ""
-fi
 
 # secret.key: written with config.yaml on a first run. A config.yaml copied
 # from config.example.yaml comes without one -- fine for a fresh install, not

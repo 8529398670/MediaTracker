@@ -117,12 +117,58 @@ build_image() {
   eval "$assignments"
   DOCKER_SETTINGS="$assignments"
 
+  # Before anything acts on docker.*: the tag below, and whatever the calling
+  # script does with the container name, data_dir and ports.
+  confirm_docker_changes
+
   docker tag "$IMAGE_ID" "${docker_image}:latest"
   if [ -n "$extra_tag" ]; then
     docker tag "$IMAGE_ID" "${docker_image}:${extra_tag}"
     echo "Also tagged ${docker_image}:${extra_tag}"
   fi
   echo "Built ${docker_image}:latest (${VERSION}, image ${IMAGE_ID#sha256:})"
+}
+
+# confirm_docker_changes stops when the docker: section differs from the one
+# the last start used, until someone at the host says yes. config.yaml is
+# mounted writable so the Settings screen can save it, which means code inside
+# a compromised container could rewrite docker.* -- the container name this
+# script `docker rm -f`s, the address it publishes on, the image tag, the
+# limits. The copy that counts is .run/docker.last: written here on the host,
+# never mounted into the container. No copy yet (a first start) means nothing
+# to compare, so it carries on. ACCEPT_DOCKER_CHANGES=true (docker/run.sh
+# --accept-docker-changes) says yes without asking. A yes is recorded at once.
+confirm_docker_changes() {
+  local last=".run/docker.last"
+  [ -f "$last" ] || return 0
+  [ "$( cat "$last" )" != "$DOCKER_SETTINGS" ] || return 0
+  echo "docker: settings changed since the last run (config/config.yaml):"
+  # diff exits 1 when its inputs differ, which they always do here. Under
+  # pipefail that would end the script silently, so the notice is made unable
+  # to fail.
+  diff <( cat "$last" ) <( printf '%s\n' "$DOCKER_SETTINGS" ) \
+    | sed -n 's/^< /  was  /p; s/^> /  now  /p' || true
+  echo ""
+  if [ "${ACCEPT_DOCKER_CHANGES:-false}" != "true" ]; then
+    if [ ! -t 0 ]; then
+      echo "ERROR: not applying changed docker: settings without a yes. config.yaml can" >&2
+      echo "       be written from inside the container, so check them above, then run" >&2
+      echo "       docker/run.sh --accept-docker-changes (or answer at a terminal)." >&2
+      exit 1
+    fi
+    local answer=""
+    read -r -p "Apply these docker: changes? [y/N] " answer || true
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *)
+        echo "Not applied. Nothing was started or replaced." >&2
+        exit 1
+        ;;
+    esac
+  fi
+  mkdir -p .run
+  printf '%s\n' "$DOCKER_SETTINGS" > "$last"
+  echo ""
 }
 
 # resolve_data_dir sets DATA_DIR. docker.data_dir is relative to the project
