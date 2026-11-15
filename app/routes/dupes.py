@@ -98,6 +98,7 @@ class MergeReply(Reply, kw_only=True):
     description="Keep title_id and fold the drop_ids into it: everyone's state, playlists and details move "
     "over and the others are deleted. One undo step: undo the merge with the merge_id returned.",
     mcp="merge_titles", destructive=True,
+    bulk=True,
 )
 def merge(request: Request, body: Merge) -> MergeReply:
     drop = [ident for ident in body.drop_ids if normalize.valid_title_id(ident)]
@@ -118,6 +119,7 @@ class MergePath(RequestType, kw_only=True):
     tag=TAG, errors=(404, 409),
     description="Put a merge back as it was: the dropped titles, and everyone's state and playlists.",
     mcp="undo_merge",
+    bulk=True,
 )
 def undo_merge(request: Request, body: MergePath) -> OkReply:
     try:

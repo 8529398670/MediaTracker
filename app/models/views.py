@@ -11,6 +11,7 @@ from typing import Any
 from app.core.db import BUCKET_VIEWS, Store, Transaction
 from app.media.normalize import text
 from app.models import mark_deleted, to_iso, unmark_deleted, utc_now, deleted_long_ago
+from app.models.users import owner_id_tx
 from app.models.revision import NotFoundError
 
 MAX_VIEWS = 200
@@ -93,7 +94,7 @@ def delete_view(store: Store, owner_id: int, view_id: int, actor_id: int) -> Non
 def restore_view(store: Store, owner_id: int, view_id: int, actor_id: int, actor_is_admin: bool) -> dict[str, Any]:
     with store.transaction() as tx:
         record = _owned(tx, view_id, owner_id)
-        unmark_deleted(record, actor_id, actor_is_admin)
+        unmark_deleted(record, actor_id, actor_is_admin, owner_id_tx(tx))
         tx.put(BUCKET_VIEWS, view_id, record)
         return record
 

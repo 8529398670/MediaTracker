@@ -24,7 +24,7 @@ from app.core.config import Config
 from app.core.config_live import Holder
 from app.core.db import Store
 from app.core.middleware import internal_error
-from app.models import RestoreError, RestoreForbiddenError, RestoreGoneError
+from app.models import RestoreError, RestoreForbiddenError, RestoreGoneError, RestoreOutrankedError
 from app.models.users import OwnerProtectedError, OwnerRequiredError
 
 run = run_in_threadpool
@@ -207,7 +207,7 @@ def restore_refusal(refusal: RestoreError) -> Refused:
     """The refusal for each way a restore can be refused."""
     if isinstance(refusal, RestoreGoneError):
         return Refused(404, str(refusal))
-    if isinstance(refusal, RestoreForbiddenError):
+    if isinstance(refusal, (RestoreForbiddenError, RestoreOutrankedError)):
         return Refused(403, str(refusal))
     return Refused(409, str(refusal))
 

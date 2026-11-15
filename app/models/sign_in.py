@@ -44,6 +44,9 @@ class SignInRules:
     # (and through a two-factor challenge) so revoking the key ends it.
     # redeem_login_token fills it in; callers leave it empty.
     minted_by_key: str = ""
+    # The admin who reissued that link (LoginToken.issued_by), carried the
+    # same way. redeem_login_token fills it in too.
+    issued_by: int = 0
 
 
 @dataclass
@@ -54,6 +57,8 @@ class SignIn:
     user_id: int
     session_credential: str = ""
     challenge: str = ""
+    # See SignInRules.issued_by. The route logs it.
+    issued_by: int = 0
 
 
 def start_sign_in_tx(tx: Transaction, user: User, rules: SignInRules) -> SignIn:
@@ -66,12 +71,14 @@ def start_sign_in_tx(tx: Transaction, user: User, rules: SignInRules) -> SignIn:
             "secret_hash": encryption.sha256_hex(secret),
             "expires_at": to_iso(utc_now() + timedelta(seconds=CHALLENGE_TTL_SECONDS)),
             "minted_by_key": rules.minted_by_key,
+            "issued_by": rules.issued_by,
         })
-        return SignIn(user_id=user.id, challenge=f"{challenge_id}.{secret}")
+        return SignIn(user_id=user.id, challenge=f"{challenge_id}.{secret}", issued_by=rules.issued_by)
     session_id, session_credential, session = new_session(user.id, rules.session_ttl_seconds)
     session.minted_by_key = rules.minted_by_key
+    session.issued_by = rules.issued_by
     tx.put(BUCKET_SESSIONS, session_id, session.to_record())
-    return SignIn(user_id=user.id, session_credential=session_credential)
+    return SignIn(user_id=user.id, session_credential=session_credential, issued_by=rules.issued_by)
 
 
 def _live_challenge(record: dict | None, secret: str) -> bool:
@@ -115,8 +122,9 @@ def finish_challenge(store: Store, credential: object, code: object, session_ttl
         tx.delete(BUCKET_SIGN_IN_CHALLENGES, challenge_id)
         session_id, session_credential, session = new_session(record["id"], session_ttl_seconds)
         session.minted_by_key = challenge.get("minted_by_key", "")
+        session.issued_by = challenge.get("issued_by") or 0
         tx.put(BUCKET_SESSIONS, session_id, session.to_record())
-    return SignIn(user_id=record["id"], session_credential=session_credential), method
+    return SignIn(user_id=record["id"], session_credential=session_credential, issued_by=session.issued_by), method
 
 
 def delete_challenges_for_user(tx: Transaction, user_id: int) -> int:

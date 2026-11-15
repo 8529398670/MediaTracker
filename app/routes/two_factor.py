@@ -20,7 +20,7 @@ from app.core.security import actor_from
 from app.models import sign_in, two_factor
 from app.models.attempts import AttemptGuard
 from app.routes.admin import OkReply
-from app.routes.auth import SignedIn, sign_in_response
+from app.routes.auth import SignedIn, issuer, sign_in_response
 from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.logs import audit, audit_as, user_actor
 from app.routes.auth import SameOriginLogin
@@ -65,7 +65,10 @@ async def finish_sign_in(request: Request, body: FinishSignIn) -> SignedIn:
             raise Refused(403, "two_factor_wrong") from None
         attempt.passed()
     message = "signed in with a recovery code" if method == "recovery" else "signed in with a two-factor code"
-    audit_as(request, await run(user_actor, store, user_id, "session"), KIND_AUTH, LEVEL_INFO, message)
+    name, detail = await run(issuer, store, signed.issued_by)
+    if name:
+        message += f", through a link issued by {name}"
+    audit_as(request, await run(user_actor, store, user_id, "session"), KIND_AUTH, LEVEL_INFO, message, detail)
     return await sign_in_response(request, signed, SignedIn(ok=True), 200)  # type: ignore[return-value]
 
 
@@ -111,7 +114,9 @@ def confirm_setup(request: Request, body: Code) -> ConfirmSetupReply:
         raise Refused(429, "two_factor_locked")
     with attempt:
         try:
-            codes = two_factor.confirm_setup(get_store(request), user_id, body.code, get_config(request).secret_key)
+            session = actor_from(request).session
+            keep = session.id if session is not None else ""
+            codes = two_factor.confirm_setup(get_store(request), user_id, body.code, get_config(request).secret_key, keep)
         except two_factor.AlreadyOnError:
             raise Refused(409, "two_factor_on") from None
         except two_factor.WrongCodeError:

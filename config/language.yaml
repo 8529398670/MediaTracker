@@ -559,6 +559,17 @@ api_keys:
   expiry_heading: "Change when {name} expires"
   expiry_help: "Counted from today. 0 means it never expires."
   expiry_changed: "Expiry changed."
+  # Letting a key make a login link for your account (an agent signing you in
+  # on a browser). Off by default; the button shows the state it is in.
+  # Empty both button strings to take the switch away.
+  sign_in_off_button: "Sign-in links: off"
+  sign_in_on_button: "Sign-in links: on"
+  # Beside the status while it is on.
+  status_sign_in: "can sign in"
+  # Asked before turning it on. Empty it to stop asking.
+  sign_in_confirm: "Let this key make sign-in links for your account? Whoever holds the key could then open a browser signed in as you, with everything you can do there. Each link works once, for 15 minutes. You can turn this off again at any time."
+  sign_in_turned_on: "This key can now make sign-in links."
+  sign_in_turned_off: "This key can no longer make sign-in links. Any unused link it made has stopped working."
   revoke_button: "Revoke"
   # Empty this string to stop asking for confirmation before revoking.
   revoke_confirm: "Revoke this key? Anything using it stops working immediately."

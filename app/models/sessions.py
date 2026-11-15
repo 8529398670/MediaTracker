@@ -47,6 +47,9 @@ class Session:
     # (login_tokens.void_links_minted_by_key): a key that could sign a browser
     # in must not leave one signed in after it dies.
     minted_by_key: str = ""
+    # The admin who reissued the login link this session came from, 0 when
+    # nobody else did (see login_tokens.LoginToken.issued_by).
+    issued_by: int = 0
     # The record's key. Filled in on the way out of the store and never written
     # into the record.
     id: str = ""
@@ -69,6 +72,8 @@ class Session:
             record["label"] = self.label
         if self.minted_by_key:
             record["minted_by_key"] = self.minted_by_key
+        if self.issued_by:
+            record["issued_by"] = self.issued_by
         return record
 
     @classmethod
@@ -84,6 +89,7 @@ class Session:
             last_seen_at=from_iso(record.get("last_seen_at")),
             label=record.get("label", ""),
             minted_by_key=record.get("minted_by_key", ""),
+            issued_by=record.get("issued_by") or 0,
         )
 
 
@@ -285,6 +291,12 @@ def destroy_sessions_for_user(tx: Transaction, user_id: int) -> int:
     lands before (and its session is deleted here) or after (and sees the
     change)."""
     return tx.delete_where(BUCKET_SESSIONS, lambda _key, record: record["user_id"] == user_id)
+
+
+def destroy_other_sessions_for_user(tx: Transaction, user_id: int, keep_id: str) -> int:
+    """destroy_sessions_for_user keeping one session: the one the account is
+    using to make the change."""
+    return tx.delete_where(BUCKET_SESSIONS, lambda key, record: record["user_id"] == user_id and key != keep_id)
 
 
 def purge_expired_sessions(store: Store) -> int:

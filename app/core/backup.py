@@ -250,7 +250,9 @@ def restore(cfg: config.Config, source: str, key_file: str = "") -> RestoreResul
         source_key = _find_key(manifest, staging, cfg, key_file)
         staged_database = staging / DATABASE_NAME
         try:
-            if source_key != cfg.secret_key:
+            # A backup from before records were bound to their place goes
+            # through rekey too, even on the same key: that brings it up to date.
+            if source_key != cfg.secret_key or db.sealed_the_old_way(staged_database):
                 rewrite = sealed.rekey_record(source_key, cfg.secret_key)
                 db.rekey(staged_database, source_key, cfg.secret_key, cfg.encrypt_at_rest, rewrite)
                 result.rekeyed = True

@@ -85,6 +85,7 @@ class TypeDeleted(Reply, kw_only=True):
     "(409 type_in_use with their count otherwise). Movies and TV cannot be deleted. Soft: restoring it "
     "brings it back.",
     mcp="delete_type", destructive=True,
+    bulk=True,
 )
 def delete_type(request: Request, body: DeleteType) -> TypeDeleted:
     try:
@@ -103,6 +104,7 @@ def delete_type(request: Request, body: DeleteType) -> TypeDeleted:
     tag=TAG, errors=(403, 404, 409),
     description="Bring back a deleted media type, within the undo window.",
     mcp="restore_type",
+    bulk=True,
 )
 def restore_type(request: Request, body: TypePath) -> Record:
     actor = actor_from(request)
@@ -185,6 +187,7 @@ def update_source(request: Request, body: UpdateSource) -> SourceChange:
     tag=TAG, errors=(404,),
     description="Delete a source. Soft: restoring it brings it back within the undo window.",
     mcp="delete_source", destructive=True,
+    bulk=True,
 )
 def delete_source(request: Request, body: SourcePath) -> Deleted:
     try:
@@ -199,6 +202,7 @@ def delete_source(request: Request, body: SourcePath) -> Deleted:
     tag=TAG, errors=(403, 404, 409),
     description="Bring back a deleted source, within the undo window.",
     mcp="restore_source",
+    bulk=True,
 )
 def restore_source(request: Request, body: SourcePath) -> Record:
     actor = actor_from(request)

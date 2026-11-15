@@ -45,5 +45,6 @@ def build_registry() -> Registry:
         description = keys.pop("mcp_description", "") or " ".join(part for part in (route.op.description, note) if part)
         if not title or not description:
             raise TypeError(f"{route.method} {route.path}: tool {keys['name']} needs a summary (or mcp_title) and a description, mcp_note or mcp_description")
-        registry.register(Tool.for_route(route.endpoint, title=title, description=description, admin_only=admin_only, **keys))
+        make = Tool.for_bulk if route.bulk_of is not None else Tool.for_route
+        registry.register(make(route.endpoint, title=title, description=description, admin_only=admin_only, **keys))
     return registry

@@ -159,7 +159,10 @@ class ImageCache:
     def stats(self) -> dict[str, int]:
         if self.folder is None:
             return {"files": 0, "bytes": 0, "budget": self.budget}
-        files = [entry for entry in os.scandir(self.folder) if entry.is_file()]
+        try:
+            files = [entry for entry in os.scandir(self.folder) if entry.is_file()]
+        except FileNotFoundError:  # the folder went away: nothing cached
+            files = []
         return {"files": len(files), "bytes": sum(entry.stat().st_size for entry in files), "budget": self.budget}
 
     # -- fetching ------------------------------------------------------------

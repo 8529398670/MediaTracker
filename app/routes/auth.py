@@ -25,7 +25,7 @@ from app.core.config import Config
 from app.core.logs import KIND_AUTH, LEVEL_INFO, LEVEL_WARN, anonymous
 from app.core.middleware import client_ip, trusted_for
 from app.core.security import Guard, set_session_cookie
-from app.models import login_tokens
+from app.models import login_tokens, users
 from app.models import sessions
 from app.models.sign_in import SignIn, SignInRules
 from app.routes.account import destroy_cookie_session
@@ -79,6 +79,18 @@ class SameOriginJoin(SameOriginLogin):
     message = "invite links must be used from this site's own page"
 
 
+
+
+def issuer(store: Any, admin_id: int) -> tuple[str, dict[str, Any] | None]:
+    """The name of the admin who reissued the link a sign-in came through
+    (LoginToken.issued_by), for its log entry, and the detail that goes with
+    it; "" and None when nobody else did. An admin can sign in as anyone below
+    them that way, so the account's own log says so. Reads SQLite: call it
+    through run()."""
+    if not admin_id:
+        return "", None
+    admin = users.get_user(store, admin_id)
+    return (admin.display_name if admin is not None else f"#{admin_id}"), {"issued_by": admin_id}
 
 
 def sign_in_rules(cfg: Config) -> SignInRules:
@@ -137,6 +149,9 @@ async def redeem_login_link(request: Request, body: RedeemLoginLink) -> SIGN_IN:
     if signed is None:
         audit_as(request, anonymous(), KIND_AUTH, LEVEL_WARN, "login link refused")
         return bad_request("invalid login link")
-    message = "login link accepted, waiting for a code" if signed.challenge else "signed in with a login link"
-    audit_as(request, await run(user_actor, store, signed.user_id, "session"), KIND_AUTH, LEVEL_INFO, message)
+    name, detail = await run(issuer, store, signed.issued_by)
+    message = f"signed in with a link issued by {name}" if name else "signed in with a login link"
+    if signed.challenge:
+        message = "login link accepted, waiting for a code"
+    audit_as(request, await run(user_actor, store, signed.user_id, "session"), KIND_AUTH, LEVEL_INFO, message, detail)
     return await sign_in_response(request, signed, SignedIn(ok=True), 200)

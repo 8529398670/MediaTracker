@@ -157,6 +157,7 @@ class Deleted(Reply, kw_only=True):
     tag=TAG, errors=(404,),
     description="Delete a saved view. Soft: restoring it brings it back within the undo window.",
     mcp="delete_view", destructive=True,
+    bulk=True,
 )
 def delete_view(request: Request, body: ViewPath) -> Deleted:
     subject = subject_of(request, body.user)
@@ -176,6 +177,7 @@ class ViewReply(Reply, kw_only=True):
     tag=TAG, errors=(403, 404, 409),
     description="Bring back a deleted saved view, within the undo window.",
     mcp="restore_view",
+    bulk=True,
 )
 def restore_view(request: Request, body: ViewPath) -> ViewReply:
     subject = subject_of(request, body.user)

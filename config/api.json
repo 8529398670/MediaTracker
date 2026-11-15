@@ -107,6 +107,10 @@
           "live": {
             "type": "boolean"
           },
+          "may_sign_in": {
+            "description": "Whether this key may make a login link for its own account.",
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
@@ -133,10 +137,68 @@
           "expired",
           "id",
           "live",
+          "may_sign_in",
           "name",
           "revoked",
           "role",
           "user_id"
+        ],
+        "type": "object"
+      },
+      "BulkReply": {
+        "properties": {
+          "done": {
+            "description": "How many items worked.",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "How many did not.",
+            "type": "integer"
+          },
+          "results": {
+            "description": "One per item, in the order they were sent.",
+            "items": {
+              "$ref": "#/components/schemas/BulkResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "done",
+          "failed",
+          "results"
+        ],
+        "type": "object"
+      },
+      "BulkResult": {
+        "properties": {
+          "error": {
+            "description": "When it failed: the route's words for why.",
+            "type": "string"
+          },
+          "index": {
+            "description": "The item's place in items, from 0.",
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "reply": {
+            "description": "When it worked: the route's own reply, if it has one.",
+            "type": "object"
+          },
+          "request_id": {
+            "description": "On a 5xx: the reference that finds this failure in the log.",
+            "type": "string"
+          },
+          "status": {
+            "description": "When it failed: the status the route would have answered.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index",
+          "ok"
         ],
         "type": "object"
       },
@@ -601,6 +663,10 @@
           "live": {
             "type": "boolean"
           },
+          "may_sign_in": {
+            "description": "Whether this key may make a login link for its own account.",
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
@@ -628,6 +694,7 @@
           "expired",
           "id",
           "live",
+          "may_sign_in",
           "name",
           "revoked",
           "role",
@@ -1232,7 +1299,7 @@
         "type": "http"
       },
       "sessionCookie": {
-        "description": "A browser session. Its POSTs carry csrf_token in the body. The cookie's name is server.cookie_name.",
+        "description": "A browser session. Its POSTs carry csrf_token in the body. The cookie's name is server.cookie_name, with the __Host- prefix while server.secure_cookies is on.",
         "in": "cookie",
         "name": "session",
         "type": "apiKey"
@@ -1248,7 +1315,7 @@
   "paths": {
     "/api/account/login-link": {
       "post": {
-        "description": "A link that signs your own account in on a browser or another device. Only a key with your account's full role may ask: one scoped down to user on an admin account is refused.",
+        "description": "A link that signs your own account in on a browser or another device. An API key may ask only if your account let it, from a browser session (POST /api/keys/{key_id}/sign-in); its link works once, for at most 15 minutes.",
         "operationId": "post_api_account_login_link",
         "requestBody": {
           "content": {
@@ -5501,6 +5568,2347 @@
       },
       "x-feature": "openapi"
     },
+    "/api/bulk/account/sessions/revoke": {
+      "post": {
+        "description": "Runs POST /api/account/sessions/{session_id}/revoke once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_account_sessions_revoke",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "session_id": {
+                          "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "session_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Sign out one of your devices, for many at once",
+        "tags": [
+          "Account"
+        ],
+        "x-bulk-of": "POST /api/account/sessions/{session_id}/revoke"
+      },
+      "x-feature": "sessions"
+    },
+    "/api/bulk/admin/invite-links/delete": {
+      "post": {
+        "description": "Runs POST /api/admin/invite-links/{link_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_invite_links_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "link_id": {
+                          "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "link_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete an invite link, for many at once",
+        "tags": [
+          "Invite links"
+        ],
+        "x-bulk-of": "POST /api/admin/invite-links/{link_id}/delete",
+        "x-required-role": "admin"
+      },
+      "x-feature": "invite_links"
+    },
+    "/api/bulk/admin/invite-links/restore": {
+      "post": {
+        "description": "Runs POST /api/admin/invite-links/{link_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_invite_links_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "link_id": {
+                          "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "link_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Undo deleting an invite link, for many at once",
+        "tags": [
+          "Invite links"
+        ],
+        "x-bulk-of": "POST /api/admin/invite-links/{link_id}/restore",
+        "x-required-role": "admin"
+      },
+      "x-feature": "invite_links"
+    },
+    "/api/bulk/admin/invite-links/revoke": {
+      "post": {
+        "description": "Runs POST /api/admin/invite-links/{link_id}/revoke once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_invite_links_revoke",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "link_id": {
+                          "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "link_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Switch off an invite link, for many at once",
+        "tags": [
+          "Invite links"
+        ],
+        "x-bulk-of": "POST /api/admin/invite-links/{link_id}/revoke",
+        "x-required-role": "admin"
+      },
+      "x-feature": "invite_links"
+    },
+    "/api/bulk/admin/invite-links/switch-on": {
+      "post": {
+        "description": "Runs POST /api/admin/invite-links/{link_id}/switch-on once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_invite_links_switch_on",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "link_id": {
+                          "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "link_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Switch an invite link back on, for many at once",
+        "tags": [
+          "Invite links"
+        ],
+        "x-bulk-of": "POST /api/admin/invite-links/{link_id}/switch-on",
+        "x-required-role": "admin"
+      },
+      "x-feature": "invite_links"
+    },
+    "/api/bulk/admin/users/cancel-login-link": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/cancel-login-link once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_cancel_login_link",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Stop an account's login link working, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/cancel-login-link",
+        "x-required-role": "admin"
+      }
+    },
+    "/api/bulk/admin/users/delete": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete an account, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/delete",
+        "x-required-role": "admin"
+      }
+    },
+    "/api/bulk/admin/users/disabled": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/disabled once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_disabled",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "disabled": {
+                          "type": "boolean"
+                        },
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {
+                      "disabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Disable or enable a user, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/disabled",
+        "x-required-role": "admin"
+      }
+    },
+    "/api/bulk/admin/users/reset-two-factor": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/reset-two-factor once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_reset_two_factor",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Turn off an account's two-factor, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/reset-two-factor",
+        "x-required-role": "admin"
+      },
+      "x-feature": "two_factor"
+    },
+    "/api/bulk/admin/users/revoke-access": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/revoke-access once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_revoke_access",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Revoke a user's access, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/revoke-access",
+        "x-required-role": "admin"
+      }
+    },
+    "/api/bulk/admin/users/role": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/role once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_role",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "role": {
+                          "enum": [
+                            "admin",
+                            "user"
+                          ],
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {
+                      "role": {
+                        "enum": [
+                          "admin",
+                          "user"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Change an account's role, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/role",
+        "x-required-role": "admin"
+      }
+    },
+    "/api/bulk/admin/users/sessions/revoke": {
+      "post": {
+        "description": "Runs POST /api/admin/users/{user_id}/sessions/{session_id}/revoke once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_admin_users_sessions_revoke",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "session_id": {
+                          "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "session_id",
+                        "user_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Sign out one of an account's devices, for many at once",
+        "tags": [
+          "Admin"
+        ],
+        "x-bulk-of": "POST /api/admin/users/{user_id}/sessions/{session_id}/revoke",
+        "x-required-role": "admin"
+      },
+      "x-feature": "sessions"
+    },
+    "/api/bulk/merges/undo": {
+      "post": {
+        "description": "Runs POST /api/merges/{merge_id}/undo once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_merges_undo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "merge_id": {
+                          "description": "From merging titles.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "merge_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Undo a merge, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/merges/{merge_id}/undo"
+      }
+    },
+    "/api/bulk/playlists/delete": {
+      "post": {
+        "description": "Runs POST /api/playlists/{playlist_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_playlists_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "playlist_id": {
+                          "description": "A playlist's id, from GET /api/playlists.",
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "user": {
+                          "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "playlist_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete a playlist, for many at once",
+        "tags": [
+          "Playlists"
+        ],
+        "x-bulk-of": "POST /api/playlists/{playlist_id}/delete"
+      }
+    },
+    "/api/bulk/playlists/restore": {
+      "post": {
+        "description": "Runs POST /api/playlists/{playlist_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_playlists_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "playlist_id": {
+                          "description": "A playlist's id, from GET /api/playlists.",
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "user": {
+                          "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "playlist_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Restore a playlist, for many at once",
+        "tags": [
+          "Playlists"
+        ],
+        "x-bulk-of": "POST /api/playlists/{playlist_id}/restore"
+      }
+    },
+    "/api/bulk/sources/delete": {
+      "post": {
+        "description": "Runs POST /api/sources/{source_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_sources_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "source_id": {
+                          "description": "A source's id, from GET /api/sources.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "source_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete a source, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/sources/{source_id}/delete"
+      }
+    },
+    "/api/bulk/sources/restore": {
+      "post": {
+        "description": "Runs POST /api/sources/{source_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_sources_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "source_id": {
+                          "description": "A source's id, from GET /api/sources.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "source_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Restore a source, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/sources/{source_id}/restore"
+      }
+    },
+    "/api/bulk/titles/enrich": {
+      "post": {
+        "description": "Runs POST /api/titles/{title_id}/enrich once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_titles_enrich",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "refresh": {
+                          "description": "Overwrite what is there, not just fill in what is missing.",
+                          "type": "boolean"
+                        },
+                        "title_id": {
+                          "description": "A title's id, from GET /api/library (search_library over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {
+                      "refresh": {
+                        "description": "Overwrite what is there, not just fill in what is missing.",
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Fill a title in, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/titles/{title_id}/enrich"
+      }
+    },
+    "/api/bulk/titles/merge": {
+      "post": {
+        "description": "Runs POST /api/titles/{title_id}/merge once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_titles_merge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "drop_ids": {
+                          "description": "Title ids, from GET /api/library (search_library over MCP).",
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "title_id": {
+                          "description": "A title's id, from GET /api/library (search_library over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {
+                      "drop_ids": {
+                        "description": "Title ids, from GET /api/library (search_library over MCP).",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Merge duplicates, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/titles/{title_id}/merge"
+      }
+    },
+    "/api/bulk/titles/update": {
+      "post": {
+        "description": "Runs POST /api/titles/{title_id}/update once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_titles_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "expect": {
+                          "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+                        },
+                        "set": {
+                          "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+                          "type": "object"
+                        },
+                        "title_id": {
+                          "description": "A title's id, from GET /api/library (search_library over MCP).",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {
+                      "expect": {
+                        "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+                      },
+                      "set": {
+                        "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Edit a title, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/titles/{title_id}/update"
+      }
+    },
+    "/api/bulk/types/delete": {
+      "post": {
+        "description": "Runs POST /api/types/{type_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_types_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "reassign_to": {
+                          "description": "The type its titles move to. Needed while it holds any.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "type_id": {
+                          "description": "A type's id, from GET /api/types.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {
+                      "reassign_to": {
+                        "description": "The type its titles move to. Needed while it holds any.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete a type, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/types/{type_id}/delete"
+      }
+    },
+    "/api/bulk/types/restore": {
+      "post": {
+        "description": "Runs POST /api/types/{type_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_types_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "type_id": {
+                          "description": "A type's id, from GET /api/types.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Restore a type, for many at once",
+        "tags": [
+          "Library"
+        ],
+        "x-bulk-of": "POST /api/types/{type_id}/restore"
+      }
+    },
+    "/api/bulk/views/delete": {
+      "post": {
+        "description": "Runs POST /api/views/{view_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_views_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "user": {
+                          "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "view_id": {
+                          "description": "A view's id, from GET /api/views.",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "view_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete a view, for many at once",
+        "tags": [
+          "Settings"
+        ],
+        "x-bulk-of": "POST /api/views/{view_id}/delete"
+      }
+    },
+    "/api/bulk/views/restore": {
+      "post": {
+        "description": "Runs POST /api/views/{view_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_views_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "user": {
+                          "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "view_id": {
+                          "description": "A view's id, from GET /api/views.",
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "view_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Restore a view, for many at once",
+        "tags": [
+          "Settings"
+        ],
+        "x-bulk-of": "POST /api/views/{view_id}/restore"
+      }
+    },
     "/api/discover": {
       "get": {
         "description": "The Wikipedia film catalogue, minus films the person skipped or watched unless asked for. Each film says whether it is already in the library (title_id) and the person's status on it. Answers total, films and, when nothing matched the exact words, fuzzy: true.",
@@ -7876,6 +10284,87 @@
           }
         ],
         "summary": "Revoke one of your keys",
+        "tags": [
+          "API keys"
+        ]
+      },
+      "x-feature": "api_keys"
+    },
+    "/api/keys/{key_id}/sign-in": {
+      "post": {
+        "description": "Off by default. When on, the key may ask POST /api/account/login-link for a link that signs your account in on a browser, which then can do everything you can, including what keys may not. The link works once, for at most 15 minutes.",
+        "operationId": "post_api_keys_key_id_sign_in",
+        "parameters": [
+          {
+            "description": "The key's id, from GET /api/keys (GET /api/admin/keys for anyone's).",
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "may_sign_in": {
+                    "description": "true lets the key make a login link for your account: one that works once, for at most 15 minutes.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "may_sign_in"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKey"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Let one of your keys make sign-in links",
         "tags": [
           "API keys"
         ]

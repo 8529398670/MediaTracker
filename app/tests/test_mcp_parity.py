@@ -114,11 +114,13 @@ class MCPParity(RoutesTestCase):
         self.assertFalse(failed, reply)
         self.assertTrue(reply["login_url"].startswith("http") and "/login/" in reply["login_url"], reply)
 
-        # The narrowed key on the owner's admin account may not make itself a
-        # login link: the session would be an admin's.
-        failed, reply = tool("create_my_login_link", {}, self.user_key)
+        # S9: a key makes itself a login link only once its account allowed it.
+        failed, reply = tool("create_my_login_link", {}, self.admin_key)
         self.assertTrue(failed)
-        self.assertIn("less than your account's role", reply["error"])
+        self.assertIn("may not make sign-in links", reply["error"])
+        from app.models import api_keys
+
+        api_keys.set_api_key_sign_in(self.store, self.admin_key.split(".", 1)[0], self.owner.id, True)
         failed, reply = tool("create_my_login_link", {}, self.admin_key)
         self.assertFalse(failed, reply)
         self.assertIn("login_url", reply)

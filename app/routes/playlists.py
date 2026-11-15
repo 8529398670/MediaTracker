@@ -140,6 +140,7 @@ def update_playlist(request: Request, body: Rename) -> Renamed:
     tag=TAG, errors=(404,),
     description="Delete a playlist. Soft: restoring it brings it back within the undo window.",
     mcp="delete_playlist", destructive=True,
+    bulk=True,
 )
 def delete_playlist(request: Request, body: PlaylistPath) -> Deleted:
     try:
@@ -158,6 +159,7 @@ class PlaylistReply(Reply, kw_only=True):
     tag=TAG, errors=(403, 404, 409),
     description="Bring back a deleted playlist, within the undo window.",
     mcp="restore_playlist",
+    bulk=True,
 )
 def restore_playlist(request: Request, body: PlaylistPath) -> PlaylistReply:
     actor = actor_from(request)

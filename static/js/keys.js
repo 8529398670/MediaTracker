@@ -197,6 +197,46 @@ const Keys = {
     return Dom.badge( Keys.statusText( key ) , tone );
   },
 
+  // The status cell: the badge, and a second one while the key may make
+  // sign-in links, so that stands out in both tables.
+  statusCell( key ) {
+    const badges = [ Keys.statusBadge( key ) ];
+    if ( key.may_sign_in && key.live ) {
+      badges.push( document.createTextNode( " " ) , Dom.badge( I18n.get( "api_keys.status_sign_in" ) , "warning" ) );
+    }
+    return Dom.el( "td" , { children: badges } );
+  },
+
+  // The switch for letting one of your own keys make a login link for your
+  // account. Only on your own table: nobody else may flip it, not even an
+  // admin. Turning it on asks first, since the key then is as good as a
+  // browser session; turning it off does not, and voids any unused link the
+  // key made. Either way it takes effect on the key's next request.
+  signInButton( key ) {
+    const text = I18n.get( key.may_sign_in ? "api_keys.sign_in_on_button" : "api_keys.sign_in_off_button" );
+    if ( text === "" || ( !key.live && !key.may_sign_in ) ) return null;
+    return Dom.el( "button" , {
+      class: key.may_sign_in ? "btn btn-sm btn-warning" : "btn btn-sm btn-outline-secondary",
+      text: text,
+      attrs: { "aria-pressed": key.may_sign_in ? "true" : "false" },
+      on: { click: async function () {
+        const on = !key.may_sign_in;
+        if ( on ) {
+          const question = I18n.get( "api_keys.sign_in_confirm" );
+          if ( question !== "" && !( await Dom.confirm( question ) ) ) return;
+        }
+        try {
+          await Api.setKeySignIn( key.id , on );
+          await Keys.refreshBoth();
+        } catch ( error ) {
+          App.showError( error.message );
+          return;
+        }
+        Dom.toast( I18n.get( on ? "api_keys.sign_in_turned_on" : "api_keys.sign_in_turned_off" ) , "ok" );
+      } },
+    } );
+  },
+
   // revokeButton and deleteButton are shared by both tables: the only
   // difference is which endpoint acts on the key, so that is the parameter.
   // Revoking keeps the row, marked dead; deleting takes it off the list.
@@ -301,12 +341,13 @@ const Keys = {
         Keys.nameCell( key , ( id , name , expect ) => Api.renameKey( id , name , expect ) ,
           async () => { if ( Keys.me.role === "admin" ) await Keys.refreshAll(); } ),
         Dom.el( "td" , { text: key.role } ),
-        Dom.el( "td" , { children: [ Keys.statusBadge( key ) ] } ),
+        Keys.statusCell( key ),
         Dom.el( "td" , { children: [ Dom.when( key.last_used_at , I18n.get( "api_keys.never" ) ) ] } ),
         Dom.el( "td" , { children: [ Dom.when( key.expires_at , I18n.get( "api_keys.never" ) ) ] } ),
         Dom.el( "td" , { children: [
           Dom.rowActions( key.name , [
             Keys.expiryButton( key , function ( id , days ) { return Api.setKeyExpiry( id , days ); } ),
+            Keys.signInButton( key ),
             Keys.revokeButton( key , function ( id ) { return Api.revokeKey( id ); } ),
             Keys.deleteButton( key , function ( id ) { return Api.deleteKey( id ); } , function ( id ) { return Api.restoreKey( id ); } ),
           ] ),
@@ -323,7 +364,7 @@ const Keys = {
         Dom.el( "td" , { text: key.display_name || ( "#" + key.user_id ) } ),
         Keys.nameCell( key , ( id , name , expect ) => Api.renameAnyKey( id , name , expect ) , () => Keys.refresh() ),
         Dom.el( "td" , { text: key.role } ),
-        Dom.el( "td" , { children: [ Keys.statusBadge( key ) ] } ),
+        Keys.statusCell( key ),
         Dom.el( "td" , { children: [ Dom.when( key.last_used_at , I18n.get( "api_keys.never" ) ) ] } ),
         Dom.el( "td" , { children: [ Dom.when( key.expires_at , I18n.get( "api_keys.never" ) ) ] } ),
         Dom.el( "td" , { children: [

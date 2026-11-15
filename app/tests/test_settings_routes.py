@@ -51,7 +51,7 @@ class SettingsRoutesTest(unittest.TestCase):
     def session(store: db.Store, cfg, user_id: int) -> str:
         login = login_tokens.issue_login_token(store, user_id, 3600)
         credential = login_tokens.redeem_login_token(store, login, SignInRules(3600)).session_credential
-        return f"{cfg.cookie_name}={encryption.xchacha_encrypt_string(cfg.secret_key, credential)}"
+        return f"{cfg.session_cookie_name}={encryption.xchacha_encrypt_string(encryption.subkey(cfg.secret_key, encryption.PURPOSE_COOKIE), credential)}"
 
     def call(self, method: str, path: str, cookie: str = "", key: str = "", body: dict | None = None) -> tuple[int, dict]:
         headers = {"content-type": "application/json"}

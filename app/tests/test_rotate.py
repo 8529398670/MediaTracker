@@ -56,7 +56,7 @@ class Deployment:
         store = db.open_store(cfg.database_path, cfg.secret_key, True)
         record = store.get(db.BUCKET_USERS, self.user.id)
         test.assertIsNotNone(record)
-        test.assertEqual(encryption.xchacha_decrypt_string(cfg.secret_key, record["totp_pending"]), self.secret)
+        test.assertEqual(encryption.xchacha_decrypt_string(encryption.subkey(cfg.secret_key, encryption.PURPOSE_TOTP), record["totp_pending"]), self.secret)
         reader = logs.Logger(cfg.logs, cfg.secret_key, cfg.encrypt_at_rest)
         for day, wanted in (("2026-11-01", "plain day"), ("2026-10-31", "gzipped day")):
             records, _ = reader.read_day(day, logs.Query(""), -1, 10)

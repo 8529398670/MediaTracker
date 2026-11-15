@@ -53,6 +53,12 @@ class LoginToken:
     # deleting that key voids the link while it can still be used
     # (void_links_minted_by_key).
     minted_by_key: str = ""
+    # The admin who reissued this link for someone else's account, 0 when the
+    # account, the operator or account creation made it. The session it makes
+    # records it too, and the sign-in is logged as "signed in with a link
+    # issued by" them: an admin can sign in as anyone below them this way, and
+    # the account's own log shows it.
+    issued_by: int = 0
 
     def used_up(self) -> bool:
         return not self.unlimited and self.uses >= self.max_uses
@@ -85,6 +91,7 @@ class LoginToken:
             "unlimited": self.unlimited,
             "uses": self.uses,
             "minted_by_key": self.minted_by_key,
+            **({"issued_by": self.issued_by} if self.issued_by else {}),
         }
 
     @classmethod
@@ -101,6 +108,7 @@ class LoginToken:
             unlimited=bool(record.get("unlimited")),
             uses=uses,
             minted_by_key=record.get("minted_by_key") or "",
+            issued_by=record.get("issued_by") or 0,
         )
 
 
@@ -117,7 +125,8 @@ class LinkOptions:
     # The account asking for a link to someone else's account, checked with
     # users.may_act_on_tx inside the issuing transaction: a link is a way in,
     # so minting one is as much power over the account as deleting it. None
-    # is the operator, or an account being created just now.
+    # is the operator, or an account being created just now. Someone else's
+    # account's link records it as LoginToken.issued_by.
     actor_id: int | None = None
 
     def valid(self) -> bool:
@@ -245,6 +254,7 @@ def issue_login_link(store: Store, user_id: int, options: LinkOptions) -> tuple[
         max_uses=1 if options.unlimited else options.max_uses,
         unlimited=options.unlimited,
         minted_by_key=options.minted_by_key,
+        issued_by=options.actor_id if options.actor_id is not None and options.actor_id != user_id else 0,
     )
     with store.transaction() as tx:
         if tx.get(BUCKET_USERS, user_id) is None:
@@ -300,7 +310,7 @@ def redeem_login_token(store: Store, credential: str, rules: SignInRules) -> Sig
         current.uses += 1
         current.used_at = utc_now()
         tx.put(BUCKET_LOGIN_TOKENS, token_id, current.to_record())
-        return start_sign_in_tx(tx, User.from_record(owner), replace(rules, minted_by_key=current.minted_by_key))
+        return start_sign_in_tx(tx, User.from_record(owner), replace(rules, minted_by_key=current.minted_by_key, issued_by=current.issued_by))
 
 
 def live_login_links(store: Store) -> dict[int, dict]:
@@ -337,6 +347,17 @@ def delete_pending_login_tokens(tx: Transaction, user_id: int) -> int:
     return tx.delete_where(
         BUCKET_LOGIN_TOKENS,
         lambda _key, record: record["user_id"] == user_id and LoginToken.from_record(record).usable(),
+    )
+
+
+def void_unused_links_minted_by_key(tx: Transaction, key_id: str) -> int:
+    """Delete every login link the key made that could still sign someone in,
+    and nothing else: what turning off a key's sign-in links does."""
+    if not key_id:
+        return 0
+    return tx.delete_where(
+        BUCKET_LOGIN_TOKENS,
+        lambda _key, record: record.get("minted_by_key") == key_id and LoginToken.from_record(record).usable(),
     )
 
 

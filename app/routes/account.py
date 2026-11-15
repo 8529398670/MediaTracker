@@ -2,6 +2,7 @@
 a login link for another device, log out. The account screen itself is static/js/app.js, calling these."""
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Annotated, ClassVar, Literal
 
 from msgspec import UNSET, Meta, UnsetType
@@ -16,6 +17,7 @@ from app.core.encryption import BadKeyError, CipherTextError
 from app.core.logs import KIND_AUTH
 from app.core.security import actor_from, clear_session_cookie, decrypt_cookie
 from app.models import login_tokens, sessions, users
+from app.models import api_keys
 from app.models import passwords
 from app.models import pins
 from app.models import themes
@@ -223,12 +225,13 @@ class MyLoginLink(RequestType):
 @route(
     "POST /api/account/login-link", summary="A login link for yourself",
     tag="Account",
-    description="A link that signs your own account in on a browser or another device. Only a key with your "
-    "account's full role may ask: one scoped down to user on an admin account is refused.",
-    mcp_note="Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), "
-    "expires_at and max_uses. Any older link the account could still use stops working; its signed-in "
-    "devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs "
-    "out every device it signed in.",
+    description="A link that signs your own account in on a browser or another device. An API key may ask "
+    "only if your account let it, from a browser session (POST /api/keys/{key_id}/sign-in); its link works "
+    "once, for at most 15 minutes.",
+    mcp_note="Only works if this key was allowed to make sign-in links, on the API keys card. Answers with "
+    "login_url (open it to sign in; it works once, for at most 15 minutes), expires_at and max_uses. Any "
+    "older link the account could still use stops working; its signed-in devices stay signed in. Revoking "
+    "or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
     mcp="create_my_login_link", call=with_login_url,
 )
 def create_my_login_link(request: Request, body: MyLoginLink) -> LoginLinkReply:
@@ -238,14 +241,22 @@ def create_my_login_link(request: Request, body: MyLoginLink) -> LoginLinkReply:
     has the same effect: any link the account could still use stops working,
     and existing sessions stay signed in.
 
-    An API key may ask too, but only one that carries the account's full
-    role: the link becomes a session, and a session acts with the account's
-    role, so a key scoped down to "user" on an admin's account would otherwise
-    climb. Revoking the key voids the link while it can still be used."""
+    A browser session may always ask. An API key may only when its account
+    turned that on for it, from a session (POST /api/keys/{key_id}/sign-in):
+    the link becomes an ordinary browser session, which opens everything kept
+    from keys (the API keys card, the owner's screens, minting keys) to
+    whoever holds the key. A key's link works once and for at most 15
+    minutes, whatever it asked for, and revoking the key voids it while it is
+    unused."""
     actor = actor_from(request)
-    if actor.via_api_key and actor.role != actor.user.role:
-        raise Refused(403, "this key acts with less than your account's role, so it cannot make a login link")
+    if actor.api_key is not None and not actor.api_key.may_sign_in:
+        raise Refused(403, "this key may not make sign-in links: turn that on for it on the API keys card")
     options = link_options(request, body)
+    if actor.api_key is not None:
+        ttl = options.ttl_seconds
+        if ttl <= 0 or ttl > api_keys.KEY_LOGIN_LINK_TTL_SECONDS:
+            ttl = api_keys.KEY_LOGIN_LINK_TTL_SECONDS
+        options = replace(options, max_uses=1, unlimited=False, ttl_seconds=ttl)
     credential, info = login_tokens.issue_login_link(get_store(request), actor.user.id, options)
     audit(request, KIND_AUTH, "own login link created", {"max_uses": info["max_uses"], "expires_at": info["expires_at"]})
     return LoginLinkReply(**link_reply(credential, info))
@@ -294,7 +305,7 @@ async def destroy_cookie_session(request: Request) -> None:
     the record rather than only the cookie is what matters: a copy of the
     cookie taken earlier is then dead too."""
     cfg = get_config(request)
-    raw = request.cookies.get(cfg.cookie_name, "")
+    raw = request.cookies.get(cfg.session_cookie_name, "")
     if not raw:
         return
     try:

@@ -29,7 +29,7 @@ from app.models import RestoreGoneError, deleted_long_ago, from_iso, mark_delete
 from app.models.pins import name_closeness
 from app.models.sessions import new_session, split_credential
 from app.models.sign_in import SignIn, SignInRules, start_sign_in_tx
-from app.models.users import ROLE_USER, RenameConflictError, User, create_user_tx, get_user
+from app.models.users import ROLE_USER, RenameConflictError, User, create_user_tx, get_owner_id, get_user
 
 INVITE_LINK_MAX_USES = 1000
 INVITE_LINK_MAX_DAYS = 365
@@ -429,11 +429,12 @@ def delete_invite_link(store: Store, link_id: str, actor_id: int | None) -> bool
 def restore_invite_link(store: Store, link_id: str, actor_id: int, actor_is_admin: bool, minted_by_key: str = "") -> InviteLink:
     """Undo delete_invite_link. Raises a RestoreError when the window has
     passed or the actor may not. Only admins reach this today, so in practice
-    any admin may restore any link. A key that restores a link takes it over,
+    any admin may restore any link the owner did not delete. A key that restores a link takes it over,
     as in set_invite_link_limits."""
+    owner_id = get_owner_id(store)
 
     def mutate(record: Record) -> None:
-        unmark_deleted(record, actor_id, actor_is_admin)
+        unmark_deleted(record, actor_id, actor_is_admin, owner_id)
         if minted_by_key:
             record["minted_by_key"] = minted_by_key
 

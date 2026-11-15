@@ -22,6 +22,7 @@ from app.core.db import BUCKET_META, BUCKET_PLAYLISTS, BUCKET_USER_STATE, Store,
 from app.media import normalize
 from app.media.normalize import text
 from app.models import deleted_long_ago, mark_deleted, to_iso, unmark_deleted, utc_now
+from app.models.users import owner_id_tx
 from app.models.revision import NotFoundError
 
 Playlist = dict[str, Any]
@@ -133,7 +134,7 @@ def delete_playlist(store: Store, owner_id: int, playlist_id: int, actor_id: int
 def restore_playlist(store: Store, owner_id: int, playlist_id: int, actor_id: int, actor_is_admin: bool) -> Playlist:
     with store.transaction() as tx:
         record = _owned(tx, playlist_id, owner_id, live=False)
-        unmark_deleted(record, actor_id, actor_is_admin)
+        unmark_deleted(record, actor_id, actor_is_admin, owner_id_tx(tx))
         tx.put(BUCKET_PLAYLISTS, playlist_id, record)
         return record
 

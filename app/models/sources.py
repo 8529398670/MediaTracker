@@ -10,6 +10,7 @@ from typing import Any
 from app.core.db import BUCKET_SOURCES, Store, Transaction
 from app.media import normalize
 from app.models import deleted_long_ago, mark_deleted, to_iso, unmark_deleted, utc_now
+from app.models.users import owner_id_tx
 from app.models.revision import NotFoundError
 
 
@@ -64,7 +65,7 @@ def restore_source(store: Store, source_id: str, actor_id: int, actor_is_admin: 
         if record is None:
             raise NotFoundError("source")
         # A source is the family's, like a title: anyone may put it back.
-        unmark_deleted(record, actor_id, True)
+        unmark_deleted(record, actor_id, True, owner_id_tx(tx))
         tx.put(BUCKET_SOURCES, source_id, record)
         return record
 

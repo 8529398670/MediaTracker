@@ -106,9 +106,16 @@ server:
   # trusted_proxies is refused.
   #
   #   proxy on the same host, no Docker:    [127.0.0.1, "::1"]
-  #   proxy on the host, app in Docker:     [172.16.0.0/12] (the bridge
-  #                                         gateway; check with
+  #   proxy on the host, app in Docker:     [172.17.0.1] (the bridge
+  #                                         gateway exactly, not a range:
+  #                                         172.16.0.0/12 trusts every
+  #                                         container; find it with
   #                                         `docker network inspect bridge`)
+  #   Cloudflare Tunnel (cloudflared here): [127.0.0.1, "::1"] with
+  #                                         proxy_header: CF-Connecting-IP
+  #
+  # A range wider than /8 (IPv4) or /16 (IPv6) is refused. Running behind
+  # Cloudflare: see references/deploy-cloudflare.md in the webserver skill.
   #
   # This only holds if clients cannot reach this server except through the
   # proxy. With a single-value header (X-Real-IP, CF-Connecting-IP) the proxy
@@ -188,8 +195,9 @@ auth:
   # Two-factor sign-in with an authenticator app, which each person turns on
   # for themselves. It is asked for on every browser sign-in -- password,
   # login link, and invite link -- never for an API key. false stops offering
-  # it and stops asking for it; the secrets stay, so switching it back on
-  # restores them. [live]
+  # it and stops asking for it, so accounts that turned it on then sign in
+  # without a code; the secrets stay, so switching it back on restores them.
+  # [live]
   two_factor: true
 
   # Invite links: one link a whole group can join through, and the PINs that

@@ -32,7 +32,7 @@ from starlette.responses import Response
 from app.apidocs import ADMIN, PATH, QUERY, SESSION_ONLY, Reply, route
 from app.apidocs import Request as RequestType
 from app.core.db import Store
-from app.core.logs import KIND_ADMIN
+from app.core.logs import KIND_ADMIN, KIND_AUTH
 from app.core.security import Guard, actor_from
 from app.models import RestoreError, api_keys, to_iso, users
 from app.routes.admin import DateTime, OkReply
@@ -75,6 +75,7 @@ class APIKey(Reply, kw_only=True):
     display_name: Annotated[str, Meta(description="The key's owner. On the admin list only.")] | UnsetType = UNSET
     created_by: Annotated[int, Meta(description="The admin who made this key for its owner. Absent if the owner made it.")] | UnsetType = UNSET
     created_by_name: str | UnsetType = UNSET
+    may_sign_in: Annotated[bool, Meta(description="Whether this key may make a login link for its own account.")]
 
 
 class NewAPIKey(APIKey, kw_only=True):
@@ -93,6 +94,7 @@ def api_key_row(key: api_keys.APIKey, display_name: str = "") -> APIKey:
         revoked=key.revoked,
         expired=key.expired,
         live=key.live,
+        may_sign_in=key.may_sign_in,
     )
     for field_name in ("expires_at", "last_used_at", "revoked_at"):
         value = getattr(key, field_name)
@@ -283,7 +285,9 @@ def rename_my_key(request: Request, body: RenameKey) -> RenameKeyReply:
 )
 def rename_any_key(request: Request, body: RenameKey) -> RenameKeyReply:
     """An admin renaming anyone's key. A name changes nothing about what a key
-    can do, so unlike its expiry this needs no ladder."""
+    can do, but it is what the owner goes by when choosing a key to revoke, so
+    it follows the same ladder as the key's expiry: nobody renames the owner's
+    keys, and only the owner renames another admin's."""
     return _rename(request, body, own_only=False)
 
 
@@ -295,9 +299,13 @@ def _rename(request: Request, body: RenameKey, own_only: bool) -> RenameKeyReply
     if key is None or (own_only and key.user_id != actor_from(request).user.id):
         raise Refused(404, "no such api key")
     try:
-        renamed = api_keys.rename_api_key(store, key.id, body.name, body.expect)
+        renamed = api_keys.rename_api_key(store, key.id, actor_from(request).user.id, body.name, body.expect)
     except users.RenameConflictError as refusal:
         raise Refused(409, str(refusal), name=refusal.current) from None
+    except users.OwnerProtectedError:
+        raise Refused(403, "only the owner can rename the owner's keys") from None
+    except users.OwnerRequiredError:
+        raise Refused(403, "only the owner can rename an admin's keys") from None
     if not renamed:
         raise Refused(404, "no such api key")
     audit(request, KIND_ADMIN, "api key renamed", {"key_id": key.id, "name": body.name.strip()})
@@ -348,6 +356,34 @@ def _set_expiry(request: Request, body: SetKeyExpiry, own_only: bool) -> APIKey:
     if key is None:
         raise Refused(404, "no such api key")
     audit(request, KIND_ADMIN, "api key expiry changed", {"key_id": key.id, "expires_in_days": days})
+    return api_key_row(key)
+
+
+class SetKeySignIn(KeyIDPath):
+    may_sign_in: Annotated[bool, Meta(description="true lets the key make a login link for your account: one that works once, for at most 15 minutes.")]
+
+
+@route(
+    "POST /api/keys/{key_id}/sign-in", summary="Let one of your keys make sign-in links",
+    tag="API keys", access=SESSION_ONLY, feature="api_keys",
+    description="Off by default. When on, the key may ask POST /api/account/login-link for a link that "
+    "signs your account in on a browser, which then can do everything you can, including what keys may "
+    "not. The link works once, for at most 15 minutes.",
+)
+def set_my_key_sign_in(request: Request, body: SetKeySignIn) -> APIKey:
+    """Let one of your own keys make a login link for your account, or stop
+    it. Session-only, so a key cannot give itself the right: a link becomes a
+    browser session, which opens everything kept from keys. There is no admin
+    version. Whether a key may sign in as you is yours alone to decide."""
+    try:
+        key = api_keys.set_api_key_sign_in(get_store(request), body.key_id, actor_from(request).user.id, body.may_sign_in)
+    except api_keys.APIKeyNotYoursError:
+        key = None
+    except api_keys.APIKeyDeadError:
+        raise Refused(400, "only a live key can be allowed to make sign-in links") from None
+    if key is None:
+        raise Refused(404, "no such api key")
+    audit(request, KIND_AUTH, "api key sign-in links changed", {"key_id": key.id, "may_sign_in": key.may_sign_in})
     return api_key_row(key)
 
 

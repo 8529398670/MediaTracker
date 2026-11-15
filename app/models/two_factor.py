@@ -15,6 +15,7 @@ import time
 
 from app.core import encryption
 from app.core.db import BUCKET_USERS, Record, Store
+from app.models.sessions import destroy_other_sessions_for_user
 from app.models.users import User
 
 RECOVERY_CODE_COUNT = 10
@@ -54,7 +55,7 @@ def _normalize_recovery_code(code: str) -> str:
 
 
 def _matches_totp(encrypted_secret: str, code: str, after_step: int, secret_key: str) -> int | None:
-    secret = encryption.xchacha_decrypt_string(secret_key, encrypted_secret)
+    secret = encryption.xchacha_decrypt_string(encryption.subkey(secret_key, encryption.PURPOSE_TOTP), encrypted_secret)
     return encryption.totp_match(secret, code, int(time.time()), after_step)
 
 
@@ -96,18 +97,21 @@ def start_setup(store: Store, user_id: int, secret_key: str) -> str | None:
     def mutate(record: Record) -> None:
         if _record_is_on(record):
             raise AlreadyOnError()
-        record["totp_pending"] = encryption.xchacha_encrypt_string(secret_key, secret)
+        record["totp_pending"] = encryption.xchacha_encrypt_string(encryption.subkey(secret_key, encryption.PURPOSE_TOTP), secret)
 
     return secret if store.update_value(BUCKET_USERS, user_id, mutate) is not None else None
 
 
-def confirm_setup(store: Store, user_id: int, code: object, secret_key: str) -> list[str] | None:
+def confirm_setup(store: Store, user_id: int, code: object, secret_key: str, keep_session_id: str = "") -> list[str] | None:
     """Turn 2FA on, once a code proves the app has the secret. Returns the
     recovery codes -- the only time they exist in readable form -- or None if
-    there is no such user. Raises WrongCodeError or AlreadyOnError."""
+    there is no such user. Raises WrongCodeError or AlreadyOnError. Every
+    session of the account but keep_session_id (the one asking) ends with it."""
     codes = [encryption.recovery_code() for _ in range(RECOVERY_CODE_COUNT)]
-
-    def mutate(record: Record) -> None:
+    with store.transaction() as tx:
+        record = tx.get(BUCKET_USERS, user_id)
+        if record is None:
+            return None
         if _record_is_on(record):
             raise AlreadyOnError()
         pending = record.get("totp_pending", "")
@@ -120,8 +124,12 @@ def confirm_setup(store: Store, user_id: int, code: object, secret_key: str) -> 
         record["totp_pending"] = ""
         record["totp_last_step"] = step
         record["recovery_hashes"] = [encryption.sha256_hex(_normalize_recovery_code(item)) for item in codes]
-
-    return codes if store.update_value(BUCKET_USERS, user_id, mutate) is not None else None
+        tx.put(BUCKET_USERS, user_id, record)
+        # S15: turning on two-factor is what someone does who fears another
+        # device has their account. Every other session ends with it, or the
+        # attacker's would stay signed in past the very step meant to stop it.
+        destroy_other_sessions_for_user(tx, user_id, keep_session_id)
+    return codes
 
 
 def clear_record(record: Record) -> None:

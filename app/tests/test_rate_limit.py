@@ -3,10 +3,12 @@ separate, and no spelling of a path gets around either."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import unittest
 from dataclasses import dataclass, field
 
-from app.core.middleware import BUDGET_GENERAL, BUDGET_NONE, BUDGET_SIGN_IN, RateLimit, budget_for
+from app.core.middleware import BUDGET_GENERAL, BUDGET_NONE, BUDGET_SIGN_IN, RateLimit, budget_for, rate_key
 
 
 @dataclass
@@ -32,7 +34,7 @@ class Limited:
 
         self.limiter = RateLimit(app, Settings(**settings))  # type: ignore[arg-type]
 
-    def status(self, method: str, path: str) -> int:
+    def status(self, method: str, path: str, client: str = "10.0.0.1", headers: dict[str, str] | None = None) -> int:
         seen: list[int] = []
 
         async def receive() -> dict:
@@ -42,7 +44,8 @@ class Limited:
             if message["type"] == "http.response.start":
                 seen.append(message["status"])
 
-        scope = {"type": "http", "method": method, "path": path, "headers": [], "client": ("10.0.0.1", 1)}
+        raw = [(name.lower().encode(), value.encode()) for name, value in (headers or {}).items()]
+        scope = {"type": "http", "method": method, "path": path, "headers": raw, "client": (client, 1)}
         asyncio.run(self.limiter(scope, receive, send))  # type: ignore[arg-type]
         return seen[0]
 
@@ -98,6 +101,33 @@ class RateLimitTest(unittest.TestCase):
         limited = Limited(rate_limit_max=1)
         self.assertEqual(limited.status("GET", "/"), 200)
         self.assertEqual(limited.status("GET", "/"), 429)
+
+    def test_ipv6_is_counted_by_its_slash_64(self) -> None:
+        """S10: picking a new address inside one /64 does not get a new
+        budget. IPv4 is counted as it is."""
+        self.assertEqual(rate_key("2001:db8:1:2::1"), rate_key("2001:db8:1:2:ffff::9"))
+        self.assertNotEqual(rate_key("2001:db8:1:2::1"), rate_key("2001:db8:1:3::1"))
+        self.assertEqual(rate_key("192.0.2.1"), "192.0.2.1")
+        self.assertEqual(rate_key("::ffff:192.0.2.1"), "192.0.2.1")
+        limited = Limited(rate_limit_signin_max=5)
+        with contextlib.redirect_stdout(io.StringIO()):
+            refused = sum(limited.status("POST", "/api/login", client=f"2001:db8:1:2::{count:x}") == 429 for count in range(1, 13))
+        self.assertEqual(refused, 12 - 5)
+
+    def test_proxy_headers_and_refusals_are_logged(self) -> None:
+        """S10: a request through a proxy the server does not trust is warned
+        about once per process, and the first 429 a budget gives in a window
+        is logged, once."""
+        limited = Limited(rate_limit_signin_max=5)
+        written = io.StringIO()
+        with contextlib.redirect_stdout(written):
+            for _ in range(8):
+                limited.status("POST", "/api/login", headers={"CF-Connecting-IP": "198.51.100.7"})
+        text = written.getvalue()
+        self.assertEqual(text.count("CF-Connecting-IP"), 1, text)
+        self.assertIn("server.trust_proxy", text)
+        self.assertEqual(text.count("budget used up"), 1, text)
+        self.assertIn("sign-in budget", text)
 
 
 if __name__ == "__main__":

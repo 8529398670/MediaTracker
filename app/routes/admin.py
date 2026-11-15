@@ -265,6 +265,7 @@ class CancelLoginLinkReply(Reply):
 
 @route(
     "POST /api/admin/users/{user_id}/cancel-login-link", summary="Stop an account's login link working",
+    bulk=True,
     tag="Admin", role=ADMIN, errors=(404,),
     description="Void an account's live login link without making a new one: a link that went somewhere it "
     "should not have.",
@@ -299,6 +300,7 @@ class SetUserDisabled(UserIDPath):
 
 @route(
     "POST /api/admin/users/{user_id}/disabled", summary="Disable or enable a user",
+    bulk=True,
     tag="Admin", role=ADMIN, errors=(404,),
     description="Switch an account off (disabled: true) or back on (false). Disabling signs it out "
     "everywhere and voids its live login link; its API keys stop working while it is off. Reversible. The "
@@ -338,6 +340,7 @@ class RevokeAccessReply(Reply):
 
 @route(
     "POST /api/admin/users/{user_id}/revoke-access", summary="Revoke a user's access",
+    bulk=True,
     tag="Admin", role=ADMIN, errors=(404,),
     description="For an account that may be compromised: ends every session and voids its live login link "
     "and every API key it holds, at once.",
@@ -419,6 +422,7 @@ class SetUserRoleReply(Reply):
 
 @route(
     "POST /api/admin/users/{user_id}/role", summary="Change an account's role",
+    bulk=True,
     tag="Admin", role=ADMIN, errors=(404,),
     description="Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; "
     "the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's "
@@ -484,6 +488,7 @@ class DeleteUserReply(Reply):
 
 @route(
     "POST /api/admin/users/{user_id}/delete", summary="Delete an account",
+    bulk=True,
     tag="Admin", role=ADMIN, errors=(404,),
     description="Remove an account for good, with its sessions, login link and API keys.",
     mcp_note="Cannot be undone: admin_set_user_disabled is the reversible version. Only the owner deletes "
@@ -514,6 +519,7 @@ def delete_user(request: Request, body: UserIDPath) -> DeleteUserReply:
 
 @route(
     "POST /api/admin/users/{user_id}/reset-two-factor", summary="Turn off an account's two-factor",
+    bulk=True,
     tag="Admin", role=ADMIN, feature="two_factor",
     description="For someone who lost both their phone and their recovery codes: switches their two-factor "
     "sign-in off so a login link lets them in again. Only the owner resets an admin's; the owner's is reset "

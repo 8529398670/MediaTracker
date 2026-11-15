@@ -131,7 +131,7 @@ class RestoreTest(BackupTestCase):
         self.assertTrue(result.rekeyed)
         store = db.open_store(current.database_path, current.secret_key, True)
         record = store.get(db.BUCKET_USERS, user.id)
-        self.assertEqual(encryption.xchacha_decrypt_string(current.secret_key, record["totp_pending"]), secret)
+        self.assertEqual(encryption.xchacha_decrypt_string(encryption.subkey(current.secret_key, encryption.PURPOSE_TOTP), record["totp_pending"]), secret)
 
     def without_bucket(self, made: Path, bucket: str) -> Path:
         """A backup as code from before bucket existed made it: the same file

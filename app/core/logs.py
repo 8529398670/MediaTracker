@@ -319,7 +319,11 @@ class Logger:
 
     def __init__(self, settings: LogsConfig, key: str, encrypt: bool) -> None:
         self.settings = settings
-        self.key = key
+        # Every line is sealed with secret.key's PURPOSE_LOGS subkey. old_key
+        # is secret.key itself, which lines written before subkeys were sealed
+        # with, so those still read.
+        self.key = encryption.subkey(key, encryption.PURPOSE_LOGS) if key else key
+        self.old_key = key
         self.encrypt = encrypt
         self._queue: queue.Queue[Any] = queue.Queue(maxsize=QUEUE_SIZE)
         self._dropped = 0
@@ -521,7 +525,13 @@ class Logger:
             raise ValueError("empty line")
         if line[:1] == b"{":
             return line
-        return encryption.xchacha_decrypt_bytes(self.key, base64.b64decode(line, validate=True))
+        sealed = base64.b64decode(line, validate=True)
+        try:
+            return encryption.xchacha_decrypt_bytes(self.key, sealed)
+        except encryption.CipherTextError:
+            if not self.old_key:
+                raise
+            return encryption.xchacha_decrypt_bytes(self.old_key, sealed)
 
     # -----------------------------------------------------------------------
     # reading
@@ -777,10 +787,20 @@ def _rekey_line(line: bytes, old_key: str, new_key: str) -> bytes:
     if not trimmed or trimmed[:1] == b"{":
         return line
     try:
-        plain = encryption.xchacha_decrypt_bytes(old_key, base64.b64decode(trimmed, validate=True))
-    except (ValueError, encryption.CipherTextError):
+        sealed = base64.b64decode(trimmed, validate=True)
+    except ValueError:
         return line
-    return base64.b64encode(encryption.xchacha_encrypt_bytes(new_key, plain)) + b"\n"
+    plain = None
+    # A line from before subkeys opens with secret.key itself.
+    for key in (encryption.subkey(old_key, encryption.PURPOSE_LOGS), old_key):
+        try:
+            plain = encryption.xchacha_decrypt_bytes(key, sealed)
+            break
+        except (ValueError, encryption.CipherTextError, encryption.BadKeyError):
+            continue
+    if plain is None:
+        return line
+    return base64.b64encode(encryption.xchacha_encrypt_bytes(encryption.subkey(new_key, encryption.PURPOSE_LOGS), plain)) + b"\n"
 
 
 def _compress(file: DayFile) -> None:

@@ -242,6 +242,8 @@ def declared_routes() -> list[Declared]:
             declared = declared_of(value)
             if declared is not None and declared.endpoint is value and declared not in found:
                 found.append(declared)
+                if declared.bulk is not None:
+                    found.append(declared.bulk)
     ordered = sorted(found, key=_order)
     for index, one in enumerate(ordered):
         for other in ordered[index + 1:]:

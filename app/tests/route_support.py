@@ -81,7 +81,7 @@ class RoutesTestCase(unittest.TestCase):
     def session(self, user_id: int) -> str:
         login = login_tokens.issue_login_token(self.store, user_id, 3600)
         credential = login_tokens.redeem_login_token(self.store, login, SignInRules(3600)).session_credential
-        return f"{self.cfg.cookie_name}={encryption.xchacha_encrypt_string(self.cfg.secret_key, credential)}"
+        return f"{self.cfg.session_cookie_name}={encryption.xchacha_encrypt_string(encryption.subkey(self.cfg.secret_key, encryption.PURPOSE_COOKIE), credential)}"
 
     def csrf(self, cookie: str) -> str:
         return self.call("GET", "/api/me", cookie=cookie)[1]["csrf_token"]

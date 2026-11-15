@@ -187,6 +187,7 @@ class TitleChange(Reply, kw_only=True):
     description="Change shared details of a title (title, year, type, tags, notes, links, genres, cast, "
     "creator, runtime, certification, imdb_id, wiki_url, poster_url). Returns the previous values.",
     mcp="update_title",
+    bulk=True,
 )
 def update(request: Request, body: UpdateTitle) -> TitleChange:
     changes = normalize.clean_title_fields(body.set)

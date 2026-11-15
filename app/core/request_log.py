@@ -25,7 +25,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.core import logs
 from app.core.config import Config
 from app.core.config_live import Holder
-from app.core.middleware import client_ip, static_asset, trusted_for
+from app.core.middleware import client_ip, normalise_path, static_asset, trusted_for
 from app.core.security import log_actor
 
 
@@ -69,7 +69,9 @@ class RequestLog:
         self._record(scope, cfg, started, status, bytes_out, (scope.get("state") or {}).get("error_cause", ""))
 
     def _skip(self, scope: Scope, cfg: Config) -> bool:
-        path = scope.get("path", "")
+        # Matched as budget_for matches, lowercased and without a trailing
+        # slash, so the two templates skip the same requests.
+        path = normalise_path(scope.get("path", ""))
         if path in ("/api/logs/events", "/api/health", "/api/ready", "/metrics") or path.startswith("/api/owner/logs"):
             return True
         return not cfg.logs.static_assets and static_asset(scope.get("method", ""), path)

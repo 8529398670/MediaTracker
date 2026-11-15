@@ -125,6 +125,7 @@ class Enriched(Reply, kw_only=True):
     description="Look the title up with the configured providers now and fill in missing details (refresh: "
     "true overwrites what is there). Returns the previous values.",
     mcp="enrich_title",
+    bulk=True,
 )
 def enrich_title(request: Request, body: Enrich) -> Enriched:
     if not get_config(request).providers.network:

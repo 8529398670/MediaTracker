@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.core import encryption
-from app.core.db import BUCKET_API_KEYS, BUCKET_USERS, Record, Store
+from app.core.db import BUCKET_API_KEYS, BUCKET_USERS, Record, Store, Transaction
 from app.models import RestoreGoneError, deleted_long_ago, from_iso, mark_deleted, to_iso, unmark_deleted, utc_now
 from app.models import login_tokens
 from app.models.sessions import split_credential
@@ -40,6 +40,7 @@ from app.models.users import (
     User,
     get_user,
     may_act_on_id_tx,
+    owner_id_tx,
     may_act_on_tx,
     valid_role,
 )
@@ -99,6 +100,11 @@ class APIKeyDeadError(APIKeyError):
         super().__init__("only a live API key can have its expiry changed")
 
 
+class APIKeyNotYoursError(APIKeyError):
+    def __init__(self) -> None:
+        super().__init__("only the account a key acts as may let it make sign-in links")
+
+
 class APIKeyOwnerError(APIKeyError):
     def __init__(self, user_id: int) -> None:
         super().__init__(f"no user with id {user_id}")
@@ -152,6 +158,13 @@ class APIKey:
     # before this field read as None too. It is what lets the person a key
     # acts as see that someone else made it.
     created_by: int | None = None
+    # Whether this key may ask for a login link for its own account (POST
+    # /api/account/login-link). Off by default: the link becomes an ordinary
+    # browser session, so a key that may make one is as good as a session to
+    # whoever holds it. Only the key's own account turns it on, and only from
+    # a browser session (set_api_key_sign_in). Its links work once and for at
+    # most KEY_LOGIN_LINK_TTL_SECONDS.
+    may_sign_in: bool = False
 
     @property
     def revoked(self) -> bool:
@@ -186,6 +199,7 @@ class APIKey:
             "deleted_at": to_iso(self.deleted_at),
             "deleted_by": self.deleted_by,
             "created_by": self.created_by,
+            "may_sign_in": self.may_sign_in,
         }
 
     @classmethod
@@ -203,6 +217,7 @@ class APIKey:
             deleted_at=from_iso(record.get("deleted_at")),
             deleted_by=record.get("deleted_by"),
             created_by=record.get("created_by"),
+            may_sign_in=bool(record.get("may_sign_in", False)),
         )
 
 
@@ -393,6 +408,16 @@ def list_api_keys_for_user(store: Store, user_id: int) -> list[APIKey]:
     return [key for key in list_api_keys(store) if key.user_id == user_id]
 
 
+def void_what_keys_made_tx(tx: Transaction, user_id: int) -> int:
+    """login_tokens.void_links_minted_by_key for every API key an account
+    holds, live or not, inside the caller's transaction. Disabling an
+    account, or taking its admin role away, calls it: a login link its key
+    made, and a browser that link signed in, carry the right the account had
+    then, so they end with that right instead of outliving it."""
+    key_ids = [key_id for key_id, record in tx.all(BUCKET_API_KEYS) if record["user_id"] == user_id]
+    return sum(login_tokens.void_links_minted_by_key(tx, key_id) for key_id in key_ids)
+
+
 def count_live_api_keys_for_user(store: Store, user_id: int) -> int:
     return sum(1 for key in list_api_keys_for_user(store, user_id) if key.live)
 
@@ -425,26 +450,31 @@ def revoke_api_key(store: Store, key_id: str, actor_id: int | None = None) -> AP
     return APIKey.from_record(record)
 
 
-def rename_api_key(store: Store, key_id: str, name: str, expect: str | None = None) -> bool:
+def rename_api_key(store: Store, key_id: str, actor_id: int | None, name: str, expect: str | None = None) -> bool:
     """Change a key's label, which is all a name is: nothing about what the
     key may do hangs off it, so a dead key can be renamed too. False if there
     is no such key or it is deleted.
 
     expect, when given, is the name the caller believes is stored, as in
     users.rename_user: RenameConflictError if it is not, which keeps an undo
-    from overwriting a rename made somewhere else."""
-    found = False
+    from overwriting a rename made somewhere else.
 
-    def mutate(record: Record) -> None:
-        nonlocal found
-        if record.get("deleted_at") is not None:
-            return
-        found = True
+    actor_id is who is asking (None for none, as from a shell). A name is what
+    the owner goes by when deciding which key to revoke, so renaming someone
+    else's key follows the same ladder as everything else done to it (S14):
+    nobody renames the owner's keys (OwnerProtectedError), and only the owner
+    renames another admin's (OwnerRequiredError)."""
+    with store.transaction() as tx:
+        record = tx.get(BUCKET_API_KEYS, key_id)
+        if record is None or record.get("deleted_at") is not None:
+            return False
+        if actor_id is not None:
+            may_act_on_id_tx(tx, actor_id, record["user_id"])
         if expect is not None and record["name"] != expect.strip():
             raise RenameConflictError(record["name"])
         record["name"] = name.strip()
-
-    return store.update_value(BUCKET_API_KEYS, key_id, mutate) is not None and found
+        tx.put(BUCKET_API_KEYS, key_id, record)
+    return True
 
 
 def set_api_key_expiry(store: Store, key_id: str, actor_id: int, ttl_seconds: int) -> APIKey | None:
@@ -478,6 +508,38 @@ def set_api_key_expiry(store: Store, key_id: str, actor_id: int, ttl_seconds: in
             raise APIKeyExpiryAdminError() from None
         key.expires_at = utc_now() + timedelta(seconds=ttl_seconds) if ttl_seconds > 0 else None
         tx.put(BUCKET_API_KEYS, key_id, key.to_record())
+    return key
+
+
+# The longest a login link made by an API key works for. Such a link always
+# works once, whatever the request asked.
+KEY_LOGIN_LINK_TTL_SECONDS = 15 * 60
+
+
+def set_api_key_sign_in(store: Store, key_id: str, user_id: int, on: bool) -> APIKey | None:
+    """Turn may_sign_in on or off. Only the account the key acts as may change
+    it, not an admin, not even the owner: it decides whether that key is as
+    good as a browser session to that account, which is the account's own
+    call. A dead key cannot be turned on (APIKeyDeadError); turning it off
+    always works, and voids any link the key made that is still unused.
+    Browsers those links already signed in stay signed in: the switch off is
+    "no more links", and revoking the key is "sign them out too". None when
+    there is no such key or it is deleted."""
+    with store.transaction() as tx:
+        record = tx.get(BUCKET_API_KEYS, key_id)
+        if record is None:
+            return None
+        key = APIKey.from_record(record)
+        if key.deleted:
+            return None
+        if key.user_id != user_id:
+            raise APIKeyNotYoursError()
+        if on and not key.live:
+            raise APIKeyDeadError()
+        key.may_sign_in = on
+        tx.put(BUCKET_API_KEYS, key_id, key.to_record())
+        if not on:
+            login_tokens.void_unused_links_minted_by_key(tx, key_id)
     return key
 
 
@@ -520,7 +582,7 @@ def restore_api_key(store: Store, key_id: str, actor_id: int, actor_is_admin: bo
         # Bringing a key back is as much power over its account as minting
         # one, so the rule is the key's account's, not the deleter's.
         may_act_on_id_tx(tx, actor_id, record["user_id"])
-        unmark_deleted(record, actor_id, actor_is_admin)
+        unmark_deleted(record, actor_id, actor_is_admin, owner_id_tx(tx))
         key = APIKey.from_record(record)
         if key.live:
             owned = (APIKey.from_record(other) for _, other in tx.all(BUCKET_API_KEYS) if other["user_id"] == key.user_id)

@@ -164,7 +164,7 @@ class StreamTest(RoutesTestCase, unittest.IsolatedAsyncioTestCase):
     def owner_session(self) -> tuple[str, str]:
         login = login_tokens.issue_login_token(self.store, self.owner.id, 3600)
         credential = login_tokens.redeem_login_token(self.store, login, SignInRules(3600)).session_credential
-        return credential, f"{self.cfg.cookie_name}={encryption.xchacha_encrypt_string(self.cfg.secret_key, credential)}"
+        return credential, f"{self.cfg.session_cookie_name}={encryption.xchacha_encrypt_string(encryption.subkey(self.cfg.secret_key, encryption.PURPOSE_COOKIE), credential)}"
 
     async def open(self, cookie: str | None = None):
         exchange, task = asgi_request(self.app, PATH, cookie or self.owner_cookie)

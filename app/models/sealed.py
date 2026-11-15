@@ -11,20 +11,28 @@ from app.core import encryption
 from app.core.db import Record
 from app.core.db import BUCKET_USERS
 
-# Every field encrypted with the secret key on its own, by bucket. Anything else
-# that does so belongs here too, or that field is lost at the next rotation.
-SEALED_FIELDS: dict[str, tuple[str, ...]] = {
-    BUCKET_USERS: ("totp_secret", "totp_pending"),
+# Every field sealed on its own, by bucket, with the purpose whose subkey of
+# secret.key seals it (see encryption.subkey). Anything else that seals a field
+# belongs here too, or that field is lost at the next rotation.
+SEALED_FIELDS: dict[str, dict[str, str]] = {
+    BUCKET_USERS: {"totp_secret": encryption.PURPOSE_TOTP, "totp_pending": encryption.PURPOSE_TOTP},
 }
 
 
 def rekey_record(old_key: str, new_key: str) -> Callable[[str, Record], None]:
-    """The rewrite db.rekey runs on every record."""
+    """The rewrite db.rekey runs on every record. A field sealed the old way,
+    with secret.key itself, opens with that: this is also how an old database
+    is brought up to date (db.open_store)."""
 
     def rewrite(bucket: str, record: Record) -> None:
-        for field in SEALED_FIELDS.get(bucket, ()):
+        for field, purpose in SEALED_FIELDS.get(bucket, {}).items():
             sealed = record.get(field, "")
-            if sealed:
-                record[field] = encryption.xchacha_encrypt_string(new_key, encryption.xchacha_decrypt_string(old_key, sealed))
+            if not sealed:
+                continue
+            try:
+                secret = encryption.xchacha_decrypt_string(encryption.subkey(old_key, purpose), sealed)
+            except encryption.CipherTextError:
+                secret = encryption.xchacha_decrypt_string(old_key, sealed)
+            record[field] = encryption.xchacha_encrypt_string(encryption.subkey(new_key, purpose), secret)
 
     return rewrite

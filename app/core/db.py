@@ -118,10 +118,31 @@ def _table(bucket: str) -> str:
     return f'"{bucket}"'
 
 
+def _bound(bucket: str, key: Key) -> bytes:
+    """What a value is sealed to besides the key: its bucket, a zero byte, and
+    its key (an integer as 8 bytes big-endian, as the Go template stores it).
+    A value copied to another key or bucket then fails to open, instead of
+    being read as that record: with the owner's users record copied over
+    another account's, that account's cookie would pass as the owner's.
+    Someone who can write app.db but has no secret.key (a backup, a restore
+    pipeline, shared storage) can still delete records, or put back an older
+    copy of the same one, but not move one."""
+    raw = key.to_bytes(8, "big") if isinstance(key, int) else str(key).encode("utf-8")
+    return bucket.encode("utf-8") + b"\0" + raw
+
+
+# The sealing table holds one row, how values are sealed. No row on a database
+# that has records is the old way: secret.key itself, bound to nothing.
+SEALING_VERSION = 2
+
+
 class Store:
     def __init__(self, path: Path, secret_key: str, encrypt_at_rest: bool) -> None:
         self.path = path
         self._secret_key = secret_key
+        # Every value is sealed with secret.key's PURPOSE_DB subkey, bound to
+        # its bucket and key (see _bound), not with secret.key itself.
+        self._record_key = encryption.subkey(secret_key, encryption.PURPOSE_DB)
         self._encrypt_at_rest = encrypt_at_rest
 
     # -- connections -------------------------------------------------------
@@ -171,6 +192,7 @@ class Store:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS sequences (bucket TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)"
             )
+            connection.execute("CREATE TABLE IF NOT EXISTS sealing (version INTEGER NOT NULL)")
 
     def schema_version(self) -> int:
         """The version this database is at. See "data migrations" below."""
@@ -189,21 +211,26 @@ class Store:
 
     # -- encoding ----------------------------------------------------------
 
-    def encode(self, record: Record) -> bytes:
+    def encode(self, bucket: str, key: Key, record: Record) -> bytes:
         raw = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8")
         if not self._encrypt_at_rest:
             return raw
-        return encryption.xchacha_encrypt_bytes(self._secret_key, raw)
+        return encryption.xchacha_encrypt_bound(self._record_key, raw, _bound(bucket, key))
 
-    def decode(self, raw: bytes) -> Record:
+    def decode(self, bucket: str, key: Key, raw: bytes, old_way: bool = False) -> Record:
+        """old_way opens a value sealed before records were bound: secret.key
+        itself, bound to nothing. Only rekey asks for it."""
         plain = raw
         if self._encrypt_at_rest:
             try:
-                plain = encryption.xchacha_decrypt_bytes(self._secret_key, bytes(raw))
+                if old_way:
+                    plain = encryption.xchacha_decrypt_bytes(self._secret_key, bytes(raw))
+                else:
+                    plain = encryption.xchacha_decrypt_bound(self._record_key, bytes(raw), _bound(bucket, key))
             except encryption.CipherTextError:
                 raise DecodeError(
-                    "could not decrypt a stored record -- is secret.key "
-                    "the same key it was written with?"
+                    f"could not decrypt the stored record {bucket}/{key!r} -- is secret.key the same key it was "
+                    "written with, and is the record where it was written?"
                 ) from None
         try:
             return json.loads(plain)
@@ -215,7 +242,7 @@ class Store:
     # -- the record API ----------------------------------------------------
 
     def put(self, bucket: str, key: Key, record: Record) -> None:
-        encoded = self.encode(record)
+        encoded = self.encode(bucket, key, record)
         with self._connection() as connection:
             connection.execute(f"INSERT OR REPLACE INTO {_table(bucket)} (key, value) VALUES (?, ?)", (key, encoded))
 
@@ -224,7 +251,7 @@ class Store:
         a record that exists."""
         with self._connection() as connection:
             row = connection.execute(f"SELECT value FROM {_table(bucket)} WHERE key = ?", (key,)).fetchone()
-        return None if row is None else self.decode(row[0])
+        return None if row is None else self.decode(bucket, key, row[0])
 
     def delete(self, bucket: str, key: Key) -> None:
         with self._connection() as connection:
@@ -234,7 +261,7 @@ class Store:
         """Every record in a bucket, in key order."""
         with self._connection() as connection:
             rows = connection.execute(f"SELECT key, value FROM {_table(bucket)} ORDER BY key").fetchall()
-        return [(key, self.decode(value)) for key, value in rows]
+        return [(key, self.decode(bucket, key, value)) for key, value in rows]
 
     def next_sequence(self, bucket: str) -> int:
         """Monotonic ids handed out inside a write transaction, so two
@@ -263,9 +290,9 @@ class Store:
             row = connection.execute(f"SELECT value FROM {table} WHERE key = ?", (key,)).fetchone()
             if row is None:
                 return None
-            record = self.decode(row[0])
+            record = self.decode(bucket, key, row[0])
             mutate(record)
-            connection.execute(f"UPDATE {table} SET value = ? WHERE key = ?", (self.encode(record), key))
+            connection.execute(f"UPDATE {table} SET value = ? WHERE key = ?", (self.encode(bucket, key, record), key))
             return record
 
     def delete_where(self, bucket: str, match: Callable[[Key, Record], bool]) -> int:
@@ -279,7 +306,7 @@ class Store:
         table = _table(bucket)
         with self._write() as connection:
             rows = connection.execute(f"SELECT key, value FROM {table}").fetchall()
-            doomed = [(key,) for key, value in rows if match(key, self.decode(value))]
+            doomed = [(key,) for key, value in rows if match(key, self.decode(bucket, key, value))]
             connection.executemany(f"DELETE FROM {table} WHERE key = ?", doomed)
             return len(doomed)
 
@@ -308,11 +335,11 @@ class Transaction:
 
     def get(self, bucket: str, key: Key) -> Record | None:
         row = self._connection.execute(f"SELECT value FROM {_table(bucket)} WHERE key = ?", (key,)).fetchone()
-        return None if row is None else self._store.decode(row[0])
+        return None if row is None else self._store.decode(bucket, key, row[0])
 
     def put(self, bucket: str, key: Key, record: Record) -> None:
         self._connection.execute(
-            f"INSERT OR REPLACE INTO {_table(bucket)} (key, value) VALUES (?, ?)", (key, self._store.encode(record))
+            f"INSERT OR REPLACE INTO {_table(bucket)} (key, value) VALUES (?, ?)", (key, self._store.encode(bucket, key, record))
         )
 
     def delete(self, bucket: str, key: Key) -> None:
@@ -320,7 +347,7 @@ class Transaction:
 
     def all(self, bucket: str) -> list[tuple[Key, Record]]:
         rows = self._connection.execute(f"SELECT key, value FROM {_table(bucket)} ORDER BY key").fetchall()
-        return [(key, self._store.decode(value)) for key, value in rows]
+        return [(key, self._store.decode(bucket, key, value)) for key, value in rows]
 
     def next_sequence(self, bucket: str) -> int:
         """Store.next_sequence inside this transaction, for a record that has
@@ -443,9 +470,11 @@ def check_file(path: Path, secret_key: str, encrypt_at_rest: bool) -> None:
         result = connection.execute("PRAGMA integrity_check").fetchone()[0]
         if result != "ok":
             raise DecodeError(f"the file fails SQLite's integrity check: {result}")
+        if _sealed_the_old_way(connection):
+            raise DecodeError("the database is sealed the old way, before records were bound to their place -- pass it through rekey")
         for bucket in _buckets_in(connection):
-            for (value,) in connection.execute(f"SELECT value FROM {_table(bucket)}"):
-                store.decode(value)
+            for key, value in connection.execute(f"SELECT key, value FROM {_table(bucket)}"):
+                store.decode(bucket, key, value)
 
 
 def rekey(path: Path, old_key: str, new_key: str, encrypt_at_rest: bool, rewrite: Callable[[str, Record], None]) -> None:
@@ -454,16 +483,80 @@ def rekey(path: Path, old_key: str, new_key: str, encrypt_at_rest: bool, rewrite
     rewrite, which changes it in place, for the fields a model encrypts a
     second time on its own (see sealed.rekey_record). With encrypt_at_rest
     off only rewrite has anything to change. Tables an app added through
-    connect() are not encrypted by this module, so they are left alone."""
+    connect() are not encrypted by this module, so they are left alone.
+
+    A file sealed the old way (before records were bound to their place, see
+    _bound) is read the old way and written the new way, so the same call that
+    rotates a key also brings an old database or backup up to date; old_key
+    and new_key may then be the same key."""
     reader = Store(path, old_key, encrypt_at_rest)
     writer = Store(path, new_key, encrypt_at_rest)
     with reader._write() as connection:
+        connection.execute("CREATE TABLE IF NOT EXISTS sealing (version INTEGER NOT NULL)")
+        old_way = _sealed_the_old_way(connection)
         for bucket in _buckets_in(connection):
             table = _table(bucket)
             for key, value in connection.execute(f"SELECT key, value FROM {table}").fetchall():
-                record = reader.decode(value)
+                record = reader.decode(bucket, key, value, old_way=old_way)
                 rewrite(bucket, record)
-                connection.execute(f"UPDATE {table} SET value = ? WHERE key = ?", (writer.encode(record), key))
+                connection.execute(f"UPDATE {table} SET value = ? WHERE key = ?", (writer.encode(bucket, key, record), key))
+        _write_sealing(connection)
+
+
+def _sealed_the_old_way(connection: sqlite3.Connection) -> bool:
+    tables = {name for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "sealing" not in tables:
+        return True
+    row = connection.execute("SELECT version FROM sealing").fetchone()
+    return row is None or row[0] != SEALING_VERSION
+
+
+def _write_sealing(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM sealing")
+    connection.execute("INSERT INTO sealing (version) VALUES (?)", (SEALING_VERSION,))
+
+
+def sealed_the_old_way(path: Path) -> bool:
+    """Whether the database file at path still needs bringing up to date. A
+    file that cannot be read says no: whatever opens it next reports the real
+    problem."""
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=BUSY_TIMEOUT_SECONDS)
+    except sqlite3.Error:
+        return False
+    try:
+        return _sealed_the_old_way(connection)
+    except sqlite3.Error:
+        return False
+    finally:
+        connection.close()
+
+
+def _reseal_if_old(store: Store, encrypt_at_rest: bool, server_lock_path: Path | None) -> None:
+    """Bring a database sealed the old way up to date, once, before anything
+    reads it: every record is opened with secret.key, bound to nothing, and
+    sealed again with the PURPOSE_DB subkey, bound to its bucket and key, and
+    the fields models seal on their own move to their own subkeys. The file
+    before is kept beside it, as a migration keeps it."""
+    with store._connection() as connection:
+        if not _sealed_the_old_way(connection):
+            return
+    if server_lock_path is not None and server_lock.held(server_lock_path):
+        raise RuntimeError("the database is sealed the old way and a server is running on it -- restart the server, which re-seals it itself")
+    # app.models imports this module, so it is imported here, when needed.
+    from app.models import sealed
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    kept = store.path.with_name(f"{store.path.name}.before-reseal-{stamp}")
+    try:
+        store.snapshot(kept)
+    except (OSError, sqlite3.Error) as error:
+        raise RuntimeError(f"could not copy the database before re-sealing it: {error}") from None
+    try:
+        rekey(store.path, store._secret_key, store._secret_key, encrypt_at_rest, sealed.rekey_record(store._secret_key, store._secret_key))
+    except (DecodeError, encryption.CipherTextError) as error:
+        raise RuntimeError(f"could not re-seal the database, it is unchanged (a copy is at {kept}): {error}") from None
+    print(f"[reseal] every record is now bound to its place; the database before is kept at {kept}", flush=True)
 
 
 def open_store(
@@ -485,6 +578,11 @@ def open_store(
         if not database_path.exists():
             os.close(os.open(database_path, os.O_WRONLY | os.O_CREAT, 0o600))
         store.initialise()
+        if fresh:
+            with store._connection() as connection:
+                _write_sealing(connection)
+        else:
+            _reseal_if_old(store, encrypt_at_rest, server_lock_path)
         _migrate(store, fresh, MIGRATIONS if migrations is None else migrations, server_lock_path)
     except OSError as error:
         raise RuntimeError(f"could not create the database at {database_path}: {error.strerror}") from None

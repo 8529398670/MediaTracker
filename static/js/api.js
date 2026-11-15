@@ -189,6 +189,10 @@ const Api = {
   setKeyExpiry( keyId , days ) {
     return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/expiry" , { expires_in_days: days } );
   },
+  // Whether one of your own keys may make a login link for your account.
+  setKeySignIn( keyId , on ) {
+    return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/sign-in" , { may_sign_in: on } );
+  },
   revokeKey( keyId )           { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/revoke" ); },
   deleteKey( keyId )           { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/delete" ); },
   restoreKey( keyId )          { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/restore" ); },

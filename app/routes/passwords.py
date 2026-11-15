@@ -101,7 +101,7 @@ def _session_id(request: Request) -> str:
     the account's others end."""
     cfg = get_config(request)
     try:
-        parts = split_credential(decrypt_cookie(cfg, request.cookies.get(cfg.cookie_name, "")))
+        parts = split_credential(decrypt_cookie(cfg, request.cookies.get(cfg.session_cookie_name, "")))
     except (CipherTextError, BadKeyError):
         return ""
     return "" if parts is None else parts[0]

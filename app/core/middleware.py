@@ -99,6 +99,36 @@ class SecurityHeaders:
         await self.app(scope, receive, send_with_headers)
 
 
+class NoStore:
+    """Marks every response private and never to be stored, unless it says
+    otherwise itself: the static files keep their own rule (images get a long
+    max-age, text its own no-store), and everything else, every API reply,
+    error page and stream, gets this one.
+
+    Without it, a proxy or CDN in front of the app is free to cache an API
+    reply: a Cloudflare "cache everything" rule, or its default of caching any
+    path that ends in a file extension, would hand the owner's log for a day
+    (/api/owner/logs/days/<date>) to whoever asks for the same URL next. Vary
+    says the reply depends on who asked, for any cache that ignores no-store."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_no_store(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.setdefault("cache-control", "no-store, private")
+                headers.setdefault("vary", "Cookie, Authorization")
+            await send(message)
+
+        await self.app(scope, receive, send_no_store)
+
+
 def client_ip(scope: Scope, cfg: Config, trusted: Sequence[IPNetwork]) -> str:
     """The address a request is counted against.
 
@@ -187,6 +217,15 @@ BUDGET_ASSET = "asset"
 BUDGET_NONE = "none"
 
 
+def normalise_path(path: str) -> str:
+    """A path as budget_for and the request log's skip list match it:
+    lowercased, without a trailing slash (see budget_for for why)."""
+    normalised = path.lower()
+    if len(normalised) > 1:
+        normalised = normalised.rstrip("/")
+    return normalised
+
+
 def budget_for(method: str, path: str) -> str:
     """Which limit a request counts against.
 
@@ -199,9 +238,7 @@ def budget_for(method: str, path: str) -> str:
     twenty, all no-store, so counting them meant about five reloads a minute
     hit a 429. Serving one touches no database and no credential. The page
     itself is not exempt, and neither is anything under /api."""
-    normalised = path.lower()
-    if len(normalised) > 1:
-        normalised = normalised.rstrip("/")
+    normalised = normalise_path(path)
     if method == "POST" and normalised in SIGN_IN_PATHS:
         return BUDGET_SIGN_IN
     if method in ("GET", "HEAD") and normalised.startswith("/api/img/"):
@@ -209,6 +246,26 @@ def budget_for(method: str, path: str) -> str:
     if static_asset(method, normalised):
         return BUDGET_NONE
     return BUDGET_GENERAL
+
+
+def rate_key(ip: str) -> str:
+    """Who a budget belongs to: an IPv4 address as it is, an IPv6 address by
+    its /64. One home or one server gets a whole /64, so counting each /128
+    alone would hand whoever has one as many budgets as they care to pick
+    addresses. Anything that does not parse is used as it is."""
+    try:
+        address = ipaddress.ip_address(ip.split("%", 1)[0])
+    except ValueError:
+        return ip
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.IPv6Network((address, 64), strict=False))
+    return str(address)
+
+
+# The headers a proxy names the visitor's address in.
+PROXY_HEADERS = ("CF-Connecting-IP", "X-Forwarded-For", "X-Real-IP")
 
 
 class RateLimit:
@@ -229,13 +286,56 @@ class RateLimit:
     The budgets, the window and who counts as a proxy are read per request,
     so an edit to server.rate_limit_max, rate_limit_signin_max,
     rate_limit_upload_max, rate_limit_window_seconds or the proxy settings
-    applies at once."""
+    applies at once.
 
-    def __init__(self, app: ASGIApp, settings: Holder) -> None:
+    A budget belongs to an address, or for IPv6 to its /64 (rate_key).
+
+    It writes to logger (None is fine) and the server's own output twice over:
+    the first 429 a budget gives in a window, so a lockout can be seen, and
+    once per process when a request carries a proxy's address header while
+    server.trust_proxy is off (_warn_proxy_headers). RequestLog runs after
+    this, so those 429s would otherwise appear nowhere."""
+
+    def __init__(self, app: ASGIApp, settings: Holder, logger: logs.Logger | None = None) -> None:
         self.app = app
         self.settings = settings
+        self.logger = logger
         self._hits: dict[tuple[str, str], deque[float]] = {}
         self._last_sweep = time.monotonic()
+        self._warned = False
+        self._noticed: dict[tuple[str, str], float] = {}
+
+    def _warn_proxy_headers(self, scope: Scope, cfg: Config, peer: str) -> None:
+        """Every visitor behind a proxy the server does not trust has the
+        proxy's address, so they all share one budget: 60 sign-in attempts a
+        minute from anyone would lock everyone out. That is the default behind
+        Cloudflare Tunnel or a local proxy until server.trust_proxy is set."""
+        if cfg.trust_proxy:
+            return
+        headers = Headers(scope=scope)
+        for name in PROXY_HEADERS:
+            if name in headers:
+                self._warned = True
+                message = (f"requests carry {name} but server.trust_proxy is off, so every visitor is counted as the "
+                           f"proxy's address {peer} and they share one rate limit; see server.trust_proxy in config.yaml")
+                print(f"[rate-limit] {message}", flush=True)
+                if self.logger is not None:
+                    self.logger.system(logs.LEVEL_WARN, message, {"header": name, "peer": peer})
+                return
+
+    def _notice(self, scope: Scope, budget: str, key: str, now: float, window: float) -> None:
+        """The first 429 a budget gives in a window, once: a flood of refused
+        requests writes one line per budget per window, not one each."""
+        bucket = (budget, key)
+        if now - self._noticed.get(bucket, -window) < window:
+            return
+        if len(self._noticed) > 10000:
+            self._noticed = {name: when for name, when in self._noticed.items() if now - when < window}
+        self._noticed[bucket] = now
+        method, path = scope.get("method", ""), scope.get("path", "")
+        print(f"[rate-limit] {budget} budget used up for {key} ({method} {path}); more 429s for it this window are not logged", flush=True)
+        if self.logger is not None:
+            self.logger.system(logs.LEVEL_WARN, "rate limit reached", {"budget": budget, "key": key, "method": method, "path": path, "window_seconds": int(window)})
 
     def _sweep(self, now: float, window: float) -> None:
         # Forget clients with nothing inside the window, so the table does not
@@ -262,10 +362,15 @@ class RateLimit:
         window = float(cfg.rate_limit_window_seconds)
         now = time.monotonic()
         self._sweep(now, window)
-        hits = self._hits.setdefault((budget, client_ip(scope, cfg, trusted_for(cfg))), deque())
+        if not self._warned:
+            client = scope.get("client")
+            self._warn_proxy_headers(scope, cfg, client[0] if client else "unknown")
+        key = rate_key(client_ip(scope, cfg, trusted_for(cfg)))
+        hits = self._hits.setdefault((budget, key), deque())
         while hits and now - hits[0] > window:
             hits.popleft()
         if len(hits) >= limit:
+            self._notice(scope, budget, key, now, window)
             headers = {"retry-after": str(int(window))}
             request = Request(scope)
             response: Response = (

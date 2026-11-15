@@ -15,6 +15,7 @@ from typing import Any
 from app.core.db import BUCKET_TITLES, BUCKET_TYPES, Store
 from app.media import normalize
 from app.models import mark_deleted, to_iso, unmark_deleted, utc_now
+from app.models.users import owner_id_tx
 from app.models.revision import NotFoundError, bump
 
 BUILTIN = (
@@ -106,7 +107,7 @@ def restore_type(store: Store, type_id: str, actor_id: int, actor_is_admin: bool
         record = tx.get(BUCKET_TYPES, type_id)
         if record is None:
             raise NotFoundError("type")
-        unmark_deleted(record, actor_id, actor_is_admin)
+        unmark_deleted(record, actor_id, actor_is_admin, owner_id_tx(tx))
         rev = bump(tx)
         for title_key in record.pop("moved_titles", []) or []:
             title = tx.get(BUCKET_TITLES, title_key)

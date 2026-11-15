@@ -271,6 +271,10 @@ class Declared:
     # docs list (theirs, the request checks' and the handler's own).
     guards: tuple[type, ...] = ()
     errors: tuple[int, ...] = ()
+    # bulk is the route's bulk version, from bulk=True; bulk_of, on a bulk
+    # route, the route it runs once per item (see app/apidocs/bulk.py).
+    bulk: Declared | None = None
+    bulk_of: Declared | None = None
 
     def serve(self, request: Any, body: Any) -> Any:
         """Runs a plain-function handler: an MCP tool's call."""
@@ -287,7 +291,7 @@ PARAMETER = re.compile(r"\{(\w+)\}")
 TOOL_KEYS = ("read_only", "destructive", "admin_only", "enabled", "call", "mcp_note", "mcp_title", "mcp_description")
 
 
-def route(where: str, *, use: Sequence[type] = (), no_switch: bool = False, mcp: str = "", **fields: Any) -> Callable[[Callable], Callable]:
+def route(where: str, *, use: Sequence[type] = (), no_switch: bool = False, mcp: str = "", bulk: bool = False, bulk_path: str = "", **fields: Any) -> Callable[[Callable], Callable]:
     """Declares a route: where it is ("POST /api/admin/users/{user_id}/rename",
     with each {param} a PATH field of the request), its docs (the fields of
     Op), and its types from the handler's annotations. Its guards follow from
@@ -299,7 +303,14 @@ def route(where: str, *, use: Sequence[type] = (), no_switch: bool = False, mcp:
     admin_only (on by default for role=ADMIN), enabled, call, and mcp_note,
     words only the tool shows after the description. mcp_title and
     mcp_description replace the tool's words, for one whose words must
-    differ from its route's."""
+    differ from its route's.
+
+    bulk=True gives a route with an {id} in its path a bulk version: POST at
+    the path with /api/ made /api/bulk/ and its {params} left out (bulk_path=
+    says another), behind the same guards, running the handler once per item
+    (see app/apidocs/bulk.py). With mcp=, its tool is <tool>_bulk. Keep
+    bulk=True off the # feature:mcp lines: the bulk route stays when mcp is
+    pruned."""
     from app.apidocs import Op
 
     method, _, path = where.partition(" ")
@@ -310,6 +321,8 @@ def route(where: str, *, use: Sequence[type] = (), no_switch: bool = False, mcp:
         raise TypeError(f"@route({where!r}): {', '.join(sorted(tool))} need mcp=\"tool_name\"")
     if mcp:
         tool["name"] = mcp
+    if bulk_path and not bulk:
+        raise TypeError(f"@route({where!r}): bulk_path= goes with bulk=True")
     op = Op(**fields)
 
     def mark(handler: Callable) -> Callable:
@@ -331,6 +344,12 @@ def route(where: str, *, use: Sequence[type] = (), no_switch: bool = False, mcp:
 
         endpoint.__declared__ = declared  # type: ignore[attr-defined]
         declared.endpoint = endpoint
+        if bulk:
+            from app.apidocs.bulk import bulk_declared, check_bulk
+
+            if inspect.iscoroutinefunction(handler):
+                raise TypeError(f"{handler.__qualname__}: bulk=True runs the handler once per item in a worker thread: make it a plain function")
+            declared.bulk = bulk_declared(declared, check_bulk(declared, bulk_path))
         return endpoint
 
     return mark
@@ -460,6 +479,10 @@ def input_schema(handler: Any) -> dict[str, Any]:
     declared = declared_of(handler)
     if declared is None:
         raise TypeError(f"{handler!r} is not a declared route")
+    if declared.bulk_of is not None:
+        from app.apidocs.bulk import bulk_arguments_schema
+
+        return bulk_arguments_schema(Schemas(), declared)
     return declared.input.arguments_schema(Schemas())
 
 

@@ -125,6 +125,26 @@ class Tool:
 
         return cls(call=run, endpoint=endpoint, **fields)
 
+    @classmethod
+    def for_bulk(cls, endpoint: Callable, **fields: Any) -> Tool:
+        """The tool for a route's bulk version (bulk=True in its @route(...)):
+        its arguments are the bulk route's body, items and shared, and it
+        answers the bulk route's reply."""
+        from app.apidocs.bulk import call_bulk
+        from app.apidocs.route import declared_of
+
+        declared = declared_of(endpoint)
+        if declared is None or declared.bulk_of is None:
+            raise TypeError(f"{endpoint!r} is not a bulk route")
+
+        def run(tool_call: Call) -> dict[str, Any]:
+            reply, message, malformed = call_bulk(declared, tool_call.request, tool_call.args)
+            if message:
+                raise InvalidArguments(f"invalid arguments: {message}") if malformed else Refusal(message)
+            return msgspec.to_builtins(reply)
+
+        return cls(call=run, endpoint=endpoint, **fields)
+
     def route_name(self) -> str:
         """The HTTP route the tool stands for, as "METHOD /path/{param}" the
         way config/api.json writes it."""

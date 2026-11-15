@@ -198,14 +198,40 @@ class EditUsersTest(RoutesTestCase):
         # A user-scoped key on the same admin account is not an admin.
         self.assertEqual(self.by_key(self.user_key, "/api/admin/users", display_name="Eve", role="admin")[0], 403)
 
-    def test_only_a_full_role_key_makes_its_own_login_link(self) -> None:
-        """A login link becomes a full-role session, so only a key carrying the
-        account's full role may make one for its own account."""
-        status, reply = self.by_key(self.user_key, "/api/account/login-link")
-        self.assertEqual(status, 403)
-        self.assertIn("less than your account's role", reply["error"])
-        full_key, _ = api_keys.issue_api_key(self.store, self.user.id, "full", users.ROLE_USER, 3600)
-        status, reply = self.by_key(full_key, "/api/account/login-link")
+    def test_a_key_makes_its_own_login_link_only_when_allowed(self) -> None:
+        """S9: a login link becomes an ordinary browser session, so an API key
+        may make one for its own account only once that account allowed it,
+        from a session. Its link then works once and for at most 15 minutes,
+        whatever it asked for. Turned off again, the unused link it made stops
+        working. A browser session always gets its link."""
+        full_key, full = api_keys.issue_api_key(self.store, self.user.id, "full", users.ROLE_USER, 3600)
+        for key in (self.user_key, self.admin_key, full_key):
+            status, _ = self.by_key(key, "/api/account/login-link", max_uses=0, expires_in_minutes=0)
+            self.assertEqual(status, 403)
+
+        # A key cannot allow itself, and nobody but the key's own account can.
+        self.assertEqual(self.by_key(full_key, f"/api/keys/{full.id}/sign-in", may_sign_in=True)[0], 403)
+        owner = self.session(self.owner.id)
+        status, _ = self.call("POST", f"/api/keys/{full.id}/sign-in", cookie=owner, body={"csrf_token": self.csrf(owner), "may_sign_in": True})
+        self.assertEqual(status, 404)
+        alice = self.session(self.user.id)
+        status, reply = self.call("POST", f"/api/keys/{full.id}/sign-in", cookie=alice, body={"csrf_token": self.csrf(alice), "may_sign_in": True})
+        self.assertEqual(status, 200, reply)
+        self.assertTrue(reply["may_sign_in"])
+
+        status, reply = self.by_key(full_key, "/api/account/login-link", max_uses=0, expires_in_minutes=0)
+        self.assertEqual(status, 200, reply)
+        self.assertTrue(0 < reply["expires_in_seconds"] <= 15 * 60, reply)
+        self.assertTrue(self.signs_in(reply["login_path"]))
+        self.assertFalse(self.signs_in(reply["login_path"]))
+
+        unused = self.by_key(full_key, "/api/account/login-link")[1]["login_path"]
+        status, _ = self.call("POST", f"/api/keys/{full.id}/sign-in", cookie=alice, body={"csrf_token": self.csrf(alice), "may_sign_in": False})
+        self.assertEqual(status, 200)
+        self.assertFalse(self.signs_in(unused))
+        self.assertEqual(self.by_key(full_key, "/api/account/login-link")[0], 403)
+
+        status, reply = self.call("POST", "/api/account/login-link", cookie=alice, body={"csrf_token": self.csrf(alice)})
         self.assertEqual(status, 200, reply)
         self.assertTrue(self.signs_in(reply["login_path"]))
 

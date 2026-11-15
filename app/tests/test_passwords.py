@@ -252,7 +252,7 @@ class TwoFactorTest(AuthRoutesTestCase):
         # This store has encrypt_at_rest off, so the record is plain JSON.
         record = self.store.get(db.BUCKET_USERS, self.alice.id)
         self.assertNotIn(secret, str(record))
-        self.assertEqual(encryption.xchacha_decrypt_string(self.cfg.secret_key, record["totp_secret"]), secret)
+        self.assertEqual(encryption.xchacha_decrypt_string(encryption.subkey(self.cfg.secret_key, encryption.PURPOSE_TOTP), record["totp_secret"]), secret)
 
     def test_a_login_link_asks_for_the_code(self) -> None:
         alice = self.sign_in_with_link(self.alice.id)
@@ -393,6 +393,25 @@ class TwoFactorTest(AuthRoutesTestCase):
         challenge = self.new_challenge()
         credentials.set_user_disabled(self.store, self.alice.id, True)
         self.assertEqual(self.finish(challenge, code_for(secret, 1)).json(), {"error": "challenge_invalid"})
+
+    def test_turning_two_factor_on_ends_other_sessions(self) -> None:
+        """S15: an attacker's session stayed signed in after the victim
+        enrolled. The session that turned it on stays."""
+        attacker = self.sign_in_with_link(self.alice.id)
+        victim = self.sign_in_with_link(self.alice.id)
+        self.enrol(victim)
+        self.assertEqual(attacker.get("/api/me").status_code, 401)
+        self.assertEqual(victim.get("/api/me").status_code, 200)
+
+    def test_resetting_two_factor_ends_every_session(self) -> None:
+        """S15: an admin resetting someone's two-factor ends every session
+        that account holds."""
+        alice = self.sign_in_with_link(self.alice.id)
+        self.enrol(alice)
+        owner = self.sign_in_with_link(self.owner.id)
+        path = f"/api/admin/users/{self.alice.id}/reset-two-factor"
+        self.assertEqual(owner.post(path, json={"csrf_token": self.csrf(owner)}).status_code, 200)
+        self.assertEqual(alice.get("/api/me").status_code, 401)
 
     def test_reset_rules(self) -> None:
         second_admin = users.create_user(self.store, "Second", users.ROLE_ADMIN)

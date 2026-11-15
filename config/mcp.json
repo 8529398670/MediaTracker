@@ -165,6 +165,54 @@
     {
       "adminOnly": true,
       "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Stop an account's login link working, for many at once (admin)"
+      },
+      "description": "Runs admin_cancel_login_link once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_cancel_login_link_bulk",
+      "route": "POST /api/bulk/admin/users/cancel-login-link",
+      "title": "Stop an account's login link working, for many at once (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
@@ -286,6 +334,53 @@
         "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Delete an invite link, for many at once (admin)"
+      },
+      "description": "Runs admin_delete_invite_link once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "link_id": {
+                  "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "link_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_delete_invite_link_bulk",
+      "route": "POST /api/bulk/admin/invite-links/delete",
+      "title": "Delete an invite link, for many at once (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Delete an account (admin)"
       },
       "description": "Remove an account for good, with its sessions, login link and API keys. Cannot be undone: admin_set_user_disabled is the reversible version. Only the owner deletes an admin; nobody deletes the owner or themselves.",
@@ -306,6 +401,54 @@
       "name": "admin_delete_user",
       "route": "POST /api/admin/users/{user_id}/delete",
       "title": "Delete an account (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete an account, for many at once (admin)"
+      },
+      "description": "Runs admin_delete_user once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_delete_user_bulk",
+      "route": "POST /api/bulk/admin/users/delete",
+      "title": "Delete an account, for many at once (admin)"
     },
     {
       "adminOnly": true,
@@ -625,6 +768,54 @@
     {
       "adminOnly": true,
       "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Turn off an account's two-factor, for many at once (admin)"
+      },
+      "description": "Runs admin_reset_two_factor once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_reset_two_factor_bulk",
+      "route": "POST /api/bulk/admin/users/reset-two-factor",
+      "title": "Turn off an account's two-factor, for many at once (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
@@ -647,6 +838,53 @@
       "name": "admin_restore_invite_link",
       "route": "POST /api/admin/invite-links/{link_id}/restore",
       "title": "Undo deleting an invite link (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Undo deleting an invite link, for many at once (admin)"
+      },
+      "description": "Runs admin_restore_invite_link once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "link_id": {
+                  "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "link_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_restore_invite_link_bulk",
+      "route": "POST /api/bulk/admin/invite-links/restore",
+      "title": "Undo deleting an invite link, for many at once (admin)"
     },
     {
       "adminOnly": true,
@@ -681,6 +919,54 @@
         "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Revoke a user's access, for many at once (admin)"
+      },
+      "description": "Runs admin_revoke_access once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_access_bulk",
+      "route": "POST /api/bulk/admin/users/revoke-access",
+      "title": "Revoke a user's access, for many at once (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Switch off an invite link (admin)"
       },
       "description": "Stop an invite link from letting anyone else join or sign in through it. Accounts it already made keep working. Cannot be switched back on.",
@@ -700,6 +986,53 @@
       "name": "admin_revoke_invite_link",
       "route": "POST /api/admin/invite-links/{link_id}/revoke",
       "title": "Switch off an invite link (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Switch off an invite link, for many at once (admin)"
+      },
+      "description": "Runs admin_revoke_invite_link once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "link_id": {
+                  "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "link_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_invite_link_bulk",
+      "route": "POST /api/bulk/admin/invite-links/revoke",
+      "title": "Switch off an invite link, for many at once (admin)"
     },
     {
       "adminOnly": true,
@@ -732,6 +1065,59 @@
       "name": "admin_revoke_user_session",
       "route": "POST /api/admin/users/{user_id}/sessions/{session_id}/revoke",
       "title": "Sign out one of an account's devices (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Sign out one of an account's devices, for many at once (admin)"
+      },
+      "description": "Runs admin_revoke_user_session once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
+                  "type": "string"
+                },
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "session_id",
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_user_session_bulk",
+      "route": "POST /api/bulk/admin/users/sessions/revoke",
+      "title": "Sign out one of an account's devices, for many at once (admin)"
     },
     {
       "adminOnly": true,
@@ -1018,6 +1404,61 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Disable or enable a user, for many at once (admin)"
+      },
+      "description": "Runs admin_set_user_disabled once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "disabled": {
+                  "type": "boolean"
+                },
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {
+              "disabled": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_user_disabled_bulk",
+      "route": "POST /api/bulk/admin/users/disabled",
+      "title": "Disable or enable a user, for many at once (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Change an account's role (admin)"
       },
       "description": "Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.",
@@ -1046,6 +1487,69 @@
       "name": "admin_set_user_role",
       "route": "POST /api/admin/users/{user_id}/role",
       "title": "Change an account's role (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change an account's role, for many at once (admin)"
+      },
+      "description": "Runs admin_set_user_role once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "role": {
+                  "enum": [
+                    "admin",
+                    "user"
+                  ],
+                  "type": "string"
+                },
+                "user_id": {
+                  "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {
+              "role": {
+                "enum": [
+                  "admin",
+                  "user"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_user_role_bulk",
+      "route": "POST /api/bulk/admin/users/role",
+      "title": "Change an account's role, for many at once (admin)"
     },
     {
       "adminOnly": true,
@@ -1128,6 +1632,53 @@
       "name": "admin_switch_on_invite_link",
       "route": "POST /api/admin/invite-links/{link_id}/switch-on",
       "title": "Switch an invite link back on (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Switch an invite link back on, for many at once (admin)"
+      },
+      "description": "Runs admin_switch_on_invite_link once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "link_id": {
+                  "description": "The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "link_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "admin_switch_on_invite_link_bulk",
+      "route": "POST /api/bulk/admin/invite-links/switch-on",
+      "title": "Switch an invite link back on, for many at once (admin)"
     },
     {
       "adminOnly": false,
@@ -1226,7 +1777,7 @@
         "readOnlyHint": false,
         "title": "A login link for yourself"
       },
-      "description": "A link that signs your own account in on a browser or another device. Only a key with your account's full role may ask: one scoped down to user on an admin account is refused. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
+      "description": "A link that signs your own account in on a browser or another device. An API key may ask only if your account let it, from a browser session (POST /api/keys/{key_id}/sign-in); its link works once, for at most 15 minutes. Only works if this key was allowed to make sign-in links, on the API keys card. Answers with login_url (open it to sign in; it works once, for at most 15 minutes), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1438,6 +1989,62 @@
         "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Delete a playlist, for many at once"
+      },
+      "description": "Runs delete_playlist once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "playlist_id": {
+                  "description": "A playlist's id, from GET /api/playlists.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "user": {
+                  "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "playlist_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "delete_playlist_bulk",
+      "route": "POST /api/bulk/playlists/delete",
+      "title": "Delete a playlist, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Delete a source"
       },
       "description": "Delete a source. Soft: restoring it brings it back within the undo window.",
@@ -1457,6 +2064,53 @@
       "name": "delete_source",
       "route": "POST /api/sources/{source_id}/delete",
       "title": "Delete a source"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete a source, for many at once"
+      },
+      "description": "Runs delete_source once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "source_id": {
+                  "description": "A source's id, from GET /api/sources.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "delete_source_bulk",
+      "route": "POST /api/bulk/sources/delete",
+      "title": "Delete a source, for many at once"
     },
     {
       "adminOnly": false,
@@ -1523,6 +2177,68 @@
         "destructiveHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Delete a type, for many at once"
+      },
+      "description": "Runs delete_type once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "reassign_to": {
+                  "description": "The type its titles move to. Needed while it holds any.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type_id": {
+                  "description": "A type's id, from GET /api/types.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {
+              "reassign_to": {
+                "description": "The type its titles move to. Needed while it holds any.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "delete_type_bulk",
+      "route": "POST /api/bulk/types/delete",
+      "title": "Delete a type, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Delete a view"
       },
       "description": "Delete a saved view. Soft: restoring it brings it back within the undo window.",
@@ -1551,6 +2267,62 @@
       "name": "delete_view",
       "route": "POST /api/views/{view_id}/delete",
       "title": "Delete a view"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete a view, for many at once"
+      },
+      "description": "Runs delete_view once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "user": {
+                  "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "view_id": {
+                  "description": "A view's id, from GET /api/views.",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "view_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "delete_view_bulk",
+      "route": "POST /api/bulk/views/delete",
+      "title": "Delete a view, for many at once"
     },
     {
       "adminOnly": false,
@@ -1803,6 +2575,62 @@
       "name": "enrich_title",
       "route": "POST /api/titles/{title_id}/enrich",
       "title": "Fill a title in"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Fill a title in, for many at once"
+      },
+      "description": "Runs enrich_title once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "refresh": {
+                  "description": "Overwrite what is there, not just fill in what is missing.",
+                  "type": "boolean"
+                },
+                "title_id": {
+                  "description": "A title's id, from GET /api/library (search_library over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {
+              "refresh": {
+                "description": "Overwrite what is there, not just fill in what is missing.",
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "enrich_title_bulk",
+      "route": "POST /api/bulk/titles/enrich",
+      "title": "Fill a title in, for many at once"
     },
     {
       "adminOnly": false,
@@ -2276,6 +3104,68 @@
     {
       "adminOnly": false,
       "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Merge duplicates, for many at once"
+      },
+      "description": "Runs merge_titles once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "drop_ids": {
+                  "description": "Title ids, from GET /api/library (search_library over MCP).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title_id": {
+                  "description": "A title's id, from GET /api/library (search_library over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {
+              "drop_ids": {
+                "description": "Title ids, from GET /api/library (search_library over MCP).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "merge_titles_bulk",
+      "route": "POST /api/bulk/titles/merge",
+      "title": "Merge duplicates, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
@@ -2550,6 +3440,62 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Restore a playlist, for many at once"
+      },
+      "description": "Runs restore_playlist once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "playlist_id": {
+                  "description": "A playlist's id, from GET /api/playlists.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "user": {
+                  "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "playlist_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "restore_playlist_bulk",
+      "route": "POST /api/bulk/playlists/restore",
+      "title": "Restore a playlist, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Restore a source"
       },
       "description": "Bring back a deleted source, within the undo window.",
@@ -2569,6 +3515,53 @@
       "name": "restore_source",
       "route": "POST /api/sources/{source_id}/restore",
       "title": "Restore a source"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a source, for many at once"
+      },
+      "description": "Runs restore_source once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "source_id": {
+                  "description": "A source's id, from GET /api/sources.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "restore_source_bulk",
+      "route": "POST /api/bulk/sources/restore",
+      "title": "Restore a source, for many at once"
     },
     {
       "adminOnly": false,
@@ -2628,6 +3621,53 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Restore a type, for many at once"
+      },
+      "description": "Runs restore_type once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "type_id": {
+                  "description": "A type's id, from GET /api/types.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "restore_type_bulk",
+      "route": "POST /api/bulk/types/restore",
+      "title": "Restore a type, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Restore a view"
       },
       "description": "Bring back a deleted saved view, within the undo window.",
@@ -2656,6 +3696,62 @@
       "name": "restore_view",
       "route": "POST /api/views/{view_id}/restore",
       "title": "Restore a view"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a view, for many at once"
+      },
+      "description": "Runs restore_view once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "user": {
+                  "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "view_id": {
+                  "description": "A view's id, from GET /api/views.",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "view_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "restore_view_bulk",
+      "route": "POST /api/bulk/views/restore",
+      "title": "Restore a view, for many at once"
     },
     {
       "adminOnly": false,
@@ -2700,6 +3796,53 @@
       "name": "revoke_my_session",
       "route": "POST /api/account/sessions/{session_id}/revoke",
       "title": "Sign out one of your devices"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Sign out one of your devices, for many at once"
+      },
+      "description": "Runs revoke_my_session once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "description": "The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "revoke_my_session_bulk",
+      "route": "POST /api/bulk/account/sessions/revoke",
+      "title": "Sign out one of your devices, for many at once"
     },
     {
       "adminOnly": false,
@@ -3326,6 +4469,53 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Undo a merge, for many at once"
+      },
+      "description": "Runs undo_merge once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "merge_id": {
+                  "description": "From merging titles.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "merge_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "undo_merge_bulk",
+      "route": "POST /api/bulk/merges/undo",
+      "title": "Undo a merge, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Change a source"
       },
       "description": "Change a source's link, title, note or tags. Returns the previous values.",
@@ -3398,6 +4588,68 @@
       "name": "update_title",
       "route": "POST /api/titles/{title_id}/update",
       "title": "Edit a title"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Edit a title, for many at once"
+      },
+      "description": "Runs update_title once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "expect": {
+                  "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+                },
+                "set": {
+                  "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+                  "type": "object"
+                },
+                "title_id": {
+                  "description": "A title's id, from GET /api/library (search_library over MCP).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {
+              "expect": {
+                "description": "Optional: the rev you last read. If it changed meanwhile the call is refused with 409 changed_elsewhere and the current value."
+              },
+              "set": {
+                "description": "Title fields: title, year, type, tags, notes, genres, cast, creator, runtime, certification, imdb_id, wiki_url, poster_url. Unknown ones are ignored.",
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "update_title_bulk",
+      "route": "POST /api/bulk/titles/update",
+      "title": "Edit a title, for many at once"
     },
     {
       "adminOnly": false,

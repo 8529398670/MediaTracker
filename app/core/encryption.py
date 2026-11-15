@@ -178,6 +178,30 @@ def key_fingerprint(key_hex: str) -> str:
     return sha256_hex("key-fingerprint-v1:" + key_hex)[:16]
 
 
+# The purposes secret.key is put to. Each seals with its own key, derived from
+# secret.key by subkey, so a value sealed for one never opens as another: a
+# session cookie is not a log line, and a log line is not a database record.
+PURPOSE_DB = "db"  # database records (app/core/db.py)
+PURPOSE_LOGS = "logs"  # activity log lines (app/core/logs.py)
+PURPOSE_COOKIE = "cookie"  # the session cookie (app/core/security.py)
+PURPOSE_TOTP = "totp"  # two-factor secrets, inside the user record
+PURPOSE_FILES = "files"  # each uploaded file's own key, inside its record
+PURPOSE_WEBHOOKS = "webhooks"  # each webhook's signing secret, inside its record
+
+
+def subkey(key_hex: str, purpose: str) -> str:
+    """The key one purpose seals with: keyed BLAKE2b-256 of a label, with
+    secret.key as the key (the same as the Go template's SubKey). It is
+    one-way, so a subkey that leaks gives away neither secret.key nor any
+    other purpose's key. A key that is not 32 bytes of hex gives "", which
+    every function here refuses with BadKeyError."""
+    try:
+        key = _decode_key(key_hex)
+    except BadKeyError:
+        return ""
+    return hashlib.blake2b(f"webserver subkey v1: {purpose}".encode("utf-8"), key=key, digest_size=32).hexdigest()
+
+
 def _decode_key(key_hex: str) -> bytes:
     try:
         raw = bytes.fromhex(key_hex)

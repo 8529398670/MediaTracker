@@ -189,7 +189,7 @@ async def stream_log_changes(request: Request, body: LogSearch) -> Response:
     if request.method == "HEAD":
         return Response(headers=sse.HEADERS)
     cfg, store = get_config(request), get_store(request)
-    credential = decrypt_cookie(cfg, request.cookies.get(cfg.cookie_name, ""))
+    credential = decrypt_cookie(cfg, request.cookies.get(cfg.session_cookie_name, ""))
     hub: sse.Hub = request.app.state.log_hub
     client = hub.join()
     if client is None:

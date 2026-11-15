@@ -38,6 +38,11 @@ class RestoreExpiredError(RestoreError):
         super().__init__("it was deleted too long ago to put back")
 
 
+class RestoreOutrankedError(RestoreError):
+    def __init__(self) -> None:
+        super().__init__("the owner deleted it, so only the owner can put it back")
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -58,14 +63,22 @@ def mark_deleted(record: dict, actor_id: int | None) -> None:
         record["deleted_by"] = actor_id
 
 
-def unmark_deleted(record: dict, actor_id: int, actor_is_admin: bool) -> None:
+def unmark_deleted(record: dict, actor_id: int, actor_is_admin: bool, owner_id: int | None) -> None:
     """The other half of mark_deleted, for update_value. Raises a
-    RestoreError, which rolls the write back, when it may not happen."""
+    RestoreError, which rolls the write back, when it may not happen.
+
+    Whoever deleted it may put it back, and so may an admin -- unless the one
+    who deleted it outranks them (S14): what the owner (owner_id) deleted only
+    the owner puts back. Otherwise the owner deletes an admin's key, that admin
+    restores it, and it is live again. (What an admin deleted, a user cannot
+    restore anyway.)"""
     deleted_at = from_iso(record.get("deleted_at"))
     if deleted_at is None:
         raise RestoreGoneError()
     if not actor_is_admin and record.get("deleted_by") != actor_id:
         raise RestoreForbiddenError()
+    if owner_id is not None and record.get("deleted_by") == owner_id and actor_id != owner_id:
+        raise RestoreOutrankedError()
     if utc_now() - deleted_at > RESTORE_WINDOW:
         raise RestoreExpiredError()
     record["deleted_at"] = None

@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from app.core.db import BUCKET_USERS, Store, Transaction
 from app.core.db import BUCKET_API_KEYS
 from app.models import to_iso, utc_now
-from app.models.api_keys import APIKey
+from app.models.api_keys import APIKey, void_what_keys_made_tx
 from app.models.login_tokens import delete_login_tokens_for_user, delete_pending_login_tokens
 from app.models.sessions import destroy_sessions_for_user
 from app.models.users import User, owner_id_tx
@@ -85,7 +85,9 @@ def set_user_disabled(store: Store, user_id: int, disabled: bool, actor_id: int 
     session or a link that survived would come back to life the moment the
     account was re-enabled. API keys are deliberately left alone -- see
     load_api_key -- and revoke_all_credentials is for when they should die
-    too.
+    too. What the keys made is not: their unused login links, and every
+    browser one of those signed in, in any account, end here too
+    (api_keys.void_what_keys_made_tx). They used to stay.
 
     The owner cannot be disabled by any route, the CLI included: the owner is
     always an enabled admin. Raises OwnerProtectedError; transfer ownership
@@ -107,6 +109,7 @@ def set_user_disabled(store: Store, user_id: int, disabled: bool, actor_id: int 
             destroy_sessions_for_user(tx, user_id)
             delete_pending_login_tokens(tx, user_id)
             delete_challenges_for_user(tx, user_id)
+            void_what_keys_made_tx(tx, user_id)
     return True
 
 
@@ -143,9 +146,12 @@ def set_user_role(store: Store, user_id: int, actor_id: int, role: str) -> bool 
     person being promoted. An admin cannot sign in through an invite link, so
     a new login link is the way back in.
 
-    Losing admin rights ends nothing: the role is read on every request, so it
-    applies at once, and API keys narrow to it. Invite links the account made
-    stop working while it is not an admin."""
+    Losing admin rights ends nothing of the account's own: the role is read
+    on every request, so it applies at once, and API keys narrow to it. Invite
+    links the account made stop working while it is not an admin. What its API
+    keys made as an admin does end: their unused login links, and the browsers
+    those signed in (api_keys.void_what_keys_made_tx). A link an admin's key
+    made outlived the demotion."""
     with store.transaction() as tx:
         record = tx.get(BUCKET_USERS, user_id)
         if record is None:
@@ -162,6 +168,8 @@ def set_user_role(store: Store, user_id: int, actor_id: int, role: str) -> bool 
             destroy_sessions_for_user(tx, user_id)
             delete_pending_login_tokens(tx, user_id)
             delete_challenges_for_user(tx, user_id)
+        else:
+            void_what_keys_made_tx(tx, user_id)
     return True
 
 
@@ -267,7 +275,9 @@ def delete_user(store: Store, user_id: int, actor_id: int | None) -> Revoked | N
 def reset_two_factor(store: Store, user_id: int, actor_id: int | None) -> bool:
     """Take 2FA off an account whose person lost both the phone and the
     recovery codes; False if there is no such account. Sign-ins waiting on a
-    code end with it.
+    code end with it, and so does every session the account holds (S15): a
+    reset is the way back in for someone who lost their device, and the device
+    may be in someone else's hands.
 
     actor_id is who is asking. None means the operator, through the CLI, who
     may reset anyone: that is the way back for an owner locked out. Through
@@ -287,4 +297,5 @@ def reset_two_factor(store: Store, user_id: int, actor_id: int | None) -> bool:
         clear_record(record)
         tx.put(BUCKET_USERS, user_id, record)
         delete_challenges_for_user(tx, user_id)
+        destroy_sessions_for_user(tx, user_id)
     return True
