@@ -2,7 +2,7 @@
 
 The same family of files as the ratings (reference/imdb.py), under the same
 personal, non-commercial licence: title.basics has up to three genres for
-every title on IMDb. It is the one source that covers the old films Wikipedia's
+every title on IMDb, and its running time. It is the one source that covers the old films Wikipedia's
 lists say nothing about, and it says Musical and Film-Noir outright.
 
 The file is big (230 MB compressed, twelve million lines, most of them single
@@ -31,9 +31,11 @@ MAX_DOWNLOAD = 1024 * 1024 * 1024
 NO_VALUE = "\\N"
 
 
-def parse(path: Path, wanted: set[str], progress: Callable[[int], None] | None = None) -> tuple[dict[str, list[str]], int]:
+def parse(path: Path, wanted: set[str], progress: Callable[[int], None] | None = None,
+          runtimes: dict[str, int] | None = None) -> tuple[dict[str, list[str]], int]:
     """The genres of the wanted ids, and how many rows the file had. Ids with
-    no genre on IMDb are left out."""
+    no genre on IMDb are left out. Given a runtimes dict, the running time in
+    minutes of each wanted id that has one goes into it."""
     table: dict[str, list[str]] = {}
     rows = 0
     with gzip.open(path, "rt", encoding="utf-8", newline="\n") as lines:
@@ -44,7 +46,9 @@ def parse(path: Path, wanted: set[str], progress: Callable[[int], None] | None =
             ident = line[: line.find("\t")]
             if ident not in wanted:
                 continue
-            cell = line.rstrip("\n").rsplit("\t", 1)[-1]
+            minutes, cell = line.rstrip("\n").rsplit("\t", 2)[-2:]
+            if runtimes is not None and minutes.isdigit() and int(minutes) > 0:
+                runtimes[ident] = int(minutes)
             if cell == NO_VALUE:
                 continue
             found = canon_genres(cell.split(","), 3)
@@ -57,6 +61,7 @@ class GenreTable:
     def __init__(self, folder: Path | None = None) -> None:
         self.folder = folder
         self.table: dict[str, list[str]] = {}
+        self.runtimes: dict[str, int] = {}
         self.meta: dict[str, Any] = {}
 
     @property
@@ -67,6 +72,10 @@ class GenreTable:
     def get(self, imdb_id: object) -> list[str]:
         return list(self.table.get(str(imdb_id or ""), ()))
 
+    def runtime(self, imdb_id: object) -> int | None:
+        """IMDb's running time in minutes, or None."""
+        return self.runtimes.get(str(imdb_id or ""))
+
     def count(self) -> int:
         return len(self.table)
 
@@ -76,10 +85,12 @@ class GenreTable:
         except (OSError, ValueError):
             return
         self.table = payload.get("titles") or {}
-        self.meta = {key: value for key, value in payload.items() if key != "titles"}
+        self.runtimes = payload.get("runtimes") or {}
+        self.meta = {key: value for key, value in payload.items() if key not in ("titles", "runtimes")}
 
     def due(self, refresh_hours: int) -> bool:
-        if not self.meta:
+        # Schema 1 had no running times: fetch again once to learn them.
+        if not self.meta or int(self.meta.get("schema") or 0) < 2:
             return True
         return time.time() - float(self.meta.get("checkedAt") or 0) >= refresh_hours * 3600
 
@@ -94,16 +105,17 @@ class GenreTable:
         if not got:
             raise OSError("the download came back empty")
         try:
-            table, rows = parse(gz, set(wanted), progress)
+            runtimes: dict[str, int] = {}
+            table, rows = parse(gz, set(wanted), progress, runtimes)
         finally:
             gz.unlink(missing_ok=True)
         if rows < MIN_ROWS:
             raise ValueError(f"only {rows} rows -- not keeping it")
-        meta = {"schema": 1, "checkedAt": time.time(), "fileDate": time.strftime("%Y-%m-%d", time.gmtime()), "rows": rows}
+        meta = {"schema": 2, "checkedAt": time.time(), "fileDate": time.strftime("%Y-%m-%d", time.gmtime()), "rows": rows}
         partial = self.path.with_suffix(".tmp")
-        partial.write_text(json.dumps({**meta, "titles": table}), encoding="utf-8")
+        partial.write_text(json.dumps({**meta, "titles": table, "runtimes": runtimes}), encoding="utf-8")
         os.replace(partial, self.path)
-        self.table, self.meta = table, meta
+        self.table, self.runtimes, self.meta = table, runtimes, meta
         return len(table)
 
 
@@ -112,5 +124,5 @@ STORE = GenreTable()
 
 def configure(folder: Path) -> None:
     STORE.folder = folder
-    STORE.table, STORE.meta = {}, {}
+    STORE.table, STORE.runtimes, STORE.meta = {}, {}, {}
     STORE.load()

@@ -100,7 +100,7 @@ const Vocab = {
   DEFAULT_DISCOVER_CARD: {
     layout: "grid",
     size: "m",
-    fields: [ "poster" , "year" , "cert" , "imdb" , "genres" , "creator" , "cast" ],
+    fields: [ "poster" , "year" , "runtime" , "cert" , "imdb" , "myrating" , "genres" , "creator" , "cast" ],
     buttons: [ "add" , "seen" , "skip" , "wiki" ],
   },
 

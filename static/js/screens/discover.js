@@ -149,13 +149,14 @@ const DiscoverScreen = {
         const fact = facts[ film.article ];
         if ( !fact || film.facts ) return;
         film.facts = true;
-        const before = [ film.poster , film.imdb , film.imdbScore , film.rating ].join( "|" );
+        const before = [ film.poster , film.imdb , film.imdbScore , film.rating , film.runtime ].join( "|" );
         film.poster = fact.poster || film.poster;
         film.thumb = fact.thumb || film.thumb;
         film.imdb = film.imdb || fact.imdb;
         if ( !film.imdbScore && fact.imdbScore ) film.imdbScore = fact.imdbScore;
         if ( !film.rating && fact.rating ) film.rating = fact.rating;
-        if ( [ film.poster , film.imdb , film.imdbScore , film.rating ].join( "|" ) !== before ) changed.push( film );
+        if ( !film.runtime && fact.runtime ) film.runtime = fact.runtime;
+        if ( [ film.poster , film.imdb , film.imdbScore , film.rating , film.runtime ].join( "|" ) !== before ) changed.push( film );
       } );
       this.redrawCards( changed );
     } ) );
@@ -169,7 +170,7 @@ const DiscoverScreen = {
       const row = this.row( film );
       const at = this.result.rows.findIndex( ( r ) => r.t.id === film.key );
       if ( at >= 0 ) this.result.rows[ at ] = row;
-      old.replaceWith( Card.build( row , this.card , {} ) );
+      old.replaceWith( Card.fit( Card.build( row , this.card , {} ) , new Map( [ [ old.getAttribute( "data-key" ) , Card.height( old ) ] ] ) ) );
     } );
   },
 
@@ -188,6 +189,9 @@ const DiscoverScreen = {
       creator: film.director || "",
       cast: film.cast || [],
       certification: film.rating || "",
+      // IMDb's running time; a library title's own one wins, as it can be edited.
+      runtime: ( inLibrary && inLibrary.t.runtime ) || film.runtime || null,
+      ext_rating: inLibrary ? inLibrary.t.ext_rating || null : null,
       imdb_id: film.imdb || "",
       wiki_url: film.url || "",
       // Apple TV ids are looked up for library titles only (appletv_job).
@@ -357,8 +361,10 @@ const DiscoverScreen = {
   renderGrid() {
     const shown = this.films.filter( ( film ) => this.visible( film ) );
     this.result = { rows: shown.map( ( film ) => this.row( film ) ) };
-    const container = Dom.el( "div" , { class: "media-grid layout-" + this.card.layout + " size-" + this.card.size } );
-    this.result.rows.forEach( ( row ) => container.appendChild( Card.build( row , this.card , {} ) ) );
+    const gridClass = "media-grid layout-" + this.card.layout + " size-" + this.card.size;
+    const sizes = Card.sizes( this.grid , gridClass );
+    const container = Dom.el( "div" , { class: gridClass } );
+    this.result.rows.forEach( ( row ) => container.appendChild( Card.fit( Card.build( row , this.card , {} ) , sizes ) ) );
     Dom.swap( this.grid , container );
     Dom.show( Dom.get( "discover-more" ) , this.films.length < this.total );
     Dom.show( Dom.get( "discover-empty" ) , shown.length === 0 );

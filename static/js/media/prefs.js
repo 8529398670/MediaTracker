@@ -25,15 +25,27 @@ const Prefs = {
     const saved = this.data.cards[ screen ];
     const base = JSON.parse( JSON.stringify( screen === "discover" ? Vocab.DEFAULT_DISCOVER_CARD : Vocab.DEFAULT_CARD ) );
     if ( !saved ) return base;
+    const fields = ( saved.fields || base.fields ).slice();
+    // Discover cards saved before they could show a running time or my own
+    // rating get both once, beside their neighbours; taking them off after
+    // that sticks (a card saved since carries v: 2).
+    if ( screen === "discover" && saved.fields && ( saved.v || 1 ) < 2 ) {
+      [ [ "runtime" , "year" ] , [ "myrating" , "imdb" ] ].forEach( ( [ id , after ] ) => {
+        if ( fields.indexOf( id ) >= 0 ) return;
+        const at = fields.indexOf( after );
+        fields.splice( at >= 0 ? at + 1 : fields.length , 0 , id );
+      } );
+    }
     return {
       layout: Vocab.LAYOUTS.indexOf( saved.layout ) >= 0 ? saved.layout : base.layout,
       size: Vocab.SIZES.indexOf( saved.size ) >= 0 ? saved.size : base.size,
-      fields: ( saved.fields || base.fields ).filter( ( id ) => Vocab.FIELDS[ id ] ),
+      fields: fields.filter( ( id ) => Vocab.FIELDS[ id ] ),
       buttons: ( saved.buttons || base.buttons ).filter( ( id ) => Vocab.SCREEN_BUTTONS[ screen ].indexOf( id ) >= 0 ),
     };
   },
 
   setCard( screen , card ) {
+    if ( screen === "discover" ) card = Object.assign( {} , card , { v: 2 } );
     this.data.cards[ screen ] = card;
     this.queue( "cards" , screen , card );
   },

@@ -238,6 +238,7 @@ const LibraryScreen = {
       return;
     }
     const collapsed = this.collapsed();
+    const sizes = Card.sizes( grid , this.gridClass() );
     const work = [];
     result.groups.forEach( ( group ) => {
       const container = Dom.el( "div" , { class: this.gridClass() } );
@@ -262,7 +263,7 @@ const LibraryScreen = {
       if ( token !== this.renderToken ) return;
       const end = Math.min( work.length , start + this.CHUNK );
       for ( let i = start; i < end; i += 1 ) {
-        const node = Card.build( work[ i ][ 1 ] , this.card , options( work[ i ][ 1 ] ) );
+        const node = Card.fit( Card.build( work[ i ][ 1 ] , this.card , options( work[ i ][ 1 ] ) ) , sizes );
         work[ i ][ 0 ].appendChild( node );
       }
       if ( start === 0 ) Dom.swap( grid , ...nodes );
@@ -288,7 +289,7 @@ const LibraryScreen = {
       if ( this.matches( row ) ) this.render();
       return;
     }
-    const node = Card.build( row , this.card , { selecting: this.selecting , selected: this.selected.has( id ) , searching: Boolean( this.query.text ) } );
+    const node = Card.fit( Card.build( row , this.card , { selecting: this.selecting , selected: this.selected.has( id ) , searching: Boolean( this.query.text ) } ) , new Map( [ [ old.getAttribute( "data-key" ) , Card.height( old ) ] ] ) );
     old.replaceWith( node );
     if ( !this.matches( row ) ) {
       node.classList.add( "is-leaving" );

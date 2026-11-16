@@ -337,6 +337,13 @@ class ImdbGenreTableTest(unittest.TestCase):
         self.assertEqual(table, {"tt0038559": ["Drama", "Film Noir", "Romance"]})
         self.assertEqual(rows, 5)
 
+    def test_running_times_come_with_the_genres_even_without_one(self) -> None:
+        path = self.folder / "basics.gz"
+        self.write(path)
+        runtimes: dict[str, int] = {}
+        imdb_genres.parse(path, {"tt0038559", "tt0000002"}, runtimes=runtimes)
+        self.assertEqual(runtimes, {"tt0038559": 110, "tt0000002": 1})
+
     def fetch(self, rows: int):
         def fake(_url: str, dest: Path, **_options: object) -> dict:
             self.write(dest, rows)
@@ -357,6 +364,7 @@ class ImdbGenreTableTest(unittest.TestCase):
         again = imdb_genres.GenreTable(self.folder)
         again.load()
         self.assertEqual(again.get("tt0038559"), ["Drama", "Film Noir", "Romance"])
+        self.assertEqual(again.runtime("tt0038559"), 110)
         self.assertFalse(again.due(720))
         self.assertTrue(imdb_genres.GenreTable(self.folder).due(720))
 

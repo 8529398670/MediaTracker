@@ -1293,7 +1293,8 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
         score = imdb.STORE.get(imdb_id)
         page.append({**film, "ratings": found,
                      "rating": found[0] if found else "",
-                     "imdb": imdb_id, "imdbScore": list(score) if score else None})
+                     "imdb": imdb_id, "imdbScore": list(score) if score else None,
+                     "runtime": imdb_genres.STORE.runtime(imdb_id)})
     return {"total": len(hits), "offset": offset,
             "films": page,
             "genres": wanted, "genreMode": "all" if every else "any",
@@ -1406,7 +1407,7 @@ _THUMBS_LOADED = False
 _SAVE_TIMER: threading.Timer | None = None
 _FACTS_LOCK = threading.Lock()
 
-BLANK = {"thumb": "", "imdb": "", "rating": "", "imdbScore": None}
+BLANK = {"thumb": "", "imdb": "", "rating": "", "imdbScore": None, "runtime": None}
 
 
 def _posters_path() -> Path:
@@ -1485,7 +1486,8 @@ def _scored(fact: dict) -> dict:
     Not kept with the rest: it is a lookup in memory, it changes every day.
     """
     score = imdb.STORE.get(fact.get("imdb"))
-    return {**fact, "imdbScore": list(score) if score else None}
+    return {**fact, "imdbScore": list(score) if score else None,
+            "runtime": imdb_genres.STORE.runtime(fact.get("imdb"))}
 
 
 def known_facts(articles: list[str]) -> dict[str, dict]:

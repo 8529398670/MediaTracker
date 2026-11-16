@@ -106,6 +106,36 @@ const Card = {
     return article;
   },
 
+  // A card the browser has not drawn yet (content-visibility: auto in
+  // style.css) stands in at a guessed height until it is, and then keeps its
+  // real one. A redrawn grid is all new elements, so every card above the
+  // reader would drop back to the guess -- on a phone a third shorter -- and
+  // the page would jump far down, past the end. sizes() takes the heights the
+  // old cards had, in a grid drawn as gridClass (a different layout or size
+  // would make them wrong), and fit() hands each new card its own.
+  sizes( holder , gridClass ) {
+    const sizes = new Map();
+    if ( !holder ) return sizes;
+    holder.querySelectorAll( ".media-card[data-key]" ).forEach( ( card ) => {
+      const grid = card.closest( ".media-grid" );
+      if ( !grid || grid.className !== gridClass ) return;
+      const height = this.height( card );
+      if ( height > 0 ) sizes.set( card.getAttribute( "data-key" ) , height );
+    } );
+    return sizes;
+  },
+
+  // A card's height as contain-intrinsic-size takes it: inside the border.
+  height( card ) {
+    return Math.round( card.getBoundingClientRect().height - ( card.offsetHeight - card.clientHeight ) );
+  },
+
+  fit( node , sizes ) {
+    const height = sizes && sizes.get( node.getAttribute( "data-key" ) );
+    if ( height ) node.style.containIntrinsicSize = "auto " + height + "px";
+    return node;
+  },
+
   buttonRow( classes , ids , row ) {
     const box = Dom.el( "div" , { class: classes } );
     ids.forEach( ( id ) => {

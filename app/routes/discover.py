@@ -166,7 +166,7 @@ def compact_films(call: Call, body: Any, serve: Callable[[Any, Any], Any]) -> di
     """The call of discover_search: each film's main facts, not everything
     the grid draws."""
     result = serve(call.request, body)
-    keep = ("key", "article", "title", "year", "director", "genres", "rating", "imdbScore", "url", "title_id", "my_status", "verdict")
+    keep = ("key", "article", "title", "year", "director", "genres", "rating", "imdbScore", "runtime", "url", "title_id", "my_status", "verdict")
     return {"total": result["total"], "films": [{name: film.get(name) for name in keep} for film in result["films"]]}
 
 
@@ -214,6 +214,8 @@ def attach_known_facts(films: list[dict[str, Any]]) -> None:
             film["imdbScore"] = fact["imdbScore"]
         if not film.get("rating") and fact.get("rating"):
             film["rating"] = fact["rating"]
+        if not film.get("runtime") and fact.get("runtime"):
+            film["runtime"] = fact["runtime"]
 
 
 def facts_for(articles: list[str]) -> dict[str, Any]:
