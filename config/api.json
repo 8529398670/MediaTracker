@@ -8051,6 +8051,22 @@
             }
           },
           {
+            "description": "Shortest running time, in minutes.",
+            "in": "query",
+            "name": "runtimefrom",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Longest running time, in minutes.",
+            "in": "query",
+            "name": "runtimeto",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "notable, imdb, year, year-asc or title. Default notable.",
             "in": "query",
             "name": "sort",

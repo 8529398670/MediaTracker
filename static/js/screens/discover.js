@@ -27,14 +27,14 @@ const DiscoverScreen = {
   token: 0,
 
   DEFAULTS: { sort: "-notable" , watched: "hide" , skipped: "hide" , genremode: "any" },
-  FIELDS: [ "q" , "from" , "to" , "genre" , "genremode" , "rating" , "norating" , "imdbfrom" , "imdbto" , "votesfrom" , "votesto" , "topic" , "only" , "actor" , "library" , "watched" , "skipped" , "sort" ],
+  FIELDS: [ "q" , "from" , "to" , "genre" , "genremode" , "rating" , "norating" , "imdbfrom" , "imdbto" , "votesfrom" , "votesto" , "runtimefrom" , "runtimeto" , "topic" , "only" , "actor" , "library" , "watched" , "skipped" , "sort" ],
 
   // The sort keys the catalogue has data for (app/discover/catalogue.py).
   SORT_KEYS: [ "notable" , "imdb_weighted" , "imdb" , "votes" , "year" , "title" , "cert" , "random" ],
   // What the old sort select sent, still in saved links.
   LEGACY_SORTS: { notable: "-notable" , imdb: "-imdb_weighted" , year: "-year" , "year-asc": "year" , title: "title" },
   // The Filters sheet's sections, in order.
-  SHEET: [ "genre" , "year" , "imdb" , "votes" , "cert" , "nocert" , "topic" , "only" , "hidelibrary" , "showwatched" , "showskipped" ],
+  SHEET: [ "genre" , "year" , "runtime" , "imdb" , "votes" , "cert" , "nocert" , "topic" , "only" , "hidelibrary" , "showwatched" , "showskipped" ],
   sheetOpen: false,
 
   async init() {
@@ -253,6 +253,7 @@ const DiscoverScreen = {
     range( "year" , "from" , "to" );
     range( "imdb" , "imdbfrom" , "imdbto" );
     range( "votes" , "votesfrom" , "votesto" );
+    range( "runtime" , "runtimefrom" , "runtimeto" );
     if ( this.params.rating ) filters.cert = { mode: "any" , values: this.list( "rating" ) };
     if ( this.params.norating ) filters.nocert = { mode: "any" , values: this.list( "norating" ) };
     if ( this.params.topic ) filters.topic = { value: this.params.topic };
@@ -283,6 +284,8 @@ const DiscoverScreen = {
       imdbto: range( "imdb" , "to" ),
       votesfrom: range( "votes" , "from" ),
       votesto: range( "votes" , "to" ),
+      runtimefrom: range( "runtime" , "from" ),
+      runtimeto: range( "runtime" , "to" ),
       rating: f.cert ? f.cert.values.join( "," ) : "",
       norating: f.nocert ? f.nocert.values.join( "," ) : "",
       topic: f.topic ? f.topic.value : "",
@@ -331,6 +334,7 @@ const DiscoverScreen = {
       year: { kind: "range" , step: 1 , noUnknown: true },
       imdb: { kind: "range" , step: 0.1 , noUnknown: true },
       votes: { kind: "range" , step: 100 , noUnknown: true },
+      runtime: Object.assign( {} , Filters.defs.runtime , { noUnknown: true } ),
       topic: { kind: "choice" , anyLabel: "discover.topic_any" , options: () => ( this.meta.topics || [] ).map( ( t ) => [ t.id , t.label ] ) },
       only: { kind: "choice" , anyLabel: "discover.only_any" , options: () => [ [ "boxoffice" , I18n.get( "discover.only_boxoffice" ) ] , [ "awarded" , I18n.get( "discover.only_awarded" ) ] ] },
       hidelibrary: { kind: "switch" , text: () => I18n.fill( "discover.hide_library" , { n: this.libraryCount.toLocaleString() } ) },

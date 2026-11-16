@@ -90,6 +90,8 @@ const Filters = {
     runtime: {
       kind: "range",
       step: 5,
+      // Minutes; the top end means three hours or more.
+      slider: { min: 0 , max: 180 },
       value: ( row ) => row.t.runtime || null,
     },
     imdb: {
@@ -113,7 +115,7 @@ const Filters = {
   },
 
   // The order the filter sheet lists them in.
-  ORDER: [ "genre" , "year" , "rating" , "imdb" , "votes" , "status" , "type" , "cert" , "nocert" , "runtime" , "tag" , "loved" , "watchedby" , "lovedby" , "addedby" , "missing" ],
+  ORDER: [ "genre" , "year" , "runtime" , "rating" , "imdb" , "votes" , "status" , "type" , "cert" , "nocert" , "tag" , "loved" , "watchedby" , "lovedby" , "addedby" , "missing" ],
 
   subsumed( id , list , scope ) {
     const def = this.defs[ id ];

@@ -104,6 +104,8 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         imdb_to=_float(params.get("imdbto")),
         votes_from=_int(params.get("votesfrom")),
         votes_to=_int(params.get("votesto")),
+        runtime_from=_int(params.get("runtimefrom")),
+        runtime_to=_int(params.get("runtimeto")),
         sort=sort,
         limit=min(_int(params.get("limit")) or 60, 200),
         offset=_int(params.get("offset")),
@@ -156,6 +158,8 @@ class DiscoverQuery(RequestType, kw_only=True):
     imdbto: Annotated[str, QUERY, Meta(description="Highest IMDb score, 0-10.")] = ""
     votesfrom: Annotated[str, QUERY, Meta(description="Fewest IMDb votes.")] = ""
     votesto: Annotated[str, QUERY, Meta(description="Most IMDb votes.")] = ""
+    runtimefrom: Annotated[str, QUERY, Meta(description="Shortest running time, in minutes.")] = ""
+    runtimeto: Annotated[str, QUERY, Meta(description="Longest running time, in minutes.")] = ""
     sort: Annotated[str, QUERY, Meta(description="notable, imdb, year, year-asc or title. Default notable.")] = ""
     limit: Annotated[str, QUERY, Meta(description="Films to return, at most 200. Default 60.")] = ""
     offset: Annotated[str, QUERY, Meta(description="Films to skip.")] = ""

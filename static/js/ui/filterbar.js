@@ -23,8 +23,12 @@ const FilterBar = {
     }
   },
 
+  rangeValue( id , n ) {
+    return id === "imdb" ? Number( n ).toFixed( 1 ) : id === "runtime" ? Vocab.runtime( n ) : id === "votes" ? Vocab.votes( n ) : String( n );
+  },
+
   rangeText( id , value ) {
-    const show = ( n ) => ( id === "imdb" ? Number( n ).toFixed( 1 ) : id === "runtime" ? Vocab.runtime( n ) : id === "votes" ? Vocab.votes( n ) : String( n ) );
+    const show = ( n ) => this.rangeValue( id , n );
     let text;
     if ( value.from != null && value.to != null ) text = show( value.from ) + "–" + show( value.to );
     else if ( value.from != null ) text = I18n.fill( "filters.at_least" , { value: show( value.from ) } );
@@ -231,6 +235,7 @@ const FilterSheet = {
 
   range( id , def , value , query , change ) {
     const current = value || { from: null , to: null , unknown: false };
+    if ( def.slider ) return this.slider( id , def , current , query , change );
     const input = ( which ) => {
       const field = Dom.el( "input" , {
         class: "form-control form-control-sm",
@@ -245,7 +250,61 @@ const FilterSheet = {
       return field;
     };
     const row = Dom.el( "div" , { class: "d-flex align-items-center gap-2" , children: [ input( "from" ) , Dom.el( "span" , { text: "–" } ) , input( "to" ) ] } );
-    const wrap = Dom.el( "div" , { children: [ row ] } );
+    return this.withUnknown( id , def , current , Dom.el( "div" , { children: [ row ] } ) , query , change );
+  },
+
+  // Two handles on one track: def.slider = { min , max }, moving in def.step.
+  // A handle left at its end is no limit that way, so the top reads "3h+".
+  // The readout follows the drag; the filter applies when a handle is let go.
+  slider( id , def , current , query , change ) {
+    const min = def.slider.min;
+    const max = def.slider.max;
+    const clamp = ( n , fallback ) => ( n == null ? fallback : Math.min( max , Math.max( min , n ) ) );
+    const handle = ( which , start ) => {
+      const field = Dom.el( "input" , {
+        class: "form-range dual-range-input",
+        attrs: { type: "range" , min: String( min ) , max: String( max ) , step: String( def.step ) , "aria-label": I18n.get( "filters.name_" + id ) + " " + I18n.get( "filters." + which ) },
+      } );
+      field.value = String( start );
+      return field;
+    };
+    const lo = handle( "from" , clamp( current.from , min ) );
+    const hi = handle( "to" , clamp( current.to , max ) );
+    const fill = Dom.el( "div" , { class: "dual-range-fill" } );
+    const readout = Dom.el( "div" , { class: "dual-range-readout" , attrs: { "aria-live": "polite" } } );
+    const show = ( n ) => FilterBar.rangeValue( id , n ) || "0";
+    const paint = () => {
+      const a = Number( lo.value );
+      const b = Number( hi.value );
+      const at = ( n ) => ( ( n - min ) / ( max - min ) ) * 100;
+      fill.style.left = at( a ) + "%";
+      fill.style.right = ( 100 - at( b ) ) + "%";
+      // Both handles at the top: the low one must stay grabbable.
+      lo.style.zIndex = a >= max - def.step ? "3" : "1";
+      // Read the way the chip reads: "up to 2h", "1h 30m or more".
+      const text = a <= min && b >= max ? I18n.get( "filters.any_" + id ) || I18n.get( "filters.any_value" )
+        : FilterBar.rangeText( id , { from: a <= min ? null : a , to: b >= max ? null : b } );
+      Dom.text( readout , text.charAt( 0 ).toUpperCase() + text.slice( 1 ) );
+    };
+    lo.addEventListener( "input" , () => { if ( Number( lo.value ) > Number( hi.value ) ) lo.value = hi.value; paint(); } );
+    hi.addEventListener( "input" , () => { if ( Number( hi.value ) < Number( lo.value ) ) hi.value = lo.value; paint(); } );
+    const commit = () => {
+      const a = Number( lo.value );
+      const b = Number( hi.value );
+      this.update( query , id , Object.assign( {} , current , { from: a <= min ? null : a , to: b >= max ? null : b } ) , change );
+    };
+    lo.addEventListener( "change" , commit );
+    hi.addEventListener( "change" , commit );
+    paint();
+    const track = Dom.el( "div" , { class: "dual-range" , children: [ Dom.el( "div" , { class: "dual-range-track" } ) , fill , lo , hi ] } );
+    const ends = Dom.el( "div" , { class: "dual-range-ends" , children: [
+      Dom.el( "span" , { text: show( min ) } ),
+      Dom.el( "span" , { text: show( max ) + "+" } ),
+    ] } );
+    return this.withUnknown( id , def , current , Dom.el( "div" , { children: [ readout , track , ends ] } ) , query , change );
+  },
+
+  withUnknown( id , def , current , wrap , query , change ) {
     if ( !def.noUnknown && ( id === "year" || id === "runtime" || id === "imdb" || id === "votes" ) ) {
       const check = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , id: "unknown-" + id } } );
       check.checked = Boolean( current.unknown );

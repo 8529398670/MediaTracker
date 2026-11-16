@@ -658,6 +658,20 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .filter-section:last-child { border-bottom: 0; }
 .filter-heading { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
 .facet-list { display: flex; flex-direction: column; gap: 0.15rem; }
+/* A range with two handles (FilterSheet.slider): two range inputs stacked on
+   one drawn track, only their thumbs taking the pointer. */
+.dual-range-readout { font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem; }
+.dual-range { position: relative; height: 1.75rem; }
+.dual-range-track, .dual-range-fill { position: absolute; top: 50%; height: 0.375rem; margin-top: -0.1875rem; border-radius: 1rem; }
+.dual-range-track { left: 0; right: 0; background: var(--bs-secondary-bg); }
+.dual-range-fill { background: var(--bs-primary); }
+.dual-range-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; pointer-events: none; z-index: 1; }
+.dual-range-input + .dual-range-input { z-index: 2; }
+.dual-range-input::-webkit-slider-runnable-track { background: transparent; }
+.dual-range-input::-moz-range-track { background: transparent; }
+.dual-range-input::-webkit-slider-thumb { pointer-events: auto; position: relative; }
+.dual-range-input::-moz-range-thumb { pointer-events: auto; }
+.dual-range-ends { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bs-secondary-color); }
 .facet {
   display: flex; align-items: center; gap: 0.5rem; width: 100%;
   padding: 0.35rem 0.5rem; border: 0; border-radius: 0.375rem; background: transparent; text-align: left;

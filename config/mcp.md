@@ -1163,6 +1163,8 @@ The Wikipedia film catalogue, minus films the person skipped or watched unless a
 | `only` | string | no |  | A source list id from GET /api/discover/meta. |
 | `q` | string | no |  | Words to find in the title, director or cast. |
 | `rating` | string | no |  | Certifications to keep, comma-separated. |
+| `runtimefrom` | string | no |  | Shortest running time, in minutes. |
+| `runtimeto` | string | no |  | Longest running time, in minutes. |
 | `skipped` | string | no |  | hide, only or all: films skipped, here or as dropped in the library. Default hide. |
 | `sort` | string | no |  | notable, imdb, year, year-asc or title. Default notable. |
 | `to` | string | no |  | Latest year. |

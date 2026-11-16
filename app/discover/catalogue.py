@@ -1147,6 +1147,7 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
           no_ratings: object = (),
           imdb_from: float = 0, imdb_to: float = 0,
           votes_from: int = 0, votes_to: int = 0,
+          runtime_from: int = 0, runtime_to: int = 0,
           limit: int = 60, offset: int = 0, passed: set | None = None,
           watched: str = "hide", seen: set | None = None,
           library: str = "all", owned: set | None = None,
@@ -1200,6 +1201,9 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
     # Copied once rather than looked up under a lock per row: a fill pass may
     # be writing to it while this walk is reading it.
     answers = certs.STORE.snapshot()
+    # Running time (minutes, from IMDb's basics) narrows the same way: a film
+    # with no known running time is out once either end is set.
+    timed = bool(runtime_from or runtime_to)
     # An actor is matched against the billed cast alone, not the haystack:
     # searching for Ford turns up John Ford's films, and the point of clicking
     # a name on a row is that it means the person standing in the picture.
@@ -1249,6 +1253,10 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             if (low and found[1] < low) or (high and found[1] > high):
                 continue
             if (votes_from and found[2] < votes_from) or (votes_to and found[2] > votes_to):
+                continue
+        if timed:
+            minutes = imdb_genres.STORE.runtime((answers.get(row[R_KEY]) or [""])[0])
+            if not minutes or (runtime_from and minutes < runtime_from) or (runtime_to and minutes > runtime_to):
                 continue
 
         year = row[R_YEAR] or 0

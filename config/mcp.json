@@ -2474,6 +2474,14 @@
             "description": "Certifications to keep, comma-separated.",
             "type": "string"
           },
+          "runtimefrom": {
+            "description": "Shortest running time, in minutes.",
+            "type": "string"
+          },
+          "runtimeto": {
+            "description": "Longest running time, in minutes.",
+            "type": "string"
+          },
           "skipped": {
             "description": "hide, only or all: films skipped, here or as dropped in the library. Default hide.",
             "type": "string"

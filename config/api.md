@@ -2544,6 +2544,8 @@ The Wikipedia film catalogue, minus films the person skipped or watched unless a
 | `imdbto` | query | string | no |  | Highest IMDb score, 0-10. |
 | `votesfrom` | query | string | no |  | Fewest IMDb votes. |
 | `votesto` | query | string | no |  | Most IMDb votes. |
+| `runtimefrom` | query | string | no |  | Shortest running time, in minutes. |
+| `runtimeto` | query | string | no |  | Longest running time, in minutes. |
 | `sort` | query | string | no |  | notable, imdb, year, year-asc or title. Default notable. |
 | `limit` | query | string | no |  | Films to return, at most 200. Default 60. |
 | `offset` | query | string | no |  | Films to skip. |
