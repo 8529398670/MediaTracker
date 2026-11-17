@@ -123,9 +123,24 @@ const DiscoverScreen = {
     this.skippedCount = ( data.verdicts || {} ).skip || 0;
     this.watchedCount = ( data.verdicts || {} ).watched || 0;
     this.libraryCount = ( data.verdicts || {} ).library || 0;
+    this.fuzzy = Boolean( data.fuzzy );
     if ( more ) this.appendGrid( data.films );
     else this.render();
     this.loadFacts( data.films );
+    if ( !more ) this.renderOnline();
+  },
+
+  // A search Discover has nothing for (or only close spellings of) goes to
+  // the online lookup on its own: a film out this month is in TMDB and IMDb
+  // long before Wikipedia's lists. See ui/onlinesearch.js.
+  renderOnline() {
+    const box = Dom.get( "discover-online" );
+    const text = ( this.params.q || "" ).trim();
+    Dom.clear( box );
+    if ( !text || ( this.total > 0 && !this.fuzzy ) ) return;
+    OnlineSearch.ask( text , "discover" , () => { if ( ( this.params.q || "" ).trim() === text ) this.renderOnline(); } );
+    const section = OnlineSearch.section( text , this.card , () => this.renderOnline() );
+    if ( section ) box.appendChild( section );
   },
 
   // Posters and IMDb ids the server has not learned yet come from Wikipedia,

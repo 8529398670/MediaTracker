@@ -29,13 +29,6 @@ const AddScreen = {
     if ( !current && LibraryScreen.scope && LibraryScreen.scope !== "all" ) select.value = LibraryScreen.scope;
   },
 
-  // From the library's search box: that text, looked up straight away.
-  lookFor( text ) {
-    Dom.get( "add-text" ).value = text;
-    Nav.show( "add" );
-    this.lookUp();
-  },
-
   lines() {
     return Dom.get( "add-text" ).value.split( "\n" ).map( ( line ) => line.replace( /^\s*(?:[-*•]|\d+[.)])\s+/ , "" ).trim() ).filter( Boolean );
   },

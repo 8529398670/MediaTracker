@@ -120,12 +120,12 @@ const SearchExtras = {
     } else {
       const films = found.films.filter( ( film ) => !film.title_id || !Library.get( film.title_id ) );
       this.rows = films.map( ( film ) => DiscoverScreen.row( film ) );
+      // Always with a poster, so both corner checks (Add, Watched) have
+      // somewhere to sit.
+      const discoverPrefs = Prefs.card( "discover" );
+      const fields = discoverPrefs.fields.indexOf( "poster" ) >= 0 ? discoverPrefs.fields : [ "poster" ].concat( discoverPrefs.fields );
+      const discoverCard = Object.assign( {} , discoverPrefs , { layout: card.layout , size: card.size , fields: fields } );
       if ( this.rows.length ) {
-        // Always with a poster, so both corner checks (Add, Watched) have
-        // somewhere to sit.
-        const discoverPrefs = Prefs.card( "discover" );
-        const fields = discoverPrefs.fields.indexOf( "poster" ) >= 0 ? discoverPrefs.fields : [ "poster" ].concat( discoverPrefs.fields );
-        const discoverCard = Object.assign( {} , discoverPrefs , { layout: card.layout , size: card.size , fields: fields } );
         const section = this.section( "library.search_discover" , found.fuzzy ? "library.search_discover_close_note" : "library.search_discover_note" , this.rows , discoverCard , "search-extra-discover" , { addCorner: true } );
         section.querySelector( ".search-extra-head" ).appendChild( Dom.el( "a" , {
           class: "btn btn-sm btn-outline-primary ms-auto",
@@ -134,25 +134,15 @@ const SearchExtras = {
         } ) );
         box.appendChild( section );
       }
-      // Discover only knows films off Wikipedia's lists, so something out
-      // this month is not in it yet. The Add screen asks TMDB, IMDb and the
-      // rest for whatever was typed.
-      box.appendChild( this.online( text ) );
+      // Not in the library, not in Discover (or only close spellings there):
+      // the online lookup, without being asked. See ui/onlinesearch.js.
+      if ( !this.result.rows.length && !elsewhere.length && ( !found.films.length || found.fuzzy ) ) {
+        OnlineSearch.ask( text , "library" , () => { if ( text === this.text ) this.draw(); } );
+        const online = OnlineSearch.section( text , discoverCard , () => this.draw() );
+        if ( online ) box.appendChild( online );
+      }
     }
     Dom.show( box , box.childNodes.length > 0 );
-  },
-
-  online( text ) {
-    const button = Dom.el( "button" , {
-      class: "btn btn-sm btn-outline-primary",
-      attrs: { type: "button" },
-      children: [ Card.icon( "globe" ) , Dom.el( "span" , { text: " " + I18n.get( "library.search_online" ) } ) ],
-    } );
-    button.addEventListener( "click" , () => AddScreen.lookFor( text ) );
-    return Dom.el( "div" , { class: "search-extra search-extra-online d-flex flex-wrap align-items-center gap-2" , children: [
-      button,
-      Dom.el( "span" , { class: "text-body-secondary small" , text: I18n.get( "library.search_online_note" ) } ),
-    ] } );
   },
 
   section( headingKey , noteKey , rows , card , extra , settings ) {
