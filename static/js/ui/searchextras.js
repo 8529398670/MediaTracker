@@ -134,8 +134,25 @@ const SearchExtras = {
         } ) );
         box.appendChild( section );
       }
+      // Discover only knows films off Wikipedia's lists, so something out
+      // this month is not in it yet. The Add screen asks TMDB, IMDb and the
+      // rest for whatever was typed.
+      box.appendChild( this.online( text ) );
     }
     Dom.show( box , box.childNodes.length > 0 );
+  },
+
+  online( text ) {
+    const button = Dom.el( "button" , {
+      class: "btn btn-sm btn-outline-primary",
+      attrs: { type: "button" },
+      children: [ Card.icon( "globe" ) , Dom.el( "span" , { text: " " + I18n.get( "library.search_online" ) } ) ],
+    } );
+    button.addEventListener( "click" , () => AddScreen.lookFor( text ) );
+    return Dom.el( "div" , { class: "search-extra search-extra-online d-flex flex-wrap align-items-center gap-2" , children: [
+      button,
+      Dom.el( "span" , { class: "text-body-secondary small" , text: I18n.get( "library.search_online_note" ) } ),
+    ] } );
   },
 
   section( headingKey , noteKey , rows , card , extra , settings ) {

@@ -879,6 +879,8 @@ library:
   search_discover_close_note: "not in your library yet — close spellings of what you typed"
   search_discover_open: "Open in Discover"
   search_looking: "Looking in Discover…"
+  search_online: "Look it up online"
+  search_online_note: "TMDB, IMDb and others — for anything new or not in Discover"
 
 lists:
   watched: "Watched"
