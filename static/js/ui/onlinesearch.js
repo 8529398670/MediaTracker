@@ -18,22 +18,30 @@ const OnlineSearch = {
     return typeof text === "string" && text.trim().length >= this.MIN_CHARS;
   },
 
+  // A lookup that failed (the server restarting, a provider timing out, the
+  // allowance spent) is not an answer: the same text is asked again once
+  // this long has passed, instead of showing nothing until a reload.
+  RETRY_MS: 15000,
+
   // Ask once per text, after a pause; then() runs when the answer is in.
   ask( text , owner , then ) {
-    if ( !this.wanted( text ) || this.found.has( text ) ) return;
+    if ( !this.wanted( text ) ) return;
+    const known = this.found.get( text );
+    if ( known === null || ( known && !( known.failed && Date.now() - known.at > this.RETRY_MS ) ) ) return;
     window.clearTimeout( this.timers.get( owner ) );
     this.timers.set( owner , window.setTimeout( () => this.fetch( text ).then( then ) , this.WAIT_MS ) );
   },
 
   async fetch( text ) {
-    if ( this.found.has( text ) ) return;
+    if ( this.found.get( text ) === null ) return;
     this.found.set( text , null );
     let result = null;
     try {
       const answer = await Api.post( "/api/resolve" , { lines: [ text ] , kind: "any" } );
       result = ( answer.results || [] )[ 0 ] || null;
     } catch ( error ) {
-      result = null;
+      this.found.set( text , { rows: [] , failed: true , at: Date.now() } );
+      return;
     }
     this.found.set( text , { rows: result ? this.rows( result ) : [] } );
   },
@@ -89,6 +97,7 @@ const OnlineSearch = {
     const found = this.found.get( text );
     if ( found === undefined ) return null;
     if ( found === null ) return Dom.el( "p" , { class: "search-extra-note text-body-secondary small" , text: I18n.get( "library.search_online_looking" ) } );
+    if ( found.failed ) return Dom.el( "p" , { class: "search-extra-note text-body-secondary small" , text: I18n.get( "library.search_online_failed" ) } );
     const rows = found.rows.filter( ( row ) => !row.hidden );
     if ( !rows.length ) return null;
     const grid = Dom.el( "div" , { class: "media-grid layout-" + card.layout + " size-" + card.size } );

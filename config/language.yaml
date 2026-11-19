@@ -882,6 +882,7 @@ library:
   search_online: "Found online"
   search_online_note: "not in your library or Discover — from TMDB, IMDb and others"
   search_online_looking: "Not in Discover — looking online…"
+  search_online_failed: "Couldn't look online just now — it will try again on your next search."
 
 lists:
   watched: "Watched"

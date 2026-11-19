@@ -52,7 +52,8 @@ const SearchExtras = {
     this.text = text;
     this.result = result;
     window.clearTimeout( this.timer );
-    if ( text && !this.found.has( text ) ) this.timer = window.setTimeout( () => this.ask( text ) , 250 );
+    const known = this.found.get( text );
+    if ( text && ( known === undefined || ( known && known.failed ) ) ) this.timer = window.setTimeout( () => this.ask( text ) , 250 );
     this.draw();
   },
 
@@ -64,7 +65,9 @@ const SearchExtras = {
     try {
       data = await Api.request( Api.forSubject( "/api/discover?" + query.toString() ) );
     } catch ( error ) {
-      this.found.set( text , { films: [] , fuzzy: false } );
+      // Still go on to the online lookup, and ask Discover again next time.
+      this.found.set( text , { films: [] , fuzzy: false , failed: true } );
+      if ( token === this.token && text === this.text ) this.draw();
       return;
     }
     this.found.set( text , { films: data.films || [] , fuzzy: Boolean( data.fuzzy ) } );
