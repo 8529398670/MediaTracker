@@ -1151,7 +1151,7 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
           limit: int = 60, offset: int = 0, passed: set | None = None,
           watched: str = "hide", seen: set | None = None,
           library: str = "all", owned: set | None = None,
-          fuzzy: bool = False) -> dict:
+          fuzzy: bool = False, imdb_id: str = "") -> dict:
     """The merged catalogue, filtered and paged.
 
     Walks the lean rows, which are in memory, and then reads the full records
@@ -1238,7 +1238,11 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             continue
         if only == "awarded" and not row[R_FLAGS] & AWARDED:
             continue
-        if variants is not None:
+        # An IMDb link or id pasted into the search box means that one film.
+        if imdb_id:
+            if (answers.get(row[R_KEY]) or [""])[0] != imdb_id:
+                continue
+        elif variants is not None:
             hay = row[R_HAY]
             if not all(any(word in hay for word in options) for options in variants):
                 continue
@@ -1314,6 +1318,24 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             "verdicts": {"skip": len(passed), "watched": len(seen),
                          "library": len(owned & catalogue_keys())},
             "coverage": coverage()}
+
+
+# Past this many films holding the words, some title surely does too: a word
+# still being typed ("the", "step") is not worth reading the year files for.
+TITLE_HIT_CAP = 150
+
+
+def has_title(text: str) -> bool:
+    """Whether any film in the catalogue, whatever is filtered or hidden, has
+    these words in its title -- not merely in its cast, director or genres.
+    Discover's search box asks the online lookup only when none does."""
+    needle = fold(text)
+    if not needle:
+        return False
+    rows = [row for row in catalogue() if needle in row[R_HAY]]
+    if len(rows) > TITLE_HIT_CAP:
+        return True
+    return any(needle in fold(film.get("title") or "") for film in full_records(rows))
 
 
 _KEYS: tuple[int, frozenset] = (0, frozenset())

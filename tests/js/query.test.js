@@ -182,3 +182,14 @@ test( "grouping by first genre uses what the card shows" , () => withGenreRules(
   const groups = Grouper.group( genreRows() , { by: "genre" , dir: "asc" } , "t" ).map( ( group ) => group.value );
   ok( groups.indexOf( "Romantic Comedy" ) >= 0 && groups.indexOf( "Romance" ) < 0 , groups.join( "," ) );
 } ) );
+
+test( "a pasted IMDb link or tt id finds the title with that id" , () => {
+  const list = [ { t: { id: "1" , title: "The Godfather" , imdb_id: "tt0068646" , rev: 1 } } , { t: { id: "2" , title: "Heat" , imdb_id: "tt0113277" , rev: 1 } } ];
+  const found = ( text ) => ids( list.filter( Search.matcher( text ) ) );
+  ok( Search.imdbId( "https://www.imdb.com/title/tt0068646/?ref_=nv" ) === "tt0068646" , "www link" );
+  ok( Search.imdbId( "m.imdb.com/de/title/TT0113277/reviews" ) === "tt0113277" , "mobile, language path, case" );
+  ok( Search.imdbId( "step into the movies" ) === "" && Search.imdbId( "https://example.com/title/tt0068646" ) === "" , "not a link" );
+  ok( found( "https://www.imdb.com/title/tt0068646/" ) === "1" , found( "https://www.imdb.com/title/tt0068646/" ) );
+  ok( found( "tt0113277" ) === "2" , found( "tt0113277" ) );
+  ok( Search.closeMatcher( "tt0113277" ) === null , "no close spellings of a link" );
+} );

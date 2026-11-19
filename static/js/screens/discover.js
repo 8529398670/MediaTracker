@@ -124,20 +124,23 @@ const DiscoverScreen = {
     this.watchedCount = ( data.verdicts || {} ).watched || 0;
     this.libraryCount = ( data.verdicts || {} ).library || 0;
     this.fuzzy = Boolean( data.fuzzy );
+    this.titleHit = Boolean( data.title_hit );
+    this.unfiltered = Boolean( data.unfiltered );
     if ( more ) this.appendGrid( data.films );
     else this.render();
     this.loadFacts( data.films );
     if ( !more ) this.renderOnline();
   },
 
-  // A search Discover has nothing for (or only close spellings of) goes to
-  // the online lookup on its own: a film out this month is in TMDB and IMDb
-  // long before Wikipedia's lists. See ui/onlinesearch.js.
+  // A search for a title neither Discover nor the library has -- whatever the
+  // filters say -- goes to the online lookup on its own: a film out this
+  // month is in TMDB and IMDb long before Wikipedia's lists, and a pasted
+  // IMDb link is found by its id. See ui/onlinesearch.js.
   renderOnline() {
     const box = Dom.get( "discover-online" );
     const text = ( this.params.q || "" ).trim();
     Dom.clear( box );
-    if ( !text || ( this.total > 0 && !this.fuzzy ) ) return;
+    if ( !OnlineSearch.needed( text , this.titleHit ) ) return;
     OnlineSearch.ask( text , "discover" , () => { if ( ( this.params.q || "" ).trim() === text ) this.renderOnline(); } );
     const section = OnlineSearch.section( text , this.card , () => this.renderOnline() );
     if ( section ) box.appendChild( section );
@@ -231,6 +234,11 @@ const DiscoverScreen = {
     Dom.text( Dom.get( "discover-count" ) , I18n.fill( "discover.count" , { n: this.total.toLocaleString() , all: ( this.meta.coverage.films || 0 ).toLocaleString() } ) );
     const query = this.toQuery();
     this.renderChips( query );
+    // The filters left nothing for the words typed, so the server set them
+    // aside for this search: say so above the cards.
+    const unfiltered = Dom.get( "discover-unfiltered" );
+    Dom.text( unfiltered , this.unfiltered ? I18n.fill( "discover.unfiltered" , { text: this.params.q || "" } ) : "" );
+    Dom.show( unfiltered , this.unfiltered );
     const badge = Dom.get( "discover-filters-badge" );
     const active = Object.keys( query.filters ).length;
     Dom.text( badge , String( active ) );

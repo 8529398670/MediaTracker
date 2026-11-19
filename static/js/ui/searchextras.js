@@ -70,7 +70,7 @@ const SearchExtras = {
       if ( token === this.token && text === this.text ) this.draw();
       return;
     }
-    this.found.set( text , { films: data.films || [] , fuzzy: Boolean( data.fuzzy ) } );
+    this.found.set( text , { films: data.films || [] , fuzzy: Boolean( data.fuzzy ) , titleHit: Boolean( data.title_hit ) } );
     if ( token === this.token && text === this.text ) this.draw();
     this.loadFacts( text , data.films || [] );
   },
@@ -137,9 +137,9 @@ const SearchExtras = {
         } ) );
         box.appendChild( section );
       }
-      // Not in the library, not in Discover (or only close spellings there):
-      // the online lookup, without being asked. See ui/onlinesearch.js.
-      if ( !this.result.rows.length && !elsewhere.length && ( !found.films.length || found.fuzzy ) ) {
+      // Not a title in the library or in Discover, whatever the filters
+      // showing: the online lookup, without being asked. See ui/onlinesearch.js.
+      if ( OnlineSearch.needed( text , found.titleHit ) ) {
         OnlineSearch.ask( text , "library" , () => { if ( text === this.text ) this.draw(); } );
         const online = OnlineSearch.section( text , discoverCard , () => this.draw() );
         if ( online ) box.appendChild( online );

@@ -5,6 +5,7 @@ the library. "Skip" is a personal verdict that hides a film from you only;
 "Add" puts it in the family library and on your list."""
 from __future__ import annotations
 
+import re
 import urllib.parse
 from typing import Annotated, Any, Callable
 
@@ -69,6 +70,26 @@ def catalogue_key_for(title: dict[str, Any]) -> str:
     return catalogue.key_of({"article": article, "title": title.get("title") or "", "year": title.get("year")})
 
 
+# An IMDb title link (any IMDb host or language path, any query string after
+# it) or a bare tt id, pasted into the search box.
+IMDB_LINK = re.compile(
+    r"^\s*(?:(?:https?://)?(?:[\w-]+\.)*imdb\.com/(?:[a-z]{2}(?:-[a-z]{2})?/)?title/)?(tt\d{6,10})\b",
+    re.IGNORECASE)
+
+
+def imdb_link_id(text: str) -> str:
+    found = IMDB_LINK.match(text or "")
+    return found.group(1).lower() if found else ""
+
+
+# Every filter a search can be asked with, at its "not set" value. The
+# watched / skipped / in-library lists are not filters: they stay as chosen.
+UNFILTERED: dict[str, Any] = dict(
+    topic="", genres=[], actor="", only="", ratings=[], no_ratings=[],
+    year_from=0, year_to=0, imdb_from=0.0, imdb_to=0.0, votes_from=0, votes_to=0,
+    runtime_from=0, runtime_to=0)
+
+
 def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, Any]:
     """Shared with the MCP discover_search tool."""
     mine = verdicts.get_verdicts(store, subject_id)
@@ -115,11 +136,38 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
         library="hide" if params.get("library") == "hide" else "all",
         owned=owned,
     )
-    result = catalogue.query(**query)
-    # Nothing by those exact words: try them as near-spellings, and say so.
-    if query["text"].strip() and not result["total"]:
-        result = catalogue.query(**query, fuzzy=True)
-        result["fuzzy"] = True
+    # A pasted IMDb link is one particular film: every filter and hidden list
+    # is set aside, so it shows whatever else is chosen.
+    linked = imdb_link_id(query["text"])
+    if linked:
+        query.update(text="", **UNFILTERED, offset=0, skipped="all", watched="all", library="all")
+        result = catalogue.query(**query, imdb_id=linked)
+        result["imdb_id"] = linked
+        result["title_hit"] = bool(result["total"])
+    else:
+        result = catalogue.query(**query)
+        if query["text"].strip() and not result["total"]:
+            # Words the filters showing leave nothing for: the same words with
+            # the filters set aside (a title being looked for by name should
+            # not be hidden by a runtime picked last week), then as
+            # near-spellings, with and then without them. Each says so.
+            filtered = any(query[name] != value for name, value in UNFILTERED.items())
+            attempts = [({**query, **UNFILTERED}, False, True)] if filtered else []
+            attempts.append((query, True, False))
+            if filtered:
+                attempts.append(({**query, **UNFILTERED}, True, True))
+            for asked, fuzzy, unfiltered in attempts:
+                result = catalogue.query(**asked, fuzzy=fuzzy)
+                if fuzzy:
+                    result["fuzzy"] = True
+                if unfiltered:
+                    result["unfiltered"] = True
+                if result["total"]:
+                    break
+        # Whether the catalogue has a film by that title at all, filters and
+        # hidden lists aside: when it does not, the search box goes online.
+        if query["text"].strip():
+            result["title_hit"] = catalogue.has_title(query["text"])
     by_key, by_wiki, by_name = library_index(store)
     for film in result["films"]:
         ident = by_key.get(film["key"]) or by_wiki.get(dupes.wiki_key(film.get("url") or "")) or by_name.get(f"{dupes.norm_key(film.get('title'))}|{film.get('year') or ''}")
@@ -131,7 +179,7 @@ def search(store: Store, subject_id: int, params: dict[str, str]) -> dict[str, A
     # import under a slightly different name) still found its film above:
     # keep it off the page if it is hidden.
     hidden = set()
-    if watched == "hide":
+    if query["watched"] == "hide":
         hidden.add("watched")
     if query["skipped"] == "hide":
         hidden.add("dropped")
@@ -179,7 +227,10 @@ def compact_films(call: Call, body: Any, serve: Callable[[Any, Any], Any]) -> di
     tag=TAG,
     description="The Wikipedia film catalogue, minus films the person skipped or watched unless asked for. "
     "Each film says whether it is already in the library (title_id) and the person's status on it. "
-    "Answers total, films and, when nothing matched the exact words, fuzzy: true.",
+    "Answers total, films and, when nothing matched the exact words, fuzzy: true. "
+    "q may be an IMDb title link or tt id, which finds that film whatever the other filters say. "
+    "With q, title_hit says whether any catalogue film, filters aside, has those words in its title. "
+    "Words the filters leave nothing for are searched again with the filters set aside: unfiltered: true.",
     mcp="discover_search", read_only=True, call=compact_films,
 )
 def query(request: Request, body: DiscoverQuery) -> dict[str, Any]:

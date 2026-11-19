@@ -5,6 +5,10 @@
 // Wikipedia's film lists, so a film out this month is only ever found here.
 //
 // Used by the library's search box (SearchExtras) and Discover's.
+//
+// Whether it runs does not depend on the filters showing: what decides it is
+// whether what was typed is already a title here (needed() below). A pasted
+// IMDb link is looked up by its id, so it lands here when it is new.
 const OnlineSearch = {
   // The lookup's answer per search text: { rows } once back, null while asked.
   found: new Map(),
@@ -16,6 +20,26 @@ const OnlineSearch = {
 
   wanted( text ) {
     return typeof text === "string" && text.trim().length >= this.MIN_CHARS;
+  },
+
+  // Every live library title, whatever list it is in or filter is showing.
+  libraryRows() {
+    return [ "all" , "watched" , "skipped" ].reduce( ( rows , list ) => rows.concat( Library.pool( "all" , list ) ) , [] );
+  },
+
+  // Go online unless the text is already a title here: one in the library
+  // with those words in its name (or that IMDb id), or one in Discover's
+  // catalogue (catalogueHit, from the server, filters aside). Words that only
+  // match a cast member or a director do not count, and neither do the
+  // filters. A search with operators (genre:, -word) is never a title.
+  needed( text , catalogueHit ) {
+    if ( !this.wanted( text ) || catalogueHit ) return false;
+    const imdb = Search.imdbId( text );
+    if ( imdb ) return !this.libraryRows().some( ( row ) => String( row.t.imdb_id || "" ).toLowerCase() === imdb );
+    const parsed = Search.parse( text );
+    if ( parsed.not.length || parsed.fields.length ) return false;
+    const want = Search.fold( text );
+    return Boolean( want ) && !this.libraryRows().some( ( row ) => Search.fold( row.t.title ).indexOf( want ) >= 0 );
   },
 
   // A lookup that failed (the server restarting, a provider timing out, the
@@ -49,8 +73,12 @@ const OnlineSearch = {
   rows( result ) {
     const same = ( result.dupes || [] ).find( ( dupe ) => dupe.score >= 1 );
     const seen = new Set();
+    // Titles the library already has (by IMDb id) are left out: the section
+    // is for what is new.
+    const owned = new Set( this.libraryRows().map( ( row ) => String( row.t.imdb_id || "" ).toLowerCase() ).filter( Boolean ) );
     return ( result.candidates || [] ).map( ( candidate , at ) => {
       const f = candidate.fields || {};
+      if ( f.imdb_id && owned.has( String( f.imdb_id ).toLowerCase() ) ) return null;
       const key = "online:" + ( f.imdb_id || ( candidate.source || "" ) + ":" + ( f.source_id || f.title + ":" + ( f.year || "" ) ) );
       if ( seen.has( key ) ) return null;
       seen.add( key );

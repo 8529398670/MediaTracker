@@ -2418,7 +2418,7 @@
         "readOnlyHint": true,
         "title": "Search Discover"
       },
-      "description": "The Wikipedia film catalogue, minus films the person skipped or watched unless asked for. Each film says whether it is already in the library (title_id) and the person's status on it. Answers total, films and, when nothing matched the exact words, fuzzy: true.",
+      "description": "The Wikipedia film catalogue, minus films the person skipped or watched unless asked for. Each film says whether it is already in the library (title_id) and the person's status on it. Answers total, films and, when nothing matched the exact words, fuzzy: true. q may be an IMDb title link or tt id, which finds that film whatever the other filters say. With q, title_hit says whether any catalogue film, filters aside, has those words in its title. Words the filters leave nothing for are searched again with the filters set aside: unfiltered: true.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {

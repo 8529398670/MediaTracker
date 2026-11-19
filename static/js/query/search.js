@@ -9,6 +9,8 @@
 //   genre:drama        tag:pre-code       cast:hepburn     by:murnau
 //   year:1930  year:1930-1939           note:"rewatch"
 //
+// An IMDb link (or a bare tt id) finds the title with that IMDb id.
+//
 // Pure: no DOM, so tests/js can run it.
 const Search = {
   fold( value ) {
@@ -25,6 +27,13 @@ const Search = {
   },
 
   FIELDS: [ "genre" , "tag" , "cast" , "by" , "year" , "note" , "title" ],
+
+  // An IMDb title link (any IMDb host or language path) or a bare tt id,
+  // pasted into a search box: "tt0068646", or "" when the text is not one.
+  imdbId( text ) {
+    const found = /^\s*(?:(?:https?:\/\/)?(?:[\w-]+\.)*imdb\.com\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?title\/)?(tt\d{6,10})\b/i.exec( String( text || "" ) );
+    return found ? found[ 1 ].toLowerCase() : "";
+  },
 
   // "noir -remake genre:crime year:1940-1949" ->
   // { terms: ["noir"], not: ["remake"], fields: [{ field, value, not }] }
@@ -112,6 +121,7 @@ const Search = {
   // two of a word in the title -- "forest gump" finds "Forrest Gump". Only
   // for plain words; a search with operators means exactly what it says.
   closeMatcher( text ) {
+    if ( this.imdbId( text ) ) return null;
     const parsed = this.parse( text );
     if ( parsed.not.length || parsed.fields.length || !parsed.terms.length ) return null;
     const words = parsed.terms.join( " " ).split( " " );
@@ -123,6 +133,8 @@ const Search = {
 
   // A parsed query, compiled once, tested against many rows.
   matcher( text ) {
+    const imdb = this.imdbId( text );
+    if ( imdb ) return ( row ) => String( row.t.imdb_id || "" ).toLowerCase() === imdb;
     const parsed = this.parse( text );
     if ( !parsed.terms.length && !parsed.not.length && !parsed.fields.length ) return null;
     return ( row ) => {

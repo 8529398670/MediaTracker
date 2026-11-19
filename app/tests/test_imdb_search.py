@@ -54,5 +54,15 @@ class ResolverUsesImdbTest(unittest.TestCase):
         self.assertEqual(rows[0]["sourceId"], "tt0043873")
 
 
+class DiscoverImdbLinkTest(unittest.TestCase):
+    def test_links_and_ids_are_read_and_other_text_is_not(self) -> None:
+        from app.routes.discover import imdb_link_id
+        self.assertEqual(imdb_link_id("https://www.imdb.com/title/tt18270364/"), "tt18270364")
+        self.assertEqual(imdb_link_id("m.imdb.com/de/title/TT0068646/?ref_=x"), "tt0068646")
+        self.assertEqual(imdb_link_id(" tt0068646 "), "tt0068646")
+        self.assertEqual(imdb_link_id("Step Into... The Movies"), "")
+        self.assertEqual(imdb_link_id("https://example.com/title/tt0068646/"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

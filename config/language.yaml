@@ -1359,5 +1359,6 @@ discover:
   show_skipped: "Show films I skipped ({n})"
   rating_unknown: "Not looked up yet"
   empty: "No films match. Loosen a filter, or clear them all."
+  unfiltered: "Nothing matched “{text}” with your filters, so these are shown with the filters set aside."
   more: "Show more"
 
