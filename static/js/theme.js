@@ -57,28 +57,36 @@ const Theme = {
   // Every one has colors for both modes: the ones it starts in, and the other
   // mode's under its name, which the Light/Dark switch swaps in (setMode).
   // Default comes first and starts light: it is what a new browser shows.
+  //
+  // A theme added after the first ones carries since: one more than the
+  // highest so far. A saved list remembers the highest it has seen
+  // (builtInsSeen), and withNewBuiltIns adds any newer one to it, so a new
+  // theme reaches people who already made their own list. Never reuse or
+  // lower a since; moving a theme in this list does not move it in saved ones.
   builtIn: [
-    { id: "default" , mode: "light" , accent: "#1f5fd6" , second: "#0b7a75" ,
-      dark: { accent: "#6ea0ff" , second: "#5fd3c4" } },
-    { id: "ocean" , mode: "light" , accent: "#0b7285" , second: "#bd5418" , background: "#eef6f8" , surface: "#ffffff" ,
-      dark: { accent: "#3bc9db" , second: "#ff922b" , background: "#0b1a1f" , surface: "#12262d" } },
-    { id: "forest" , mode: "light" , accent: "#28843b" , second: "#8a6a12" , background: "#f1f6ef" , surface: "#ffffff" ,
-      dark: { accent: "#69db7c" , second: "#e0b84c" , background: "#0f1a12" , surface: "#17251a" } },
-    { id: "sepia" , mode: "light" , accent: "#9c5a1c" , second: "#2f6f6a" , background: "#f6f0e4" , surface: "#fbf7ef" ,
-      dark: { accent: "#e0a15e" , second: "#6cc4bb" , background: "#1c1712" , surface: "#262019" } },
-    { id: "grape" , mode: "light" , accent: "#7048c8" , second: "#c0267e" , background: "#f5f2fc" , surface: "#ffffff" ,
-      dark: { accent: "#b197fc" , second: "#f783ac" , background: "#15111f" , surface: "#1e182c" } },
-    { id: "pink" , mode: "light" , accent: "#c2255c" , second: "#6b3fc0" , background: "#fdf0f5" , surface: "#ffffff" ,
-      dark: { accent: "#f783ac" , second: "#b197fc" , background: "#1f1018" , surface: "#2a1621" } },
+    { id: "default" , mode: "light" , accent: "#1f5fd6" , second: "#0b7a75" , overrides: { rowEven: "#edf2fb" } ,
+      dark: { accent: "#6ea0ff" , second: "#5fd3c4" , overrides: { rowEven: "#222b38" } } },
+    { id: "ocean" , mode: "light" , accent: "#0b7285" , second: "#bd5418" , background: "#eef6f8" , surface: "#ffffff" , overrides: { rowEven: "#e6f2f5" } ,
+      dark: { accent: "#3bc9db" , second: "#ff922b" , background: "#0b1a1f" , surface: "#12262d" , overrides: { rowEven: "#183540" } } },
+    { id: "forest" , mode: "light" , accent: "#28843b" , second: "#8a6a12" , background: "#f1f6ef" , surface: "#ffffff" , overrides: { rowEven: "#eaf3e7" } ,
+      dark: { accent: "#69db7c" , second: "#e0b84c" , background: "#0f1a12" , surface: "#17251a" , overrides: { rowEven: "#1f3324" } } },
+    { id: "sepia" , mode: "light" , accent: "#9c5a1c" , second: "#2f6f6a" , background: "#f6f0e4" , surface: "#fbf7ef" , overrides: { rowEven: "#f2e8d6" } ,
+      dark: { accent: "#e0a15e" , second: "#6cc4bb" , background: "#1c1712" , surface: "#262019" , overrides: { rowEven: "#322a20" } } },
+    { id: "grape" , mode: "light" , accent: "#7048c8" , second: "#c0267e" , background: "#f5f2fc" , surface: "#ffffff" , overrides: { rowEven: "#f0ebfb" } ,
+      dark: { accent: "#b197fc" , second: "#f783ac" , background: "#15111f" , surface: "#1e182c" , overrides: { rowEven: "#2a213d" } } },
+    { id: "pink" , mode: "light" , accent: "#c2255c" , second: "#6b3fc0" , background: "#fdf0f5" , surface: "#ffffff" , overrides: { rowEven: "#fbe7ef" } ,
+      dark: { accent: "#f783ac" , second: "#b197fc" , background: "#1f1018" , surface: "#2a1621" , overrides: { rowEven: "#3a2030" } } },
     // Wright State University: Green on Off White; switched to dark, Gold on Black with Dark Green panels.
     { id: "wsu" , mode: "light" , accent: ThemePalettes.wsu.green , second: ThemePalettes.wsu.gold , background: ThemePalettes.wsu.off_white , surface: "#ffffff" ,
-      dark: { accent: ThemePalettes.wsu.gold , second: ThemePalettes.wsu.yellow , background: ThemePalettes.wsu.black , surface: ThemePalettes.wsu.dark_green } },
-    { id: "midnight" , mode: "dark" , accent: "#8c7cff" , second: "#ffb86b" , background: "#0e1020" , surface: "#171a30" ,
-      light: { accent: "#5b4bd6" , second: "#c26a00" , background: "#f3f3fb" , surface: "#ffffff" } },
-    { id: "slate" , mode: "dark" , accent: "#4fb3a9" , second: "#e6b450" , background: "#15191e" , surface: "#1d232a" ,
-      light: { accent: "#2b7a72" , second: "#a0711a" , background: "#f2f4f6" , surface: "#ffffff" } },
-    { id: "cerise" , mode: "dark" , accent: "#f06595" , second: "#ffa8d0" , background: "#1f0d16" , surface: "#2a1220" ,
-      light: { accent: "#b0164c" , second: "#e64980" , background: "#fdf2f6" , surface: "#ffffff" } },
+      overrides: { rowEven: ThemePalettes.wsu.faded_gold } ,
+      dark: { accent: ThemePalettes.wsu.gold , second: ThemePalettes.wsu.yellow , background: ThemePalettes.wsu.black , surface: ThemePalettes.wsu.dark_green ,
+        overrides: { rowEven: ThemePalettes.wsu.black } } },
+    { id: "midnight" , mode: "dark" , accent: "#8c7cff" , second: "#ffb86b" , background: "#0e1020" , surface: "#171a30" , overrides: { rowEven: "#22264a" } ,
+      light: { accent: "#5b4bd6" , second: "#c26a00" , background: "#f3f3fb" , surface: "#ffffff" , overrides: { rowEven: "#eeedfa" } } },
+    { id: "slate" , mode: "dark" , accent: "#4fb3a9" , second: "#e6b450" , background: "#15191e" , surface: "#1d232a" , overrides: { rowEven: "#262e37" } ,
+      light: { accent: "#2b7a72" , second: "#a0711a" , background: "#f2f4f6" , surface: "#ffffff" , overrides: { rowEven: "#f0f3f5" } } },
+    { id: "cerise" , mode: "dark" , accent: "#f06595" , second: "#ffa8d0" , background: "#1f0d16" , surface: "#2a1220" , overrides: { rowEven: "#3a1a2c" } ,
+      light: { accent: "#b0164c" , second: "#e64980" , background: "#fdf2f6" , surface: "#ffffff" , overrides: { rowEven: "#fce8f0" } } },
   ],
 
   // What a theme leaves out.
@@ -118,7 +126,7 @@ const Theme = {
 
   // How much of the second color goes into each layer, in percent, so a nested
   // card stands off its card and the card off the page.
-  tints: { page: 3.5 , surface: 1.75 , nested: 8.75 , chrome: 10 , info: 14 , infoBorder: 45 },
+  tints: { page: 3.5 , surface: 1.75 , nested: 8.75 , chrome: 10 , info: 14 , infoBorder: 45 , row: 8 },
 
   // Field of colors() -> custom property in style.css, which hands them on to
   // Bootstrap. Every one of them can be overridden.
@@ -126,6 +134,7 @@ const Theme = {
     text: "--app-text",
     accent: "--app-accent",
     accentFg: "--app-accent-fg",
+    accentText: "--app-accent-text",
     second: "--app-second",
     secondFg: "--app-second-fg",
     secondText: "--app-second-text",
@@ -135,6 +144,8 @@ const Theme = {
     surface: "--app-surface",
     nested: "--app-nested",
     chrome: "--app-chrome",
+    rowOdd: "--app-row-odd",
+    rowEven: "--app-row-even",
     info: "--app-info",
     infoBorder: "--app-info-border",
     border: "--app-border",
@@ -149,9 +160,13 @@ const Theme = {
     text_info: [ "text" , "info" ],
     link: [ "link" , "nested" ],
     button: [ "accentFg" , "accent" ],
+    outline_primary: [ "accentText" , "surface" ],
     heading: [ "secondText" , "nested" ],
     active_nav: [ "secondFg" , "second" ],
     sidebar_link: [ "navLink" , "chrome" ],
+    row_odd: [ "text" , "rowOdd" ],
+    row_even: [ "text" , "rowEven" ],
+    link_row: [ "link" , "rowEven" ],
   },
 
   // The themes on offer, and the one in use (its id).
@@ -165,6 +180,7 @@ const Theme = {
   // A built-in theme with its name filled in, ready to be saved in a list.
   named( theme ) {
     const copy = this.copy( theme );
+    delete copy.since;
     if ( !copy.name ) copy.name = ( typeof I18n === "undefined" ? "" : I18n.get( "theme.preset_" + theme.id ) ) || theme.id;
     return copy;
   },
@@ -287,7 +303,7 @@ const Theme = {
     const kept = this.current;
     this.custom = Boolean( me.themes_custom );
     this.list = Array.isArray( me.themes ) && me.themes.length > 0
-      ? me.themes.map( ( theme ) => this.copy( theme ) )
+      ? this.withNewBuiltIns( me.themes.map( ( theme ) => this.copy( theme ) ) , me.themes_builtins || 0 )
       : this.builtIn.map( ( theme ) => this.named( theme ) );
     this.current = this.find( me.theme_id || kept ).id;
     this.show();
@@ -322,8 +338,34 @@ const Theme = {
   // Saves someone's whole list (null: back to the defaults) and which one they
   // use, and takes the server's answer as the new state.
   async store( list , id ) {
-    const reply = await Api.setThemes( list , id );
+    const reply = await Api.setThemes( list , id , this.builtInsSeen() );
     this.load( reply );
+  },
+
+  // Which built-in themes a list saved now has seen: the highest since.
+  builtInsSeen() {
+    return Math.max( 0 , ...this.builtIn.map( ( theme ) => theme.since || 0 ) );
+  },
+
+  // A saved list with every built-in theme newer than seen added, each just after
+  // the built-in before it (or at the end), while there is room (40, the
+  // server's limit). One already there by id is left as it is.
+  withNewBuiltIns( list , seen ) {
+    const result = list.slice();
+    this.builtIn.forEach( ( theme , index ) => {
+      if ( ( theme.since || 0 ) <= seen || result.length >= 40 ) return;
+      if ( result.some( ( item ) => item.id === theme.id ) ) return;
+      let at = result.length;
+      for ( let back = index - 1; back >= 0; back -= 1 ) {
+        const found = result.findIndex( ( item ) => item.id === this.builtIn[ back ].id );
+        if ( found >= 0 ) {
+          at = found + 1;
+          break;
+        }
+      }
+      result.splice( at , 0 , this.named( theme ) );
+    } );
+    return result;
   },
 
   // Every color the page needs, from a theme's few, before its overrides.
@@ -342,6 +384,8 @@ const Theme = {
       text: mode.text,
       accent: theme.accent,
       accentFg: this.readableOn( theme.accent ),
+      // The outline button's label and border, read on the card.
+      accentText: this.asText( theme.accent , card ),
       second: second,
       secondFg: this.readableOn( second ),
       secondText: this.asText( second , nested ),
@@ -351,6 +395,11 @@ const Theme = {
       surface: card,
       nested: nested,
       chrome: chrome,
+      // Table rows alternate: the card, then the card tinted with the second
+      // color. Each built-in theme sets its own (rowEven in its overrides);
+      // colors() keeps these following an edited card.
+      rowOdd: card,
+      rowEven: this.mix( second , card , this.tints.row ),
       info: this.mix( second , card , this.tints.info ),
       infoBorder: this.mix( second , card , this.tints.infoBorder ),
       // From the card, not the page: most borders sit on a card, and a card can be
@@ -398,9 +447,13 @@ const Theme = {
   // What the page uses: the worked-out colors, with the theme's overrides on top.
   colors( theme ) {
     const colors = this.derived( theme );
-    Object.keys( theme.overrides || {} ).forEach( ( field ) => {
-      if ( field in colors ) colors[ field ] = theme.overrides[ field ];
+    const overrides = theme.overrides || {};
+    Object.keys( overrides ).forEach( ( field ) => {
+      if ( field in colors ) colors[ field ] = overrides[ field ];
     } );
+    // Table rows follow an edited card and second color the same way.
+    if ( !overrides.rowOdd ) colors.rowOdd = colors.surface;
+    if ( !overrides.rowEven ) colors.rowEven = this.mix( colors.second , colors.surface , this.tints.row );
     return colors;
   },
 

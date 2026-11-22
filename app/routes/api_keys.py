@@ -17,8 +17,11 @@ for a key that may have leaked, and has no way back.
 
 Minting, revoking, and deleting require a browser session (the routes are registered
 behind RequireSession in app/routes/__init__.py), so a leaked key cannot
-quietly mint its replacement. The admin routes that hand out login links
-require one too, for the same reason -- see RequireSession.
+quietly mint its replacement. The one exception is a key the owner let mint
+keys (may_mint_keys): it may mint, list and revoke keys for other accounts
+through /api/admin/users/{user_id}/keys and /api/admin/keys/{key_id}/revoke,
+behind RequireKeyMinting. What it mints records it and is revoked with it --
+see RequireSession and api_keys.revoke_minted_tx.
 """
 from __future__ import annotations
 
@@ -33,9 +36,9 @@ from app.apidocs import ADMIN, PATH, QUERY, SESSION_ONLY, Reply, route
 from app.apidocs import Request as RequestType
 from app.core.db import Store
 from app.core.logs import KIND_ADMIN, KIND_AUTH
-from app.core.security import Guard, actor_from
+from app.core.security import Guard, RequireKeyMinting, actor_from
 from app.models import RestoreError, api_keys, to_iso, users
-from app.routes.admin import DateTime, OkReply
+from app.routes.admin import DateTime, OkReply, UserIDPath
 from app.routes.helpers import Dir, Page, Paged, Refused, get_config, get_store, match_rows, not_found, restore_refusal, sorted_page
 from app.routes.logs import audit
 
@@ -64,7 +67,7 @@ class APIKey(Reply, kw_only=True):
     id: str
     user_id: int
     name: str
-    role: Literal["admin", "user"]
+    role: Literal["admin", "user", "viewer"]
     created_at: DateTime
     revoked: bool
     expired: bool
@@ -76,6 +79,8 @@ class APIKey(Reply, kw_only=True):
     created_by: Annotated[int, Meta(description="The admin who made this key for its owner. Absent if the owner made it.")] | UnsetType = UNSET
     created_by_name: str | UnsetType = UNSET
     may_sign_in: Annotated[bool, Meta(description="Whether this key may make a login link for its own account.")]
+    may_mint_keys: Annotated[bool, Meta(description="Whether this key may make keys for other accounts. Only the owner switches it on.")]
+    minted_by_key: Annotated[str, Meta(description="The key that made this one, or empty. Revoking that key revokes this one.")]
 
 
 class NewAPIKey(APIKey, kw_only=True):
@@ -95,6 +100,8 @@ def api_key_row(key: api_keys.APIKey, display_name: str = "") -> APIKey:
         expired=key.expired,
         live=key.live,
         may_sign_in=key.may_sign_in,
+        may_mint_keys=key.may_mint_keys,
+        minted_by_key=key.minted_by_key,
     )
     for field_name in ("expires_at", "last_used_at", "revoked_at"):
         value = getattr(key, field_name)
@@ -159,12 +166,16 @@ def list_my_keys(request: Request, body: ListMyKeys) -> KeysReply:
 
 EXPIRY_MESSAGE = f"expires_in_days must be 0 (never) or up to {api_keys.API_KEY_MAX_DAYS}"
 KeyName = Annotated[str, Meta(min_length=1, max_length=80, extra={"error": "name must be 1-80 characters"})]
+OWNER_KEYS_MESSAGE = "the owner's keys cannot be minted or revoked this way"
+MANAGES_KEYS_MCP = "Manages API keys, which no MCP tool does."
+MAKES_KEY_MCP = "Makes an API key, which no MCP tool does."
+MINT_DAYS_MESSAGE = "expires_in_days must be 1-365"
 ExpiresInDays = Annotated[int, Meta(ge=0, le=api_keys.API_KEY_MAX_DAYS, extra={"error": EXPIRY_MESSAGE})]
 
 
 class CreateMyKey(RequestType):
     name: KeyName
-    role: Annotated[Literal["admin", "user"], Meta(extra={"error": "role must be admin or user"})] = "user"
+    role: Annotated[Literal["admin", "user", "viewer"], Meta(extra={"error": "role must be admin, user or viewer"})] = "user"
     # Three-valued: absent or null means "use the configured default", 0
     # means "never expires", and a number means that many days. Collapsing
     # absent into 0 would turn "unset" into "forever".
@@ -381,9 +392,40 @@ def set_my_key_sign_in(request: Request, body: SetKeySignIn) -> APIKey:
         key = None
     except api_keys.APIKeyDeadError:
         raise Refused(400, "only a live key can be allowed to make sign-in links") from None
+    except api_keys.APIKeyMintedError as refusal:
+        raise Refused(400, str(refusal)) from None
     if key is None:
         raise Refused(404, "no such api key")
     audit(request, KIND_AUTH, "api key sign-in links changed", {"key_id": key.id, "may_sign_in": key.may_sign_in})
+    return api_key_row(key)
+
+
+class SetKeyMintKeys(KeyIDPath):
+    may_mint_keys: Annotated[bool, Meta(description="true lets this key make, list and revoke other accounts' keys, each recording this key and revoked with it.")]
+
+
+@route(
+    "POST /api/keys/{key_id}/mint-keys", summary="Let one of your keys make keys",
+    tag="API keys", access=SESSION_ONLY, feature="api_keys",
+    description="Owner only, on one of your own admin-role keys. When on, the key may make keys for other accounts "
+    "(never the owner's) through POST /api/admin/users/{user_id}/keys, list them, and revoke them. Each key it "
+    "makes records it, and revoking or deleting this key revokes them all.",
+)
+def set_my_key_mint_keys(request: Request, body: SetKeyMintKeys) -> APIKey:
+    """Let one of the owner's keys mint keys, or stop it. Session-only, like
+    every other right a key is given, so no key can grant itself this one.
+    Turning it off leaves the keys it minted working; revoking it ends them."""
+    try:
+        key = api_keys.set_api_key_mint_keys(get_store(request), body.key_id, actor_from(request).user.id, body.may_mint_keys)
+    except api_keys.APIKeyNotOwnerError as refusal:
+        raise Refused(403, str(refusal)) from None
+    except api_keys.APIKeyDeadError:
+        raise Refused(400, "only a live key can be allowed to mint keys") from None
+    except (api_keys.APIKeyMintedError, api_keys.APIKeyMintRoleError) as refusal:
+        raise Refused(400, str(refusal)) from None
+    if key is None:
+        raise Refused(404, "no such api key")
+    audit(request, KIND_AUTH, "api key minting changed", {"key_id": key.id, "may_mint_keys": key.may_mint_keys})
     return api_key_row(key)
 
 
@@ -487,20 +529,96 @@ def list_all_keys(request: Request, body: ListAllKeys) -> KeysReply:
 
 @route(
     "POST /api/admin/keys/{key_id}/revoke", summary="Revoke anyone's key",
-    tag="API keys", access=SESSION_ONLY, role=ADMIN, feature="api_keys",
+    tag="API keys", role=ADMIN, feature="api_keys", use=[RequireKeyMinting],
+    description="Stops the key at once, and every key it made, down the chain. Needs a browser session or a key "
+    "with may_mint_keys (any other key gets 403 key_minting_off), which may not revoke the owner's keys.",
+    mcp_http=MANAGES_KEYS_MCP,
 )
 def revoke_any_key(request: Request, body: KeyIDPath) -> OkReply:
     """How an admin kills a credential belonging to someone else -- a laptop
     that went missing, a CI system being decommissioned, a contractor who has
-    finished."""
+    finished -- and how a minting key (an outside admin tool such as
+    ProjectPortal) takes back one it handed out."""
+    actor = actor_from(request)
+    store = get_store(request)
+    if actor.via_api_key:
+        found = api_keys.get_api_key(store, body.key_id)
+        if found is not None and found.user_id == users.get_owner_id(store):
+            raise Refused(403, OWNER_KEYS_MESSAGE)
     try:
-        revoked = api_keys.revoke_api_key(get_store(request), body.key_id, actor_from(request).user.id)
+        revoked = api_keys.revoke_api_key(store, body.key_id, actor.user.id)
     except (users.OwnerProtectedError, users.OwnerRequiredError) as refusal:
         raise _owner_refused(refusal) from None
     if revoked is None:
         raise Refused(404, "no such api key")
     audit(request, KIND_ADMIN, "api key revoked", {"key_id": body.key_id})
     return OkReply(ok=True)
+
+
+
+
+class MintKey(UserIDPath):
+    name: KeyName
+    role: Annotated[Literal["admin", "user", "viewer"], Meta(description="Capped at the account's own role.", extra={"error": "role must be admin, user or viewer"})]
+    expires_in_days: Annotated[int, Meta(ge=1, le=365, description="Required: 1-365. A minted key always expires.", extra={"error": MINT_DAYS_MESSAGE})]
+
+
+@route(
+    "POST /api/admin/users/{user_id}/keys", summary="Make a key for an account",
+    tag="API keys", role=ADMIN, feature="api_keys", status=201, use=[RequireKeyMinting], errors=(404,),
+    description="Needs a browser session or a key the owner allowed to make keys (may_mint_keys); any other key "
+    "gets 403 key_minting_off. The role is capped at the account's own; expires_in_days is required (1-365). "
+    "Never for the owner. The new key records the key that made it, can never make keys or sign-in links itself, "
+    "and is revoked when that key is revoked or deleted. Answers with the key and its credential, shown only now.",
+    mcp_http=MAKES_KEY_MCP,
+)
+def mint_key_for_user(request: Request, body: MintKey) -> NewAPIKey:
+    """Mint a key for another account, for an outside admin tool that runs the
+    app (ProjectPortal's Manage screen). The rules are api_keys.mint_api_key's."""
+    if not api_keys.valid_name(body.name):
+        raise Refused(400, "name must be 1-80 characters")
+    actor = actor_from(request)
+    try:
+        credential, key = api_keys.mint_api_key(
+            get_store(request), actor.user.id, actor.key_id, body.user_id, body.name, body.role, body.expires_in_days * 24 * 60 * 60,
+        )
+    except api_keys.APIKeyOwnerError:
+        raise Refused(404, "no such user") from None
+    except api_keys.APIKeyForOwnerError:
+        raise Refused(403, OWNER_KEYS_MESSAGE) from None
+    except api_keys.APIKeyForAdminError as refusal:
+        raise Refused(403, str(refusal)) from None
+    except api_keys.APIKeyRoleError:
+        raise Refused(403, "a key cannot have more permission than the account it belongs to") from None
+    except api_keys.APIKeyLimitError:
+        raise Refused(400, "that account already has the maximum number of live API keys") from None
+    except api_keys.APIKeyDisabledError:
+        raise Refused(403, "that account is disabled") from None
+    audit(request, KIND_ADMIN, "api key minted", {"key_id": key.id, "name": key.name, "role": key.role, "user_id": key.user_id, "minted_by_key": key.minted_by_key})
+    # The credential appears here and nowhere else, ever.
+    return NewAPIKey(**msgspec.structs.asdict(api_key_row(key)), credential=credential)
+
+
+class UserKeysReply(Reply):
+    keys: list[APIKey]
+
+
+@route(
+    "GET /api/admin/users/{user_id}/keys", summary="An account's keys",
+    tag="API keys", role=ADMIN, feature="api_keys", use=[RequireKeyMinting], errors=(404,),
+    description="One account's keys, revoked and expired ones included, newest first. Each row says which key "
+    "minted it (minted_by_key, empty when a person made it). Needs a browser session or a key with may_mint_keys; "
+    "any other key gets 403 key_minting_off.",
+    mcp_http=MANAGES_KEYS_MCP,
+)
+def list_user_keys(request: Request, body: UserIDPath) -> UserKeysReply:
+    """One account's keys, for the tool that mints them."""
+    store = get_store(request)
+    if users.get_user(store, body.user_id) is None:
+        raise Refused(404, "no such user")
+    keys = api_keys.list_api_keys_for_user(store, body.user_id)
+    names = display_names(store)
+    return UserKeysReply(keys=[name_creator(api_key_row(key, names.get(key.user_id, "")), key, names) for key in keys])
 
 
 @route(

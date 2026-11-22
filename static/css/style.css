@@ -14,7 +14,9 @@
   and Dark themes, for a page that loads before or without it. --app-accent is
   the main color, for what you can press; --app-second says where you are.
   --app-bg, --app-surface and --app-nested are the page, a card, and a card
-  inside a card, and --app-chrome the navbar and sidebar.
+  inside a card, and --app-chrome the navbar and sidebar. --app-row-odd and --app-row-even
+  are a table's alternating rows: the card and a tint of --app-second, unless
+  a theme picks its own (each built-in one does).
 
   The block after them hands them on to Bootstrap's own variables. Bootstrap
   compiles some colors straight into components (.btn-primary, focus rings),
@@ -25,6 +27,7 @@
   --app-text: #212529;
   --app-accent: #1f5fd6;
   --app-accent-fg: #ffffff;
+  --app-accent-text: #1f5fd6;
   --app-second: #0b7a75;
   --app-second-fg: #ffffff;
   --app-second-text: #0b7a75;
@@ -34,6 +37,8 @@
   --app-surface: #fbfdfd;
   --app-nested: #eaf3f3;
   --app-chrome: #e7f2f1;
+  --app-row-odd: #fbfdfd;
+  --app-row-even: #edf2fb;
   --app-info: #d9ebea;
   --app-info-border: #8fc2c0;
   --app-border: #cfd2d3;
@@ -74,6 +79,7 @@
   --app-text: #dee2e6;
   --app-accent: #6ea0ff;
   --app-accent-fg: #0b0d10;
+  --app-accent-text: #6ea0ff;
   --app-second: #5fd3c4;
   --app-second-fg: #0b0d10;
   --app-second-text: #5fd3c4;
@@ -83,6 +89,8 @@
   --app-surface: #1a1f24;
   --app-nested: #1f2c2f;
   --app-chrome: #202e31;
+  --app-row-odd: #1a1f24;
+  --app-row-even: #222b38;
   --app-info: #24383a;
   --app-info-border: #39706c;
   --app-border: #41464b;
@@ -150,9 +158,11 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
   --bs-btn-disabled-bg: var(--app-accent);
   --bs-btn-disabled-border-color: var(--app-accent);
 }
+/* The outline's label and border are the accent made readable on a card
+   (accentText), which a dark theme's deep accent may not be. */
 .btn-outline-primary {
-  --bs-btn-color: var(--app-accent);
-  --bs-btn-border-color: var(--app-accent);
+  --bs-btn-color: var(--app-accent-text);
+  --bs-btn-border-color: var(--app-accent-text);
   --bs-btn-hover-color: var(--app-accent-fg);
   --bs-btn-hover-bg: var(--app-accent);
   --bs-btn-hover-border-color: var(--app-accent);
@@ -373,6 +383,10 @@ progress { accent-color: var(--app-second); }
 .nav-link-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .nav-link-sub { font-size: 0.8rem; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-link-sub:empty { display: none; }
+/* A viewer changes nothing (the server's ViewOnly guard refuses it with 403
+   view_only), so the controls that would, marked data-write, are not shown.
+   App.init sets data-view-only on <html> for a viewer. */
+html[data-view-only] [data-write] { display: none !important; }
 .sidebar-heading {
   margin: 1rem 0 0.25rem;
   padding: 0 var(--bs-nav-link-padding-x);
@@ -519,8 +533,12 @@ html { scrollbar-gutter: stable; overflow-anchor: auto; }
 .card-collapse:not([open]) > .card-header { border-bottom: 0; border-radius: var(--bs-card-inner-border-radius); }
 @media (prefers-reduced-motion: reduce) { .card-collapse > .card-header::after { transition: none; } }
 
-/* Tables sit on a card, so they take its color, not the page's. */
-.table { --bs-table-bg: transparent; }
+/* Table rows alternate in the theme's two row colors (theme.js rowOdd and
+   rowEven: the card and a tint of the second color unless the theme picks
+   its own). The header sits on the card. */
+.table { --bs-table-bg: var(--app-row-odd); }
+.table > thead > tr > * { --bs-table-bg: transparent; }
+.table > tbody > tr:nth-child(even) > * { --bs-table-bg: var(--app-row-even); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 td .row-actions { flex-wrap: nowrap; }
 .row-actions .btn { white-space: nowrap; }
@@ -546,6 +564,7 @@ td .row-actions { flex-wrap: nowrap; }
     border-radius: var(--bs-border-radius);
     background: var(--app-bg);
   }
+  .table-responsive > .table:not(.log-table) tbody tr:nth-child(even) { background: var(--app-row-even); }
   .table-responsive > .table:not(.log-table) tbody td {
     display: block;
     position: relative;
@@ -1017,7 +1036,9 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .theme-preview-side span { padding: 0.15rem 0.4rem; border-radius: 0.25rem; }
 .theme-preview-page { padding: 0.75rem; }
 .theme-preview-card, .theme-preview-nested, .theme-preview-info { border: 1px solid; border-radius: 0.375rem; padding: 0.5rem 0.75rem; }
-.theme-preview-nested, .theme-preview-info { margin-top: 0.5rem; }
+.theme-preview-nested, .theme-preview-info, .theme-preview-rows { margin-top: 0.5rem; }
+.theme-preview-rows { display: flex; flex-direction: column; border: 1px solid; border-radius: 0.375rem; overflow: hidden; }
+.theme-preview-rows > span { padding: 0.2rem 0.75rem; }
 /* Every button in the theme, solid then outline. Not the touch-sized 44px:
    the preview is a picture, not something to press. */
 .theme-preview-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }

@@ -37,6 +37,7 @@ class InviteLinkRow(Reply, kw_only=True):
     live: bool
     expires_at: DateTime
     revoked: bool
+    role: Annotated[Literal["user", "viewer"], Meta(description="The role each person who joins gets.")]
     created_by: int
     created_by_name: str | UnsetType = UNSET
 
@@ -56,6 +57,7 @@ def _row(link: InviteLink, creator: User | None) -> InviteLinkRow:
         live=live,
         expires_at=link.expires_at.isoformat(),
         revoked=link.revoked_at is not None,
+        role=link.role,  # type: ignore[arg-type]
         created_by=link.created_by,
     )
     if creator is not None:
@@ -97,6 +99,7 @@ class CreateInviteLink(RequestType):
     label: Annotated[str, Meta(min_length=1, max_length=80, extra={"error": INVITE_LINK_LIMITS})]
     max_uses: Annotated[int, Meta(ge=1, le=INVITE_LINK_MAX_USES, extra={"error": INVITE_LINK_LIMITS})]
     days: Annotated[int, Meta(ge=1, le=INVITE_LINK_MAX_DAYS, extra={"error": INVITE_LINK_LIMITS})]
+    role: Annotated[Literal["user", "viewer"], Meta(description="The role each person who joins gets: user, or viewer (reads only).", extra={"error": "role must be user or viewer"})] = "user"
 
 
 class NewInviteLink(InviteLinkRow, kw_only=True):
@@ -107,8 +110,8 @@ class NewInviteLink(InviteLinkRow, kw_only=True):
 @route(
     "POST /api/admin/invite-links", summary="Create an invite link",
     tag="Invite links", role=ADMIN, feature="invite_links", status=201,
-    description="One link for a group: each person who opens it joins as a new user, up to max_uses people, "
-    "for days days.",
+    description="One link for a group: each person who opens it joins as a new account with role (user, the "
+    "default, or viewer), up to max_uses people, for days days.",
     mcp_note="Answers with join_url (shown only now) and the link's details. Revoking or deleting this API "
     "key switches the link off.",
     mcp="admin_create_invite_link", enabled=invite_links_on, call=with_join_url,
@@ -119,8 +122,8 @@ def create_invite_link(request: Request, body: CreateInviteLink) -> NewInviteLin
     if not invite_links.valid_invite_link(body.label, body.max_uses, body.days):
         raise Refused(400, INVITE_LINK_LIMITS)
     actor = actor_from(request)
-    credential, link = invite_links.issue_invite_link(get_store(request), body.label, body.max_uses, timedelta(days=body.days), actor.user.id, actor.key_id)
-    audit(request, KIND_ADMIN, "invite link created", {"link_id": link.id, "label": link.label, "max_uses": link.max_uses})
+    credential, link = invite_links.issue_invite_link(get_store(request), body.label, body.max_uses, timedelta(days=body.days), actor.user.id, actor.key_id, body.role)
+    audit(request, KIND_ADMIN, "invite link created", {"link_id": link.id, "label": link.label, "max_uses": link.max_uses, "role": link.role})
     return NewInviteLink(**msgspec.structs.asdict(_row(link, actor.user)), join_path=f"/join/{credential}")
 
 

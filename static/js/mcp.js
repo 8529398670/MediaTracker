@@ -28,11 +28,11 @@ const Mcp = {
     if ( me.mcp_url ) {
       Dom.get( "mcp-spec-link" ).setAttribute( "href" , me.mcp_url );
       Dom.show( Dom.get( "mcp-spec-line" ) , true );
-      // The same reference written for people, config/mcp.md, where the
-      // repository's site renders it. Only with app.repo: the server keeps no
-      // copy of its own.
-      if ( me.repo ) {
-        Dom.get( "mcp-doc-link" ).setAttribute( "href" , me.repo + "/blob/HEAD/config/mcp.md" );
+      // The same reference written for people, config/mcp.md: where the
+      // repository's site renders it when app.repo is set, else this
+      // server's own /docs/mcp page.
+      if ( me.mcp_doc_url ) {
+        Dom.get( "mcp-doc-link" ).setAttribute( "href" , me.mcp_doc_url );
         Dom.show( Dom.get( "mcp-doc-part" ) , true );
       }
     }

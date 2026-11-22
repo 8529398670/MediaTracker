@@ -34,4 +34,8 @@ class NoStoreTest(RoutesTestCase):
 
     def test_static_files_keep_their_own_rule(self) -> None:
         self.assertIn("max-age=", self.client.get("/favicon.ico").headers["cache-control"])
-        self.assertIn("no-store", self.client.get("/").headers["cache-control"])
+        # index.html is revalidated, not refused: the browser may keep it, a
+        # shared cache may not.
+        cache = self.client.get("/").headers["cache-control"]
+        self.assertIn("private", cache)
+        self.assertIn("no-cache", cache)

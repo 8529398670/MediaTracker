@@ -13,6 +13,7 @@ user".
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 from typing import Annotated, Any, ClassVar, Literal
 
 import msgspec
@@ -38,7 +39,7 @@ LINK_LIMITS = "max_uses must be 0 (unlimited) or 1-1000, expires_in_minutes 0 (n
 MaxUses = Annotated[int, Meta(ge=0, le=1000, description="Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1.", extra={"error": LINK_LIMITS})]
 ExpiresInMinutes = Annotated[int, Meta(ge=0, le=525600, description="0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise.", extra={"error": LINK_LIMITS})]
 DisplayName = Annotated[str, Meta(min_length=1, max_length=80, extra={"error": "display name must be 1-80 characters"})]
-Role = Annotated[Literal["admin", "user"], Meta(extra={"error": "role must be admin or user"})]
+Role = Annotated[Literal["admin", "user", "viewer"], Meta(extra={"error": "role must be admin, user or viewer"})]
 
 
 class UserIDPath(RequestType):
@@ -66,8 +67,8 @@ class Revoked(Reply):
     api_name: ClassVar[str] = "Revoked"
     sessions: int
     login_links: int
-    api_keys: int
-    passwords: int
+    api_keys: Annotated[int, Meta(extra_json_schema={"x-feature": "api_keys"})]
+    passwords: Annotated[int, Meta(extra_json_schema={"x-feature": "passwords"})]
 
 
 class UserRow(Reply):
@@ -78,14 +79,16 @@ class UserRow(Reply):
     api_name: ClassVar[str] = "User"
     id: int
     display_name: str
-    username: Annotated[str, Meta(description="Empty until a password is set.")]
-    role: Literal["admin", "user"]
+    username: Annotated[str, Meta(description="Empty until a password is set.", extra_json_schema={"x-feature": "passwords"})]
+    role: Literal["admin", "user", "viewer"]
     created_at: DateTime
-    disabled: bool
+    disabled: Annotated[bool, Meta(description="Switched off, or its expiry has passed.")]
+    expires_at: Annotated[DateTime | None, Meta(description="When the account stops working, or null for never.")]
+    expired: Annotated[bool, Meta(description="Whether expires_at has passed.")]
     owner: bool
-    has_password: bool
-    password_blocked: bool
-    two_factor: bool
+    has_password: Annotated[bool, Meta(extra_json_schema={"x-feature": "passwords"})]
+    password_blocked: Annotated[bool, Meta(extra_json_schema={"x-feature": "passwords"})]
+    two_factor: Annotated[bool, Meta(extra_json_schema={"x-feature": "two_factor"})]
     login_link: Annotated[LoginLink | None, Meta(description="The account's live login link, or null.")]
     can_show_others: Annotated[bool, Meta(description="Whether this account has the Showing picker (admins always do).")]
     showing_locked: Annotated[bool, Meta(description="Whether an admin has fixed whose lists it sees.")]
@@ -129,6 +132,8 @@ def user_rows(store: Store, query: str = "") -> list[UserRow]:
             role=u.role,
             created_at=to_iso(u.created_at),
             disabled=u.disabled,
+            expires_at=to_iso(u.expires_at),
+            expired=u.expired,
             owner=u.id == owner_id,
             has_password=passwords.has_password(u),
             password_blocked=u.password_blocked,
@@ -185,11 +190,35 @@ def link_reply(credential: str, info: dict) -> dict[str, Any]:
     }
 
 
+EXPIRY_FORMAT = "must be an RFC 3339 time or null"
+AccountExpiry = Annotated[str, Meta(extra_json_schema={"format": "date-time"})]
+
+
+def parse_expiry(value: str | None, field: str) -> datetime | None:
+    """An account expiry as a request sends it: an RFC 3339 time with its
+    offset, or None for never. 400 for anything else, and for a time that is
+    not in the future."""
+    if value is None:
+        return None
+    # account_expires_at may only be left out, so its message has no "or null".
+    bad = f"{field} {EXPIRY_FORMAT}" if field == "expires_at" else f"{field} must be an RFC 3339 time"
+    try:
+        when = datetime.fromisoformat(value.strip())
+    except ValueError:
+        raise Refused(400, bad) from None
+    if when.tzinfo is None:
+        raise Refused(400, bad)
+    if when <= utc_now():
+        raise Refused(400, f"{field} must be in the future")
+    return when.astimezone(timezone.utc)
+
+
 class CreateUser(RequestType):
     display_name: DisplayName
     role: Role
     max_uses: MaxUses | None = None
     expires_in_minutes: ExpiresInMinutes | None = None
+    account_expires_at: Annotated[AccountExpiry | None, Meta(description="When the account stops working (RFC 3339). Left out: never. expires_in_minutes is the login link's expiry, not this.")] = None
 
 
 class CreateUserReply(LoginLinkReply):
@@ -199,8 +228,9 @@ class CreateUserReply(LoginLinkReply):
 @route(
     "POST /api/admin/users", summary="Create an account",
     tag="Admin", role=ADMIN, status=201,
-    description="Make a new account and its first login link, to hand to the person. role is admin or user. "
-    "Answers with user_id and the link.",
+    description="Make a new account and its first login link, to hand to the person. role is admin, user or "
+    "viewer (reads only). account_expires_at, when given, is when the "
+    "account stops working. Answers with user_id and the link.",
     mcp_note="Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), "
     "expires_at and max_uses. Any older link the account could still use stops working; its signed-in "
     "devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs "
@@ -216,9 +246,10 @@ def create_user(request: Request, body: CreateUser) -> CreateUserReply:
     worse than useless."""
     if not users.valid_display_name(body.display_name):
         raise Refused(400, "display name must be 1-80 characters")
+    account_expires_at = parse_expiry(body.account_expires_at, "account_expires_at")
     options = link_options(request, body)
     store = get_store(request)
-    user = users.create_user(store, body.display_name, body.role)
+    user = users.create_user(store, body.display_name, body.role, account_expires_at)
     credential, info = login_tokens.issue_login_link(store, user.id, options)
     audit(request, KIND_ADMIN, "user created", {"user_id": user.id, "name": user.display_name, "role": user.role})
     return CreateUserReply(user_id=user.id, **link_reply(credential, info))
@@ -424,13 +455,14 @@ class SetUserRoleReply(Reply):
     "POST /api/admin/users/{user_id}/role", summary="Change an account's role",
     bulk=True,
     tag="Admin", role=ADMIN, errors=(404,),
-    description="Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; "
+    description="Make an account an admin, an ordinary user, or a viewer, who may read but change nothing. Only the "
+    "owner takes an admin's rights away; "
     "the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's "
     "sessions and live login link.",
     mcp="admin_set_user_role",
 )
 def set_user_role(request: Request, body: SetUserRole) -> SetUserRoleReply:
-    """Make an account an admin or an ordinary user. Who may do what lives in
+    """Make an account an admin, a user or a viewer. Who may do what lives in
     credentials.set_user_role."""
     try:
         changed = credentials.set_user_role(get_store(request), body.user_id, actor_from(request).user.id, body.role)
@@ -479,6 +511,46 @@ def set_user_showing(request: Request, body: SetUserShowing) -> SetUserShowingRe
         raise Refused(404, "no such user")
     audit(request, KIND_ADMIN, "user showing changed", {"user_id": body.user_id, "can_show_others": user.can_show_others, "default_subject": user.default_subject, "showing_locked": user.showing_locked})
     return SetUserShowingReply(ok=True, can_show_others=user.can_show_others, default_subject=user.default_subject, showing_locked=user.showing_locked)
+
+
+class SetUserExpiry(UserIDPath):
+    expires_at: Annotated[AccountExpiry | None, Meta(description="When the account stops working (RFC 3339), or null for never.")]
+
+
+class SetUserExpiryReply(Reply):
+    ok: bool
+    expires_at: Annotated[DateTime | None, Meta(description="null when it never expires.")]
+
+
+@route(
+    "POST /api/admin/users/{user_id}/expiry", summary="Set when an account expires",
+    tag="Admin", role=ADMIN, errors=(404,),
+    description="expires_at is when the account stops working (RFC 3339), or null for never. Once it passes the "
+    "account counts as disabled: sign-in, its sessions and its keys stop, and housekeeping disables it and revokes "
+    "its access. A later expiry does not re-enable an account housekeeping already disabled. It must be in the "
+    "future. The owner's account never expires; only the owner sets an admin's.",
+    mcp="admin_set_user_expiry",
+)
+def set_user_expiry(request: Request, body: SetUserExpiry) -> SetUserExpiryReply:
+    """Set or clear an account's expiry. Who may do it lives in
+    credentials.set_user_expiry. Clearing it does not switch back on an
+    account housekeeping already disabled for expiring: that is
+    set_user_disabled, deliberately."""
+    expires_at = parse_expiry(body.expires_at, "expires_at")
+    try:
+        found = credentials.set_user_expiry(get_store(request), body.user_id, actor_from(request).user.id, expires_at)
+    except credentials.ExpiryPastError as refusal:
+        raise Refused(400, str(refusal)) from None
+    except credentials.OwnerExpiryError as refusal:
+        raise Refused(403, str(refusal)) from None
+    except credentials.OwnerProtectedError:
+        raise Refused(403, "the owner's account cannot expire") from None
+    except credentials.OwnerRequiredError:
+        raise Refused(403, "only the owner can set when an admin account expires") from None
+    if not found:
+        raise Refused(404, "no such user")
+    audit(request, KIND_ADMIN, "user expiry set", {"user_id": body.user_id, "expires_at": to_iso(expires_at)})
+    return SetUserExpiryReply(ok=True, expires_at=to_iso(expires_at))
 
 
 class DeleteUserReply(Reply):

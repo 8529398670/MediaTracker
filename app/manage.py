@@ -120,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = commands.add_parser("create-login", help="create a user and print a login link")
     p.add_argument("--name", required=True, help="display name")
-    p.add_argument("--role", choices=[users.ROLE_USER, users.ROLE_ADMIN], default=users.ROLE_USER)
+    p.add_argument("--role", choices=[users.ROLE_VIEWER, users.ROLE_USER, users.ROLE_ADMIN], default=users.ROLE_USER)
     add_link_arguments(p)
 
     p = commands.add_parser("reissue-login", help="fresh login link for an existing user")
@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = commands.add_parser("create-key", help="mint an API key for an account")
     p.add_argument("--user-id", type=int, required=True, help="id of the account the key belongs to")
     p.add_argument("--name", required=True, help='what this key is for, e.g. "deploy bot"')
-    p.add_argument("--role", choices=[users.ROLE_USER, users.ROLE_ADMIN], default=users.ROLE_USER,
+    p.add_argument("--role", choices=[users.ROLE_VIEWER, users.ROLE_USER, users.ROLE_ADMIN], default=users.ROLE_USER,
                    help="never more than the account has")
     p.add_argument("--days", type=int, default=None,
                    help="lifetime in days; 0 never expires; omit for the server default")

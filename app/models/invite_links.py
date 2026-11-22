@@ -1,7 +1,7 @@
 """Invite links: one link for a whole group -- posted in a group chat, say.
 
 Each person who opens it types their name. A new name becomes a new account
-(always role user), up to max_uses of them. A name close to one that already
+(as a user, or a viewer when the link says so), up to max_uses of them. A name close to one that already
 joined through this link is offered back ("did you mean...?"), which is how
 the same person signs in on their next device.
 
@@ -29,10 +29,14 @@ from app.models import RestoreGoneError, deleted_long_ago, from_iso, mark_delete
 from app.models.pins import name_closeness
 from app.models.sessions import new_session, split_credential
 from app.models.sign_in import SignIn, SignInRules, start_sign_in_tx
-from app.models.users import ROLE_USER, RenameConflictError, User, create_user_tx, get_owner_id, get_user
+from app.models.users import ROLE_USER, ROLE_VIEWER, RenameConflictError, User, create_user_tx, get_owner_id, get_user
 
 INVITE_LINK_MAX_USES = 1000
 INVITE_LINK_MAX_DAYS = 365
+
+# What a person may join as. Never admin: an invite link is for a group, and
+# anyone holding it can be anyone who joined through it.
+INVITE_ROLES = (ROLE_USER, ROLE_VIEWER)
 
 # How long a dead link's row is kept before the purge drops it, so the admin
 # list still shows last week's links.
@@ -86,6 +90,9 @@ class InviteLink:
     # Set by delete_invite_link; restorable for RESTORE_WINDOW, like a key.
     deleted_at: datetime | None = None
     deleted_by: int | None = None
+    # The role each person joins with: user, or viewer for a link that only
+    # lets people look. Never admin (see INVITE_ROLES).
+    role: str = ROLE_USER
 
     @property
     def remaining(self) -> int:
@@ -112,6 +119,7 @@ class InviteLink:
             "deleted_at": to_iso(self.deleted_at),
             "deleted_by": self.deleted_by,
             "minted_by_key": self.minted_by_key,
+            "role": self.role,
         }
 
     @classmethod
@@ -129,6 +137,7 @@ class InviteLink:
             deleted_at=from_iso(record.get("deleted_at")),
             deleted_by=record.get("deleted_by"),
             minted_by_key=record.get("minted_by_key") or "",
+            role=record.get("role") or ROLE_USER,
         )
 
 
@@ -158,10 +167,12 @@ def valid_invite_limits(max_uses: object, days: object) -> bool:
     )
 
 
-def issue_invite_link(store: Store, label: str, max_uses: int, ttl: timedelta, created_by: int, minted_by_key: str = "") -> tuple[str, InviteLink]:
+def issue_invite_link(store: Store, label: str, max_uses: int, ttl: timedelta, created_by: int, minted_by_key: str = "", role: str = ROLE_USER) -> tuple[str, InviteLink]:
     """Returns (credential, link). The credential exists exactly once, like a
     login link: only its hash is stored. minted_by_key is the id of the API
-    key asking, or ""."""
+    key asking, or "". role is what people join as, one of INVITE_ROLES."""
+    if role not in INVITE_ROLES:
+        raise BadInviteLinkError()
     link_id = encryption.url_token(12)
     secret = encryption.url_token(24)
     now = utc_now()
@@ -174,6 +185,7 @@ def issue_invite_link(store: Store, label: str, max_uses: int, ttl: timedelta, c
         created_at=now,
         expires_at=now + ttl,
         minted_by_key=minted_by_key,
+        role=role,
     )
     store.put(BUCKET_INVITE_LINKS, link_id, link.to_record())
     return f"{link_id}.{secret}", link
@@ -246,7 +258,7 @@ def join_invite_link(store: Store, credential: str, display_name: str, session_t
         link = _load_invite_link_tx(tx, credential)
         if link.remaining <= 0:
             raise InviteLinkFullError()
-        user = create_user_tx(tx, display_name, ROLE_USER)
+        user = create_user_tx(tx, display_name, link.role if link.role in INVITE_ROLES else ROLE_USER)
         link.accounts.append(user.id)
         tx.put(BUCKET_INVITE_LINKS, link.id, link.to_record())
         session_id, session_credential, session = new_session(user.id, session_ttl_seconds)

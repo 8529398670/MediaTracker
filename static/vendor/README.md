@@ -36,6 +36,8 @@ Commit what lands here. It is part of the app, not a build artifact.
 | `bootstrap.min.css`, `bootstrap.bundle.min.js` | Bootstrap 5.3.8 (the bundle includes Popper) |
 | `bootstrap-icons.min.css`, `fonts/bootstrap-icons.woff2`, `fonts/bootstrap-icons.woff` | Bootstrap Icons 1.13.1 |
 | `qrcode.js` | qrcode-generator 1.4.4 (MIT), for the two-factor setup screen |
+| `marked/marked.min.js` | marked 15.0.12 (MIT): Markdown to HTML for the /docs pages |
+| `dompurify/purify.min.js` | DOMPurify 3.2.6: sanitises that HTML before it touches the page |
 
 The icon stylesheet loads its font from `fonts/` next to it, so keep that
 layout. To upgrade, delete these files and fetch the new version:
@@ -47,4 +49,6 @@ misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/fon
 misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2 fonts/bootstrap-icons.woff2
 misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff fonts/bootstrap-icons.woff
 misc/vendor.sh https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js qrcode.js
+misc/vendor.sh https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js marked/marked.min.js
+misc/vendor.sh https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js dompurify/purify.min.js
 ```

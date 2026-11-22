@@ -23,6 +23,10 @@ const Api = {
       throw new Error( I18n.get( "errors.network" ) || networkError.message );
     }
 
+    // Which build answered: a page left open across a deploy hears about it
+    // here (fresh.js). Not every page loads fresh.js.
+    if ( typeof Fresh !== "undefined" ) Fresh.heard( response.headers.get( "X-App-Version" ) );
+
     let payload = {};
     try {
       payload = await response.json();
@@ -49,7 +53,7 @@ const Api = {
   // nothing on this page can work. Say so, rather than leaving every button to
   // fail one at a time.
   sessionEnded() {
-    window.location.replace( "/?login=ended" );
+    window.location.replace( "/signed-out/ended" );
   },
 
   // A failure on the server's side comes with a reference, which is the one
@@ -118,13 +122,13 @@ const Api = {
     return this.post( "/api/account/rename" , body );
   },
   setPin( pin )                { return this.post( "/api/account/pin" , { pin: pin } ); },
-  // Your whole list of themes (null: back to the defaults) and the one you
-  // use; or only the one you use. See theme.js.
-  setThemes( themes , id )     { return this.post( "/api/account/themes" , { themes: themes , theme_id: id } ); },
+  // Your whole list of themes (null: back to the defaults), the built-in
+  // themes it has seen and the one you use; or only the one you use. See theme.js.
+  setThemes( themes , id , builtins ) { return this.post( "/api/account/themes" , { themes: themes , theme_id: id , builtins: builtins || 0 } ); },
   setTheme( id )               { return this.post( "/api/account/theme" , { theme_id: id } ); },
   // The themes everyone without their own list sees; null is the built-in ones.
   themeDefaults()              { return this.request( "/api/admin/theme-defaults" ); },
-  setThemeDefaults( themes )   { return this.post( "/api/admin/theme-defaults" , { themes: themes } ); },
+  setThemeDefaults( themes , builtins ) { return this.post( "/api/admin/theme-defaults" , { themes: themes , builtins: builtins || 0 } ); },
   // digest is what password.js derived; the password itself is never sent.
   // An empty digest removes the password.
   setPassword( username , digest , code ) {
@@ -160,8 +164,8 @@ const Api = {
     return this.post( "/api/owner/users/" + userId + "/password-access" , { allowed: allowed } );
   },
   listInvites( offset , params ) { return this.request( "/api/admin/invite-links" + this.query( { offset: offset , ...params } ) ); },
-  createInvite( label , maxUses , days ) {
-    return this.post( "/api/admin/invite-links" , { label: label , max_uses: maxUses , days: days } );
+  createInvite( label , maxUses , days , role ) {
+    return this.post( "/api/admin/invite-links" , { label: label , max_uses: maxUses , days: days , role: role || "user" } );
   },
   renameInvite( linkId , label , expect ) {
     return this.post( "/api/admin/invite-links/" + encodeURIComponent( linkId ) + "/rename" , { label: label , expect: expect } );
@@ -192,6 +196,11 @@ const Api = {
   // Whether one of your own keys may make a login link for your account.
   setKeySignIn( keyId , on ) {
     return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/sign-in" , { may_sign_in: on } );
+  },
+  // Whether one of the owner's own admin keys may mint keys for other
+  // accounts (an outside admin tool such as ProjectPortal). Owner only.
+  setKeyMintKeys( keyId , on ) {
+    return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/mint-keys" , { may_mint_keys: on } );
   },
   revokeKey( keyId )           { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/revoke" ); },
   deleteKey( keyId )           { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/delete" ); },

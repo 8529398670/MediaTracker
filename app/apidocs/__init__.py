@@ -28,7 +28,7 @@ from app.apidocs.route import NoInput, PATH, QUERY, Reply, Request, declared_of,
 TITLE = "Media Tracker API"
 VERSION = "1.0.0"
 ABOUT = (
-    "Every route this server answers, apart from the pages at /login/* and /join/*. Generated from the code by "
+    "Every route this server answers, apart from the pages at /login/*, /join/* and /docs/*. Generated from the code by "
     "scripts/api_docs.sh: an app's own routes get their docs the same way, and a test fails until they do."
 )
 

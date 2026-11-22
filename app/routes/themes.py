@@ -18,7 +18,7 @@ from app.models import themes, users
 from app.routes.helpers import Refused, get_store
 from app.routes.logs import audit
 
-OVERRIDES = "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
+OVERRIDES = "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
 
 
 class ThemeButton(Reply, kw_only=True, forbid_unknown_fields=True):
@@ -69,12 +69,14 @@ def _plain(wanted: list[Theme] | None) -> list[dict[str, Any]] | None:
 class SetMyThemes(RequestType):
     themes: Annotated[list[Theme] | None, Meta(description="Your whole list, 1 to 40 themes. null goes back to following the app's defaults.")] = None
     theme_id: Annotated[str, Meta(description="The theme you use.")] = ""
+    builtins: Annotated[int, Meta(description="Which built-in themes this list has seen: the highest since in Theme.builtIn (static/js/theme.js) when it was saved. Built-in themes added after that join the list the browser shows. Left out: 0, the first ones.")] = 0
 
 
 class SetMyThemesReply(Reply):
     ok: bool
     themes: Annotated[list[Theme] | None, Meta(description="What you now see; null while the built-in themes apply.")]
     themes_custom: bool
+    themes_builtins: Annotated[int, Meta(description="Which built-in themes that list has seen (see builtins on POST /api/account/themes).")]
     theme_id: str
 
 
@@ -95,15 +97,15 @@ def set_my_themes(request: Request, body: SetMyThemes) -> SetMyThemesReply:
     user_id = actor_from(request).user.id
     wanted = _plain(body.themes)
     try:
-        found = themes.set_user_themes(store, user_id, wanted, body.theme_id)
+        found = themes.set_user_themes(store, user_id, wanted, body.theme_id, body.builtins)
     except themes.ThemesError as invalid:
         raise Refused(400, str(invalid)) from None
     if not found:
         raise Refused.internal("themes: the signed-in account has no record")
     user = users.get_user(store, user_id)
-    listed, custom = themes.mine(store, user.themes if user else None)
+    listed, custom, seen = themes.mine(store, user.themes if user else None, user.themes_builtins if user else 0)
     audit(request, KIND_AUTH, "changed own themes", {"count": len(wanted or []), "custom": custom})
-    return SetMyThemesReply(ok=True, themes=theme_list(listed), themes_custom=custom, theme_id=user.theme_id if user else "")
+    return SetMyThemesReply(ok=True, themes=theme_list(listed), themes_custom=custom, themes_builtins=seen, theme_id=user.theme_id if user else "")
 
 
 class SetMyTheme(RequestType):
@@ -135,6 +137,7 @@ def set_my_theme(request: Request, body: SetMyTheme) -> SetMyThemeReply:
 
 class ThemeDefaultsReply(Reply):
     themes: Annotated[list[Theme] | None, Meta(description="null while the built-in themes apply.")]
+    builtins: Annotated[int, Meta(description="Which built-in themes that list has seen (see builtins on POST /api/account/themes).")]
 
 
 @route(
@@ -147,16 +150,19 @@ class ThemeDefaultsReply(Reply):
 def get_theme_defaults(request: Request) -> ThemeDefaultsReply:
     """themes is null while the built-in ones apply. Over HTTP and as the MCP
     admin_get_theme_defaults tool."""
-    return ThemeDefaultsReply(themes=theme_list(themes.get_defaults(get_store(request))))
+    listed, seen = themes.get_defaults_seen(get_store(request))
+    return ThemeDefaultsReply(themes=theme_list(listed), builtins=seen)
 
 
 class SetThemeDefaults(RequestType):
     themes: Annotated[list[Theme] | None, Meta(description="1 to 40 themes. null goes back to the built-in ones.")] = None
+    builtins: Annotated[int, Meta(description="Which built-in themes this list has seen: the highest since in Theme.builtIn (static/js/theme.js) when it was saved. Built-in themes added after that join the list the browser shows. Left out: 0, the first ones.")] = 0
 
 
 class SetThemeDefaultsReply(Reply):
     ok: bool
     themes: list[Theme] | None
+    builtins: Annotated[int, Meta(description="Which built-in themes that list has seen (see builtins on POST /api/account/themes).")]
 
 
 @route(
@@ -171,8 +177,8 @@ def set_theme_defaults(request: Request, body: SetThemeDefaults) -> SetThemeDefa
     the MCP admin_set_theme_defaults tool. null goes back to the built-in
     themes."""
     try:
-        saved = themes.set_defaults(get_store(request), _plain(body.themes))
+        saved = themes.set_defaults(get_store(request), _plain(body.themes), body.builtins)
     except themes.ThemesError as invalid:
         raise Refused(400, str(invalid)) from None
     audit(request, KIND_ADMIN, "changed the default themes", {"count": len(saved or []), "built_in": saved is None})
-    return SetThemeDefaultsReply(ok=True, themes=theme_list(saved))
+    return SetThemeDefaultsReply(ok=True, themes=theme_list(saved), builtins=themes.get_defaults_seen(get_store(request))[1])

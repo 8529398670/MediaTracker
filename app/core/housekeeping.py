@@ -9,7 +9,7 @@ from typing import Callable
 
 from app.core import config_live, db, logs
 from app.core.jobs import Registry
-from app.models import login_tokens, sessions
+from app.models import credentials, login_tokens, sessions
 from app.models import api_keys
 from app.models import invite_links
 from app.models import sign_in
@@ -18,15 +18,20 @@ HOUR_SECONDS = 60 * 60
 
 
 def purge(store: db.Store) -> tuple[str, str]:
-    """Drop expired sessions, expired login tokens, the API keys and invite
+    """Disable the accounts past their expiry and revoke their access (see
+    credentials.expire_due_accounts), then drop expired sessions, expired
+    login tokens, the API keys and invite
     links that have been dead long enough to stop being worth listing, and old
     webhook rows.
     None of it is a correctness issue -- every one of those is already refused
-    on read -- so this is only here to keep the file from growing forever.
+    on read, an expired account included -- so this is only here to make an
+    expiry final and keep the file from growing forever.
 
     Every step runs even when one fails, so a damaged invite link cannot stop
     expired sessions being dropped, and the errors are reported together."""
     steps: tuple[tuple[str, Callable[[db.Store], int]], ...] = (
+        # First, so what an expiring account held goes in this same pass.
+        ("expired accounts", credentials.expire_due_accounts),
         ("sessions", sessions.purge_expired_sessions),
         ("login tokens", login_tokens.purge_expired_login_tokens),
         ("api keys", api_keys.purge_dead_api_keys),

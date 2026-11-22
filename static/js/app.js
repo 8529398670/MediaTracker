@@ -27,7 +27,7 @@ const App = {
     }
 
     Dom.all( "input[type=password]" ).forEach( ( input ) => Dom.revealable( input ) );
-    // Not a plain #main link: the hash is which screen is showing.
+    // Not a plain #main link: a fragment would put a step in Back.
     Dom.get( "skip-link" ).addEventListener( "click" , ( event ) => {
       event.preventDefault();
       Dom.get( "main" ).focus();
@@ -60,17 +60,18 @@ const App = {
 
   renderSignedOut() {
     Dom.show( Dom.get( "signed-out" ) , true );
-    // A failed login lands here with ?login=invalid rather than explaining
-    // what was wrong with the link -- see routes/auth.go.
-    const params = new URLSearchParams( window.location.search );
-    if ( params.get( "login" ) === "invalid" ) {
+    // A failed login lands here on /signed-out/invalid rather than explaining
+    // what was wrong with the link -- see routes/auth.go. A sign-in that took
+    // too long is /signed-out/expired, a session that ended /signed-out/ended.
+    const reason = this.signedOutReason();
+    if ( reason === "invalid" ) {
       const banner = Dom.get( "invalid-link" );
       if ( I18n.get( "signed_out.invalid_link" ) !== "" ) Dom.show( banner , true );
     }
-    if ( params.get( "login" ) === "expired" ) {
+    if ( reason === "expired" ) {
       Dom.show( Dom.get( "sign-in-expired" ) , I18n.get( "signed_out.sign_in_expired" ) !== "" );
     }
-    if ( params.get( "login" ) === "ended" ) {
+    if ( reason === "ended" ) {
       Dom.show( Dom.get( "session-ended" ) , I18n.get( "signed_out.session_ended" ) !== "" );
     }
     Password.initLogin();
@@ -87,6 +88,12 @@ const App = {
     } catch ( error ) {
       return "";
     }
+  },
+
+  // "ended" on /signed-out/ended, "" anywhere else.
+  signedOutReason() {
+    const match = /^\/signed-out\/([a-z]+)\/?$/.exec( window.location.pathname );
+    return match ? match[ 1 ] : "";
   },
 
   // Opening a login link only shows this. The link is spent by the POST the
@@ -117,7 +124,7 @@ const App = {
         window.location.replace( "/" );
       } catch ( error ) {
         if ( error.status === 400 ) {
-          window.location.replace( "/?login=invalid" );
+          window.location.replace( "/signed-out/invalid" );
           return;
         }
         // Anything else (rate limited, network) leaves the link unspent,
@@ -183,12 +190,19 @@ const App = {
     Password.init( me );
     TwoFactor.init( me );
     Fresh.init( me );
+    Live.init( me );
     // Side by side: the wait is the slowest screen, not all of them added up.
     const loading = [];
     loading.push( Keys.init( me ) );
     Mcp.init( me );
     loading.push( Sessions.init() );
     About.init( me );
+
+    // A viewer looks and changes nothing: the server refuses every write with
+    // 403 view_only, so the controls that would write (data-write) are hidden
+    // and a badge says why.
+    document.documentElement.toggleAttribute( "data-view-only" , me.role === "viewer" );
+    Dom.show( Dom.get( "view-only-badge" ) , me.role === "viewer" );
 
     // The library first: everything below draws from it. Someone who starts
     // on another person's lists has to be on them before the first load.
@@ -522,8 +536,8 @@ const App = {
   async refreshUsers() {
     const body = Dom.get( "users-table" ).querySelector( "tbody" );
     await Pager.load( "users-table" , "users" , ( offset ) => Api.listUsers( offset , Pager.params( "users-table" ) ) , function ( user ) {
-      const statusKey = user.disabled ? "admin.status_disabled" : "admin.status_active";
-      const statusTone = user.disabled ? "secondary" : "success";
+      const statusKey = user.expired ? "admin.status_expired" : user.disabled ? "admin.status_disabled" : "admin.status_active";
+      const statusTone = user.expired ? "warning" : user.disabled ? "secondary" : "success";
 
       const reissueButton = Dom.el( "button" , {
         class: "btn btn-sm btn-outline-secondary",
@@ -606,18 +620,34 @@ const App = {
       // another. Both ask first and neither can undo: becoming an admin ends
       // their sessions, which nothing brings back.
       const mayManage = user.role !== "admin" || App.currentUser.is_owner;
-      const newRole = user.role === "admin" ? "user" : "admin";
-      const roleButton = isProtected || !mayManage ? null : Dom.el( "button" , {
-        class: "btn btn-sm btn-outline-secondary",
-        text: I18n.get( "admin.make_" + newRole + "_button" ),
-        on: { click: async function () {
-          const question = I18n.get( "admin.make_" + newRole + "_confirm" ).replace( "{name}" , () => user.display_name );
-          if ( !( await Dom.confirm( question ) ) ) return;
+      // The role picker: admin, user or viewer. Becoming an admin and losing
+      // admin rights each ask with their own words; user and viewer swap with
+      // the plain question.
+      const rolePicker = isProtected || !mayManage ? null : Dom.el( "select" , {
+        class: "form-select form-select-sm w-auto",
+        attrs: { "aria-label": I18n.get( "admin.role_select_label" ).replace( "{name}" , () => user.display_name ) },
+        children: [ "admin" , "user" , "viewer" ].map( ( role ) => {
+          const option = Dom.el( "option" , { text: I18n.get( "admin.role_" + role ) , attrs: { value: role } } );
+          option.selected = role === user.role;
+          return option;
+        } ),
+        on: { change: async function ( event ) {
+          const picker = event.target;
+          const newRole = picker.value;
+          const words = newRole === "admin" ? "admin.make_admin_confirm" : user.role === "admin" ? "admin.make_user_confirm" : "admin.role_confirm";
+          const question = I18n.get( words ).replace( "{name}" , () => user.display_name ).replace( "{role}" , () => newRole );
+          if ( !( await Dom.confirm( question ) ) ) {
+            picker.value = user.role;
+            return;
+          }
           try {
             await Api.setUserRole( user.id , newRole );
             await App.refreshAfterUserChange();
             Dom.toast( I18n.get( "admin.role_changed_toast" ).replace( "{name}" , () => user.display_name ).replace( "{role}" , newRole ) , "ok" );
-          } catch ( error ) { App.showError( error.message ); }
+          } catch ( error ) {
+            picker.value = user.role;
+            App.showError( error.message );
+          }
         } },
       } );
 
@@ -750,11 +780,12 @@ const App = {
         if ( user.showing_locked ) words += " · " + I18n.get( "admin.showing_badge_locked" );
         status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( words , "info" ) ] } ) );
       }
+      if ( user.expires_at && !user.expired ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , children: [ document.createTextNode( I18n.get( "admin.expires_line" ).split( "{when}" )[ 0 ] ) , Dom.when( user.expires_at ) ] } ) );
       if ( user.login_link ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , text: LoginLinks.live( user.login_link , "live" ) } ) );
 
       body.appendChild( Dom.el( "tr" , { children: [
         Dom.el( "td" , { children: [ nameCell , username ].filter( Boolean ) } ),
-        Dom.el( "td" , { text: roleText } ),
+        Dom.el( "td" , rolePicker ? { children: [ rolePicker ] } : { text: roleText } ),
         Dom.el( "td" , { children: status } ),
         Dom.el( "td" , { class: "text-nowrap" , children: [ Dom.when( user.created_at ) ] } ),
         Dom.el( "td" , { children: [
@@ -763,7 +794,6 @@ const App = {
             cancelLinkButton,
             sessionsButton,
             passwordButton,
-            roleButton,
             showingButton,
             resetButton,
             revokeButton,

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <title data-i18n="app.title">&nbsp;</title>
+  <link rel="icon" href="/favicon.ico" />
+  <!-- No theme.js: a reference page, always light. -->
+  <link rel="stylesheet" href="/vendor/bootstrap.min.css" />
+  <link rel="stylesheet" href="/vendor/bootstrap-icons.min.css" />
+  <link rel="stylesheet" href="/css/docs.css" />
+</head>
+<body class="bg-body">
+  <!-- /docs/api and /docs/mcp: config/api.md or config/mcp.md, rendered by
+       js/docs.js. The cards on Account link here when app.repo is not set. -->
+  <nav class="navbar border-bottom bg-body-tertiary sticky-top">
+    <div class="container-xl gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/account"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i><span data-i18n="docs.back"></span></a>
+      <span class="navbar-text fw-semibold text-truncate" id="docs-title"></span>
+    </div>
+  </nav>
+  <main class="container-xl py-3">
+    <p class="text-secondary" id="docs-status" data-i18n="docs.loading"></p>
+    <article id="docs-root" class="docs-body"></article>
+  </main>
+
+  <script src="/vendor/marked/marked.min.js"></script>
+  <script src="/vendor/dompurify/purify.min.js"></script>
+  <script src="/js/dom.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/docs.js"></script>
+</body>
+</html>

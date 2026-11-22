@@ -1,4 +1,4 @@
-# Shared by docker/build.sh and docker/run.sh. Sourced, not run, from the
+# Shared by the docker/*.sh scripts. Sourced, not run, from the
 # project root -- which is also the build context.
 #
 # build_image builds the image and then reads config.yaml *through it*: the
@@ -199,4 +199,58 @@ create_secret() {
 # secret.key existed. It prints only when it did something.
 migrate_config() {
   config_dir_run migrate --dir /work
+}
+
+# load_last_deployment sets the docker_* values (docker_container, docker_url,
+# ...) of the last successful docker/run.sh, from .run/docker.last: written on
+# the host, never mounted into the container, so -- unlike config.yaml, which
+# the container can write -- it is safe to act on without a rebuild. For the
+# scripts that work on the running deployment rather than build one
+# (docker/restart.sh, docker/logs.sh).
+load_last_deployment() {
+  local last=".run/docker.last"
+  if [ ! -f "$last" ]; then
+    echo "ERROR: no deployment from this checkout yet (no ${last})." >&2
+    echo "       Start one with docker/run.sh first." >&2
+    exit 1
+  fi
+  eval "$( cat "$last" )"
+  if [ -z "$( docker ps -a -q --filter "name=^${docker_container}\$" )" ]; then
+    echo "ERROR: there is no ${docker_container} container. Start it with docker/run.sh." >&2
+    exit 1
+  fi
+}
+
+# wait_healthy waits up to 30 seconds for the container to pass the image's
+# own healthcheck (python -m app health). If it stops or never answers, it
+# says which, shows the last log lines, and exits 1 instead of announcing a
+# success that is not there.
+wait_healthy() {
+  local status="starting" state
+  echo "Waiting for it to answer (up to 30 seconds)..."
+  for _ in $( seq 1 60 ); do
+    sleep 0.5
+    state="$( docker inspect -f '{{.State.Status}}' "$docker_container" 2>/dev/null || echo "gone" )"
+    if [ "$state" != "running" ]; then
+      status="$state"
+      break
+    fi
+    if docker exec "$docker_container" python -m app health >/dev/null 2>&1; then
+      status="healthy"
+      break
+    fi
+  done
+
+  if [ "$status" != "healthy" ]; then
+    echo "" >&2
+    if [ "$status" = "starting" ]; then
+      echo "ERROR: ${docker_container} is running but not answering after 30 seconds." >&2
+    else
+      echo "ERROR: ${docker_container} stopped (status: ${status}, exit code $( docker inspect -f '{{.State.ExitCode}}' "$docker_container" 2>/dev/null || echo "?" ))." >&2
+    fi
+    echo "       Its last log lines:" >&2
+    echo "" >&2
+    docker logs --tail 40 "$docker_container" 2>&1 | sed 's/^/         /' >&2
+    exit 1
+  fi
 }

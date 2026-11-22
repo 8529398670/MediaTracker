@@ -11,6 +11,7 @@ care which door the request came through.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from starlette.concurrency import run_in_threadpool
@@ -25,7 +26,7 @@ from app.core.db import Store
 from app.models import utc_now
 from app.models.api_keys import APIKey, load_api_key, narrow_role
 from app.models.sessions import Session, load_session, touch_session
-from app.models.users import ROLE_ADMIN, User, get_owner_id
+from app.models.users import ROLE_ADMIN, ROLE_VIEWER, User, get_owner_id
 
 # Auth method names, as reported by /api/me. Worth exposing so a client can
 # tell a browser session from a key without guessing.
@@ -52,6 +53,11 @@ class Actor:
     @property
     def is_admin(self) -> bool:
         return self.role == ROLE_ADMIN
+
+    @property
+    def is_viewer(self) -> bool:
+        """Looks and changes nothing: see ViewOnly."""
+        return self.role == ROLE_VIEWER
 
     @property
     def via_api_key(self) -> bool:
@@ -316,8 +322,16 @@ class RequireSession(Guard):
     through an invite link it handed out: those show in the activity log and
     the user list.
 
-    Keys themselves stay browser-only: a key that could mint a key would leave
-    a successor behind with nothing to tie it to the one revoked."""
+    Keys themselves stay browser-only, with one exception kept on a short
+    leash. A key that could mint a key freely would leave a successor behind
+    with nothing to tie it to the one revoked. So only the owner may let a
+    key mint, from a browser session, and only one of the owner's own admin
+    keys that was not minted itself (APIKey.may_mint_keys, RequireKeyMinting
+    below). Every key it mints records it (minted_by_key), can never mint or
+    make sign-in links in turn, and is revoked with it: revoking or deleting
+    a key revokes every key below it, down the whole chain
+    (api_keys.revoke_minted_tx), and voids what each of them made. Revoking
+    the minting key is still the one switch that ends it all."""
 
     statuses = (401, 403)
 
@@ -327,6 +341,23 @@ class RequireSession(Guard):
             return _refuse(401, "not authenticated")
         if actor.via_api_key:
             return _refuse(403, "this endpoint requires a signed-in session, not an API key")
+        return None
+
+
+class RequireKeyMinting(Guard):
+    """In front of the key-minting routes (/api/admin/users/{id}/keys and
+    revoking a key through /api/admin/keys/{id}/revoke), after RequireAdmin:
+    an admin session passes, and an API key only when the owner let it mint
+    keys (APIKey.may_mint_keys). Any other key gets 403 key_minting_off."""
+
+    statuses = (401, 403)
+
+    def refuse(self, request: Request) -> Response | None:
+        actor = actor_from(request)
+        if actor is None:
+            return _refuse(401, "not authenticated")
+        if actor.api_key is not None and not actor.api_key.may_mint_keys:
+            return _refuse(403, "key_minting_off")
         return None
 
 
@@ -348,6 +379,52 @@ class RequireAPIKey(Guard):
         if not actor.via_api_key:
             return _refuse(403, "this endpoint requires an API key, not a signed-in session")
         return None
+
+
+# What a viewer may still send besides reads: signing out, ending its own
+# sessions, and cancelling its own login link -- each only takes a way in
+# away. /mcp is let through because a viewer key reads through it, and MCP
+# hides every tool that is not a read from a viewer (Tool.visible_to). The
+# public sign-in routes are let through because they do not act as the
+# signed-in account at all: opening a login link for another account in a
+# browser a viewer is signed in on has to work.
+VIEW_ONLY_ALLOWED = re.compile(
+    r"^/(?:api/logout|api/account/login-link/cancel|api/account/sessions/revoke-others"
+    r"|api/account/sessions/[^/]+/revoke|mcp|api/login(?:/[^/]+)?|api/join/[^/]+)$"
+)
+
+
+def viewer_may_call(route: str) -> bool:
+    """Whether a viewer may call a route, given as "METHOD /path" (a real
+    path or a route's template). ViewOnly asks it of every request, and MCP of
+    every tool (Tool.visible_to), so the two cannot disagree."""
+    method, _, path = route.partition(" ")
+    return method in ("GET", "HEAD", "OPTIONS") or VIEW_ONLY_ALLOWED.match(path) is not None
+
+
+class ViewOnly:
+    """The viewer role's one rule, for every route at once: a viewer's
+    session or key may read (GET and HEAD) and nothing else, bar
+    VIEW_ONLY_ALLOWED. Anything else answers 403 {"error": "view_only"} before
+    a handler runs.
+
+    Middleware right after LoadActor rather than a guard on each route, so a
+    route an app adds later is covered without anyone remembering to: the
+    role is read off the actor, so a viewer account's admin key and a
+    viewer-scoped key are both held to it."""
+
+    statuses = (403,)
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            actor = actor_from(Request(scope))
+            if actor is not None and actor.is_viewer and not viewer_may_call(f"{scope['method']} {scope['path']}"):
+                await _refuse(403, "view_only")(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class RequireOwner(Guard):

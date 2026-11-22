@@ -50,7 +50,7 @@ class HolderTest(unittest.TestCase):
 
     def test_save_refuses_invalid_values(self) -> None:
         holder, path = new_holder(self)
-        for changes in ({"server.port": 0}, {"server.port": "eighty"}, {"server.port": True}, {"server.trust_proxy": True}):
+        for changes in ({"server.port": 0}, {"server.port": "eighty"}, {"server.port": True}, {"server.trust_proxy": True, "server.trusted_proxies": []}):
             with self.subTest(changes), self.assertRaises(ValidationError):
                 holder.save(version_of(path), changes)
         self.assertEqual(holder.get().port, holder.boot().port)

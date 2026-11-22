@@ -88,7 +88,7 @@
           </div>
           <h3 class="sidebar-heading" data-i18n="nav.you_heading"></h3>
           <!-- Account: its second line names who is signed in (App.labelAccount). -->
-          <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="nav-link-text"><span data-i18n="nav.account"></span><span id="sidebar-user" class="nav-link-sub"></span></span></a>
+          <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="nav-link-text"><span data-i18n="nav.account"></span><span id="sidebar-user" class="nav-link-sub"></span><span id="view-only-badge" class="badge text-bg-secondary align-self-start mt-1" data-i18n="nav.view_only" hidden></span></span></a>
           <a class="nav-link" href="#appearance" data-nav="appearance"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.appearance"></span></a>
           <a class="nav-link" href="#about" data-nav="about"><i class="bi bi-info-circle" aria-hidden="true"></i><span data-i18n="nav.about"></span></a>
 
@@ -568,11 +568,11 @@
 
         <!-- Everything about you: who you are, how you sign in, and what can
              act as you. A feature's card stays hidden until its own JS shows it. -->
-        <section class="view" data-view="account" id="account-panel">
+        <section class="view" data-view="account" data-path="/account" id="account-panel">
           <h2 class="view-title" data-i18n="account.heading"></h2>
 
 
-          <section class="card">
+          <section class="card" data-write>
             <div class="card-body">
               <h3 class="card-title" data-i18n="account.profile_heading"></h3>
               <form id="rename-form" class="row g-3 align-items-end" autocomplete="off">
@@ -601,7 +601,7 @@
 
           <!-- A login link for your own account, to sign in on another device.
                Any signed-in user may mint one; see Api.createMyLoginLink. -->
-          <section class="card">
+          <section class="card" data-write>
             <div class="card-body">
               <h3 class="card-title" data-i18n="account.device_heading"></h3>
               <p class="text-body-secondary" data-i18n="account.device_description"></p>
@@ -625,7 +625,7 @@
           </section>
 
           <!-- Only while the owner has auth.passwords on; see password.js. -->
-          <section class="card" id="password-panel" hidden>
+          <section class="card" data-write id="password-panel" data-path="/account/password" hidden>
             <div class="card-body">
               <h3 class="card-title" data-i18n="password.heading"></h3>
               <p class="text-body-secondary" data-i18n="password.description"></p>
@@ -659,7 +659,7 @@
           </section>
 
           <!-- Only for non-admin accounts; see pin.js. -->
-          <section class="card" id="pin-panel" hidden>
+          <section class="card" data-write id="pin-panel" data-path="/account/pin" hidden>
             <div class="card-body">
               <h3 class="card-title" data-i18n="pin.heading"></h3>
               <p class="text-body-secondary" data-i18n="pin.description"></p>
@@ -679,7 +679,7 @@
           </section>
 
           <!-- Only while the owner has auth.two_factor on; see two_factor.js. -->
-          <section class="card" id="two-factor-panel" hidden>
+          <section class="card" data-write id="two-factor-panel" data-path="/account/two-factor" hidden>
             <div class="card-body">
               <h3 class="card-title" data-i18n="two_factor.heading"></h3>
               <p class="text-body-secondary" data-i18n="two_factor.description"></p>
@@ -728,7 +728,7 @@
             select is revealed only for an admin (see keys.js) because a key can
             never carry more permission than the account that owns it.
           -->
-          <section class="card" id="api-keys-panel" hidden>
+          <section class="card" id="api-keys-panel" data-path="/account/api-keys" hidden>
             <div class="card-body">
               <h3 class="card-title" data-i18n="api_keys.heading"></h3>
               <p class="text-body-secondary" data-i18n="api_keys.description"></p>
@@ -740,7 +740,7 @@
                 </span>
               </p>
 
-              <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
+              <form id="create-key-form" data-write class="row g-3 align-items-end" autocomplete="off">
                 <div class="col-md">
                   <label for="key-name" class="form-label" data-i18n="api_keys.name_label"></label>
                   <input id="key-name" class="form-control" name="name" maxlength="80" required
@@ -750,6 +750,7 @@
                   <label for="key-role" class="form-label" data-i18n="api_keys.role_label"></label>
                   <select id="key-role" class="form-select" name="role">
                     <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="viewer" data-i18n="api_keys.role_viewer"></option>
                     <option value="admin" data-i18n="api_keys.role_admin"></option>
                   </select>
                 </div>
@@ -836,7 +837,7 @@
                 </div>
               </fieldset>
 
-              <form id="mcp-key-form" class="row g-3 align-items-end" autocomplete="off">
+              <form id="mcp-key-form" data-write class="row g-3 align-items-end" autocomplete="off">
                 <div class="col-md">
                   <label for="mcp-key-name" class="form-label" data-i18n="mcp.name_label"></label>
                   <input id="mcp-key-name" class="form-control" name="name" maxlength="80" required />
@@ -845,6 +846,7 @@
                   <label for="mcp-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
                   <select id="mcp-key-role" class="form-select" name="role">
                     <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="viewer" data-i18n="api_keys.role_viewer"></option>
                     <option value="admin" data-i18n="api_keys.role_admin"></option>
                   </select>
                 </div>
@@ -911,7 +913,7 @@
              they show (ui/customizer.js) and which links and buttons they
              carry (App.initCardLinks and friends in app.js).
              #appearance/theme|cards picks a tab; see appearance.js. -->
-        <section class="view view-full" data-view="appearance" id="appearance">
+        <section class="view view-full" data-view="appearance" data-path="/appearance" id="appearance">
           <h2 class="view-title" data-i18n="theme.heading"></h2>
           <ul class="nav nav-tabs mb-3" id="appearance-tabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -1017,7 +1019,7 @@
         <!-- What this app is and where it comes from: app.description, the
              version, app.repo and the API reference. Shown only when
              app.show_about is on. See about.js. -->
-        <section class="view" data-view="about" id="about-panel" hidden>
+        <section class="view" data-view="about" data-path="/about" id="about-panel" hidden>
           <h2 class="view-title" data-i18n="about.heading"></h2>
           <section class="card">
             <div class="card-body">
@@ -1036,7 +1038,7 @@
           </section>
         </section>
 
-        <section class="view" data-view="users" id="admin-panel" hidden>
+        <section class="view" data-view="users" data-path="/admin/users" id="admin-panel" hidden>
           <h2 class="view-title" data-i18n="admin.heading"></h2>
           <p class="view-description" data-i18n="admin.description"></p>
 
@@ -1053,6 +1055,7 @@
                   <label for="new-role" class="form-label" data-i18n="admin.new_role_label"></label>
                   <select id="new-role" class="form-select" name="role">
                     <option value="user" data-i18n="admin.role_user"></option>
+                    <option value="viewer" data-i18n="admin.role_viewer"></option>
                     <option value="admin" data-i18n="admin.role_admin"></option>
                   </select>
                 </div>
@@ -1137,7 +1140,7 @@
         </section>
 
         <!-- One link a whole group can join through; see invites.js. -->
-        <section class="view" data-view="invite-links" id="invite-links-panel" hidden>
+        <section class="view" data-view="invite-links" data-path="/admin/invite-links" id="invite-links-panel" hidden>
           <h2 class="view-title" data-i18n="invite_links.heading"></h2>
           <p class="view-description" data-i18n="invite_links.description"></p>
 
@@ -1157,6 +1160,13 @@
                 <div class="col-6 col-md">
                   <label for="invite-days" class="form-label" data-i18n="invite_links.days_label"></label>
                   <input id="invite-days" class="form-control" name="days" type="number" min="1" max="365" value="30" required inputmode="numeric" />
+                </div>
+                <div class="col-md">
+                  <label for="invite-role" class="form-label" data-i18n="invite_links.role_label"></label>
+                  <select id="invite-role" class="form-select" name="role">
+                    <option value="user" data-i18n="invite_links.role_user"></option>
+                    <option value="viewer" data-i18n="invite_links.role_viewer"></option>
+                  </select>
                 </div>
                 <div class="col-md-auto">
                   <button type="submit" class="btn btn-primary" data-i18n="invite_links.create_button"></button>
@@ -1205,7 +1215,7 @@
 
         <!-- Every key in the app, whoever owns it: the admin answer to "what
              has standing access", and where a lost laptop's key gets killed. -->
-        <section class="view" data-view="all-keys" id="admin-keys-panel" hidden>
+        <section class="view" data-view="all-keys" data-path="/admin/api-keys" id="admin-keys-panel" hidden>
           <h2 class="view-title" data-i18n="admin_keys.heading"></h2>
           <p class="view-description" data-i18n="admin_keys.description"></p>
 
@@ -1229,6 +1239,7 @@
                   <label for="user-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
                   <select id="user-key-role" class="form-select" name="role">
                     <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="viewer" data-i18n="api_keys.role_viewer"></option>
                     <option value="admin" data-i18n="api_keys.role_admin"></option>
                   </select>
                 </div>
@@ -1288,7 +1299,7 @@
 
         <!-- The activity log, owner only; see logs.js. data-no-track keeps
              reading the log from writing to it (track.js). -->
-        <section class="view view-full" data-view="logs" id="logs-panel" data-no-track hidden>
+        <section class="view view-full" data-view="logs" data-path="/admin/logs" id="logs-panel" data-no-track hidden>
           <h2 class="view-title" data-i18n="logs.heading"></h2>
           <p class="view-description" data-i18n="logs.description"></p>
 
@@ -1353,7 +1364,7 @@
         </section>
 
         <!-- Owner only: config.yaml, one field per setting. See js/settings.js. -->
-        <section class="view" data-view="settings" id="settings-panel" hidden>
+        <section class="view" data-view="settings" data-path="/admin/settings" id="settings-panel" hidden>
           <h2 class="view-title" data-i18n="settings.heading"></h2>
           <p class="view-description" data-i18n="settings.description"></p>
           <section class="card">
@@ -1598,6 +1609,7 @@
   <script src="/js/themes_editor.js"></script>
   <script src="/js/appearance.js"></script>
   <script src="/js/fresh.js"></script>
+  <script src="/js/live.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

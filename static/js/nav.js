@@ -12,6 +12,15 @@
 // file un-hides its section (Keys.init shows the All API keys screen, and only
 // if the server has them switched on); Nav only offers what was un-hidden. So
 // app.js calls Nav.init() last, once every screen has had its say.
+//
+// MediaTracker keeps hash URLs, though the template moved to paths: its own
+// screens carry their state in the hash (#library/movie/all?genre=Drama), and
+// saved Views store it. The template's data-path attributes stay, so a path
+// the server answers (/account, /admin/users, the docs page's back link) is
+// turned into its hash on load (adoptPath).
+//
+// After every render Nav sends a "nav" event on window, which is how the
+// template's screens hear they were opened (Sessions and Logs refresh then).
 const Nav = {
   fallback: "library",
   // Matches Bootstrap's lg breakpoint, where offcanvas-lg becomes a column.
@@ -45,7 +54,11 @@ const Nav = {
     // Moving between screens is not an undo step: Back and Forward already
     // are that, and an undo that only changed the screen would get in the way
     // of undoing what was done on it.
-    window.addEventListener( "hashchange" , () => this.render() );
+    // With a newer build waiting, the switch is a page load instead (fresh.js).
+    window.addEventListener( "hashchange" , () => {
+      if ( !Fresh.swap() ) this.render();
+    } );
+    this.adoptPath();
     this.render();
   },
 
@@ -53,6 +66,17 @@ const Nav = {
   show( name ) {
     if ( this.screen() !== name ) window.location.hash = "#" + name;
     this.render();
+  },
+
+  // A path from index.html's data-path (/account, /account/two-factor,
+  // /admin/users) becomes "/#name": the screen's name, or the card's id.
+  adoptPath() {
+    const path = window.location.pathname.replace( /\/+$/ , "" );
+    if ( path === "" ) return;
+    const node = Dom.all( "[data-path]" ).find( ( each ) => each.getAttribute( "data-path" ) === path );
+    if ( !node ) return;
+    const name = node.classList.contains( "view" ) ? node.getAttribute( "data-view" ) : node.id;
+    window.history.replaceState( null , "" , "/#" + name );
   },
 
   available( name ) {
@@ -106,6 +130,7 @@ const Nav = {
       window.scrollTo( 0 , 0 );
     }
     this.announce( name );
+    window.dispatchEvent( new CustomEvent( "nav" , { detail: { screen: name } } ) );
   },
 
   // Changing screen reloads nothing, so nothing tells a screen reader or the

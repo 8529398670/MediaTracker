@@ -28,6 +28,70 @@ class DotfileTest(unittest.TestCase):
             self.assertEqual(server.resolve("index.html"), (root / "index.html").resolve())
 
 
+class RevalidateTest(unittest.TestCase):
+    def test_text_assets_revalidate(self) -> None:
+        """A text asset is revalidated: its tag comes back as a 304 with no
+        body while the file is unchanged, and a changed file gets a new tag
+        and its bytes."""
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "js").mkdir()
+            (root / "js" / "app.js").write_text("one")
+            server = StaticServer(root)
+            client = TestClient(Starlette(routes=[Route("/{path:path}", server.endpoint)]))
+
+            first = client.get("/js/app.js")
+            tag = first.headers["etag"]
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(first.headers["cache-control"], "private, no-cache")
+
+            again = client.get("/js/app.js", headers={"if-none-match": tag})
+            self.assertEqual(again.status_code, 304)
+            self.assertEqual(again.content, b"")
+            listed = client.get("/js/app.js", headers={"if-none-match": 'W/"0", ' + tag})
+            self.assertEqual(listed.status_code, 304)
+
+            (root / "js" / "app.js").write_text("two")
+            changed = client.get("/js/app.js", headers={"if-none-match": tag})
+            self.assertEqual(changed.status_code, 200)
+            self.assertNotEqual(changed.headers["etag"], tag)
+
+
+class ScreenPathTest(unittest.TestCase):
+    def test_screen_paths_get_the_page(self) -> None:
+        """Each path index.html declares with data-path, and each signed-out
+        reason, is answered with index.html; any other path is still a 404.
+        Adding a screen to index.html is enough, with no restart."""
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "index.html").write_text(
+                '<section class="view" data-view="users" data-path="/admin/users">'
+                '<section class="card" id="x" data-path="/account/two-factor">'
+            )
+            server = StaticServer(root)
+            client = TestClient(Starlette(routes=[Route("/{path:path}", server.endpoint)]))
+            for path in ("/admin/users", "/admin/users/", "/account/two-factor", "/signed-out/ended"):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn("data-view", response.text)
+            for path in ("/admin", "/admin/users/x", "/nope", "/signed-out/other", "/users"):
+                with self.subTest(path=path):
+                    self.assertEqual(client.get(path).status_code, 404)
+
+            (root / "index.html").write_text('<section class="view" data-view="logs" data-path="/admin/logs">')
+            self.assertEqual(client.get("/admin/logs").status_code, 200)
+            self.assertEqual(client.get("/admin/users").status_code, 404)
+
+
 class StaticDirTest(unittest.TestCase):
     def test_static_dir_may_not_serve_secrets(self) -> None:
         """S2: everything in static_dir is served without signing in, so the

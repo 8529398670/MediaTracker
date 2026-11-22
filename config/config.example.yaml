@@ -116,33 +116,27 @@ server:
   # Changing it signs everyone out. [restart]
   cookie_name: media-tracker_session
 
-  # Turn on when a reverse proxy you control is in front (the Docker setup
-  # assumes one), so the rate limiter sees each visitor's address instead of
-  # the proxy's. proxy_header is then believed only on connections from an
-  # address in trusted_proxies -- the address your proxy connects *from*, as
-  # this server sees it -- and read right to left, skipping trusted hops, so
-  # whatever a client wrote further left is ignored. trust_proxy without
-  # trusted_proxies is refused.
+  # The app runs behind Cloudflare Tunnel: cloudflared on the host, the app
+  # in Docker published on docker.bind_address (127.0.0.1), so cloudflared
+  # reaches it from the bridge gateway. Cloudflare sets CF-Connecting-IP to
+  # the visitor's address at its edge, overwriting whatever the visitor sent,
+  # and the header is believed only on connections from an address in
+  # trusted_proxies -- so the logs and the rate limiter see each visitor
+  # rather than everyone as 172.17.0.1. Loopback is listed too, for
+  # cloudflared in front of the app run without Docker (scripts/run.sh).
   #
-  #   proxy on the same host, no Docker:    [127.0.0.1, "::1"]
-  #   proxy on the host, app in Docker:     [172.17.0.1] (the bridge
-  #                                         gateway exactly, not a range:
-  #                                         172.16.0.0/12 trusts every
-  #                                         container; find it with
-  #                                         `docker network inspect bridge`)
-  #   Cloudflare Tunnel (cloudflared here): [127.0.0.1, "::1"] with
-  #                                         proxy_header: CF-Connecting-IP
-  #
-  # A range wider than /8 (IPv4) or /16 (IPv6) is refused. Running behind
-  # Cloudflare: see references/deploy-cloudflare.md in the webserver skill.
-  #
-  # This only holds if clients cannot reach this server except through the
-  # proxy. With a single-value header (X-Real-IP, CF-Connecting-IP) the proxy
-  # must also overwrite whatever the client sent rather than pass it on.
+  # This only holds while nothing but cloudflared can reach the server from
+  # those addresses: keep docker.bind_address on loopback. A different
+  # Docker network has its own gateway (`docker network inspect bridge`);
+  # list it exactly, not a range -- 172.16.0.0/12 trusts every container. A
+  # range wider than /8 (IPv4) or /16 (IPv6) is refused, and trust_proxy
+  # without trusted_proxies is refused. Behind nginx or Caddy instead, use
+  # proxy_header: X-Forwarded-For, which is read right to left skipping
+  # trusted hops. See references/deploy-cloudflare.md in the webserver skill.
   # [live]
-  trust_proxy: false
-  trusted_proxies: []
-  proxy_header: X-Forwarded-For
+  trust_proxy: true
+  trusted_proxies: [172.17.0.1, 127.0.0.1, "::1"]
+  proxy_header: CF-Connecting-IP
 
   # The largest request body accepted, and how many requests one address may
   # make per window before getting 429s. Files the page loads (/js, /css,
@@ -176,6 +170,20 @@ server:
   # shows nothing. Anyone can dismiss it, and a changed message comes back.
   # [live]
   announcement: ""
+
+  # Open pages pick up a change to the frontend without anyone pressing
+  # refresh. auto is on for a build with no version stamped (scripts/run.sh
+  # while you work on it) and off for everything else; always and never
+  # decide it for every build. (Not on/off: YAML reads those as true/false.)
+  #
+  # Where it is on, an edited stylesheet is swapped into open pages in place.
+  # Any other change -- a script, the markup, a restart onto a new build --
+  # reloads the page at once on a dev build. On a stamped build it waits
+  # instead: the page reloads at the next move to another screen, or offers
+  # a reload after a minute, and never while a dialog, an upload or unsaved
+  # settings are open. Each visible tab keeps one request waiting on the
+  # server; hidden tabs ask nothing. [restart]
+  live_reload: auto
 
 # How long a sign-in lasts, and a login link stays usable. [live]
 # A sign-in that is in use extends itself: session_ttl_seconds counts from the

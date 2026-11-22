@@ -20,9 +20,9 @@ class DeclaredRoutesTest(RoutesTestCase):
     def test_a_declared_route_checks_its_body(self) -> None:
         cases = [
             ("a missing field", {"role": "user"}, "display name must be 1-80 characters"),
-            ("another missing field", {"display_name": "Bea"}, "role must be admin or user"),
+            ("another missing field", {"display_name": "Bea"}, "role must be admin, user or viewer"),
             ("a wrong type", {"display_name": 5, "role": "user"}, "malformed request body"),
-            ("a value not in the enum", {"display_name": "Bea", "role": "boss"}, "role must be admin or user"),
+            ("a value not in the enum", {"display_name": "Bea", "role": "boss"}, "role must be admin, user or viewer"),
             ("too long", {"display_name": "x" * 81, "role": "user"}, "display name must be 1-80 characters"),
             ("out of range", {"display_name": "Bea", "role": "user", "max_uses": 5000}, LINK_LIMITS),
             ("below range", {"display_name": "Bea", "role": "user", "expires_in_minutes": -1}, LINK_LIMITS),

@@ -36,6 +36,13 @@ from app.models import from_iso, to_iso, utc_now
 
 ROLE_ADMIN = "admin"
 ROLE_USER = "user"
+# Sees what a user sees and changes nothing: the global guard in
+# app/core/security.py (ViewOnly) answers 403 view_only to anything but a
+# read. Ranked below user, so a key or a link can always narrow to it.
+ROLE_VIEWER = "viewer"
+
+# Lowest first. narrow_role and every "may not outrank" check compare these.
+ROLE_RANK = {ROLE_VIEWER: 0, ROLE_USER: 1, ROLE_ADMIN: 2}
 
 META_OWNER_KEY = "owner_user_id"
 
@@ -54,6 +61,10 @@ class User:
     role: str
     created_at: datetime
     disabled_at: datetime | None = None
+    # When the account stops working, or None for never. Past it the account
+    # counts as disabled everywhere (see disabled), and housekeeping disables
+    # it for good and revokes its access (credentials.expire_due_accounts).
+    expires_at: datetime | None = None
     # The optional PIN asked for when someone signs back in through an
     # invite link. It is not a password: nothing else checks it. See
     # app/models/pins.py.
@@ -83,13 +94,23 @@ class User:
     # (its own lists if None) and cannot switch. Ignored for admins.
     showing_locked: bool = False
     # This person's own list on the Appearance screen; None follows the app's
-    # defaults. theme_id is the one they use. See app/models/themes.py.
+    # defaults; themes_builtins is which built-in themes it has seen. theme_id
+    # is the one they use. See app/models/themes.py.
     themes: list[dict[str, Any]] | None = None
+    themes_builtins: int = 0
     theme_id: str = ""
 
     @property
+    def expired(self) -> bool:
+        return self.expires_at is not None and utc_now() >= self.expires_at
+
+    @property
     def disabled(self) -> bool:
-        return self.disabled_at is not None
+        """Switched off, or past its expiry. Every check that refuses a
+        disabled account -- sessions, keys, login links, passwords -- reads
+        this, so an expired account is refused the moment it expires, not
+        when housekeeping next runs."""
+        return self.disabled_at is not None or self.expired
 
     @property
     def is_admin(self) -> bool:
@@ -102,6 +123,7 @@ class User:
             "role": self.role,
             "created_at": to_iso(self.created_at),
             "disabled_at": to_iso(self.disabled_at),
+            "expires_at": to_iso(self.expires_at),
             "pin_hash": self.pin_hash,
             "username": self.username,
             "password_hash": self.password_hash,
@@ -114,6 +136,7 @@ class User:
             "default_subject": self.default_subject,
             "showing_locked": self.showing_locked,
             "themes": self.themes,
+            "themes_builtins": self.themes_builtins,
             "theme_id": self.theme_id,
         }
 
@@ -125,6 +148,7 @@ class User:
             role=record["role"],
             created_at=from_iso(record["created_at"]),
             disabled_at=from_iso(record.get("disabled_at")),
+            expires_at=from_iso(record.get("expires_at")),
             pin_hash=record.get("pin_hash", ""),
             username=record.get("username", ""),
             password_hash=record.get("password_hash", ""),
@@ -137,6 +161,7 @@ class User:
             default_subject=record.get("default_subject"),
             showing_locked=record.get("showing_locked", False),
             themes=record.get("themes"),
+            themes_builtins=record.get("themes_builtins", 0),
             theme_id=record.get("theme_id", ""),
         )
 
@@ -184,7 +209,18 @@ def set_showing(store: Store, user_id: int, allowed: bool, default_subject: int 
 
 
 def valid_role(role: str) -> bool:
-    return role in (ROLE_ADMIN, ROLE_USER)
+    return role in ROLE_RANK
+
+
+def role_rank(role: str) -> int:
+    """Where a role sits, viewer lowest. Anything unknown ranks as viewer, so
+    a bad value can only ever narrow."""
+    return ROLE_RANK.get(role, 0)
+
+
+def lower_role(first: str, second: str) -> str:
+    """The lower of two roles: the ceiling a key or a minted key gets."""
+    return first if role_rank(first) <= role_rank(second) else second
 
 
 def valid_display_name(display_name: str) -> bool:
@@ -194,7 +230,7 @@ def valid_display_name(display_name: str) -> bool:
     return isinstance(display_name, str) and 1 <= len(display_name.strip()) <= 80
 
 
-def create_user(store: Store, display_name: str, role: str) -> User:
+def create_user(store: Store, display_name: str, role: str, expires_at: datetime | None = None) -> User:
     """Store a new account. The first admin ever created -- by the first-run
     bootstrap or `manage bootstrap-admin` -- also becomes the owner, in the
     same transaction, so there is no moment where admins exist and no owner
@@ -203,10 +239,10 @@ def create_user(store: Store, display_name: str, role: str) -> User:
     Ids come from the bucket's sequence and are never reused, so a deleted
     account's id can never come back as a different person."""
     with store.transaction() as tx:
-        return create_user_tx(tx, display_name, role)
+        return create_user_tx(tx, display_name, role, expires_at)
 
 
-def create_user_tx(tx: Transaction, display_name: str, role: str) -> User:
+def create_user_tx(tx: Transaction, display_name: str, role: str, expires_at: datetime | None = None) -> User:
     """create_user inside the caller's transaction, for an account that has to
     be created together with something else -- joining through an invite link
     creates the account, takes a place on the link, and starts the session
@@ -218,10 +254,13 @@ def create_user_tx(tx: Transaction, display_name: str, role: str) -> User:
         display_name=display_name.strip(),
         role=role,
         created_at=utc_now(),
+        expires_at=expires_at,
     )
-    tx.put(BUCKET_USERS, user.id, user.to_record())
     if role == ROLE_ADMIN and owner_id_tx(tx) is None:
+        # The owner never expires.
+        user.expires_at = None
         _set_owner_tx(tx, user.id)
+    tx.put(BUCKET_USERS, user.id, user.to_record())
     return user
 
 
@@ -382,5 +421,10 @@ def transfer_owner(store: Store, user_id: int) -> User | None:
         user = User.from_record(record)
         if not user.is_admin or user.disabled:
             raise NotAdminError()
+        # The owner never expires: an expiry set while it was an ordinary
+        # admin goes with the promotion.
+        if user.expires_at is not None:
+            user.expires_at = None
+            tx.put(BUCKET_USERS, user_id, user.to_record())
         _set_owner_tx(tx, user_id)
     return user

@@ -1,10 +1,10 @@
 # Written by the skill that scaffolded this app; `webserver-upgrade` reads and
 # updates it. Commit it: it is how an update knows where this app started.
 skill: python-webserver
-commit: 3073105d034bf9606b9d87dad6f1f317be8be38e
+commit: b3b3e3d6dd09154392f3300a47e04334ed7e67bc
 project_name: "Media Tracker"
 slug: media-tracker
 port: 30330
 features: [api_keys, invite_links, mcp, passwords, two_factor]
 pruned: [webhooks, files, metrics, backups, jobs, shortcuts]
-skipped: [bootstrap-grid, edit-webhooks, files, ip-names, panel-buttons, settings-tools]
+skipped: [bootstrap-grid, edit-webhooks, files, ip-names, osu-theme, panel-buttons, settings-tools, theme-builtin-changes, theme-top-bar]

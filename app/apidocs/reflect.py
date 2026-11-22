@@ -143,7 +143,7 @@ class Normalizer:
             variants = [variant for variant in raw["anyOf"] if variant != {"type": "null"}]
             others = [kind for kind in info.types if not isinstance(kind, msgspec_inspect.NoneType)]
             inner = self.node(variants[0], others[0]) if len(variants) == 1 and len(others) == 1 else {}
-            for key in ("description", "default", "examples"):
+            for key in ("description", "default", "examples", "x-feature"):
                 if key in raw:
                     inner[key] = raw[key]
             return nullable(clean_default(inner))
@@ -223,14 +223,17 @@ def clean_default(schema: dict[str, Any]) -> dict[str, Any]:
 
 def nullable(schema: dict[str, Any]) -> dict[str, Any]:
     """Lets a schema be null too: a scalar's type becomes [type, "null"],
-    anything else is oneOf it or null. A description stays outside."""
+    anything else is oneOf it or null. A description and an x-feature stay
+    outside."""
     kind = schema.get("type")
     if isinstance(kind, str) and kind in SCALARS:
         return {**schema, "type": [kind, "null"]}
     if isinstance(kind, list) and kind[-1:] == ["null"]:
         return schema
-    inner = {key: value for key, value in schema.items() if key != "description"}
+    outside = ("description", "x-feature")
+    inner = {key: value for key, value in schema.items() if key not in outside}
     result: dict[str, Any] = {"oneOf": [inner, {"type": "null"}]}
-    if "description" in schema:
-        result["description"] = schema["description"]
+    for key in outside:
+        if key in schema:
+            result[key] = schema[key]
     return result

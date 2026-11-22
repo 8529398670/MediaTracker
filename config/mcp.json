@@ -4,8 +4,16 @@
   "endpoint": "/mcp",
   "http_only": [
     {
+      "reason": "Manages API keys, which no MCP tool does.",
+      "route": "GET /api/admin/users/{user_id}/keys"
+    },
+    {
       "reason": "The API reference itself; GET /api/mcp.json is the MCP one.",
       "route": "GET /api/api.json"
+    },
+    {
+      "reason": "The API reference itself, for people; GET /api/api.json is the same as JSON.",
+      "route": "GET /api/api.md"
     },
     {
       "reason": "a file download",
@@ -22,6 +30,18 @@
     {
       "reason": "The MCP reference itself; tools/list gives the same list.",
       "route": "GET /api/mcp.json"
+    },
+    {
+      "reason": "The MCP reference itself, for people; tools/list gives the same list.",
+      "route": "GET /api/mcp.md"
+    },
+    {
+      "reason": "Manages API keys, which no MCP tool does.",
+      "route": "POST /api/admin/keys/{key_id}/revoke"
+    },
+    {
+      "reason": "Makes an API key, which no MCP tool does.",
+      "route": "POST /api/admin/users/{user_id}/keys"
     },
     {
       "reason": "Ends a browser session; a key has none to end.",
@@ -280,7 +300,7 @@
         "readOnlyHint": false,
         "title": "Create an invite link (admin)"
       },
-      "description": "One link for a group: each person who opens it joins as a new user, up to max_uses people, for days days. Answers with join_url (shown only now) and the link's details. Revoking or deleting this API key switches the link off.",
+      "description": "One link for a group: each person who opens it joins as a new account with role (user, the default, or viewer), up to max_uses people, for days days. Answers with join_url (shown only now) and the link's details. Revoking or deleting this API key switches the link off.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -298,6 +318,15 @@
             "maximum": 1000,
             "minimum": 1,
             "type": "integer"
+          },
+          "role": {
+            "default": "user",
+            "description": "The role each person who joins gets: user, or viewer (reads only).",
+            "enum": [
+              "user",
+              "viewer"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -319,10 +348,18 @@
         "readOnlyHint": false,
         "title": "Create an account (admin)"
       },
-      "description": "Make a new account and its first login link, to hand to the person. role is admin or user. Answers with user_id and the link. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
+      "description": "Make a new account and its first login link, to hand to the person. role is admin, user or viewer (reads only). account_expires_at, when given, is when the account stops working. Answers with user_id and the link. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "account_expires_at": {
+            "description": "When the account stops working (RFC 3339). Left out: never. expires_in_minutes is the login link's expiry, not this.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "display_name": {
             "maxLength": 80,
             "minLength": 1,
@@ -349,7 +386,8 @@
           "role": {
             "enum": [
               "admin",
-              "user"
+              "user",
+              "viewer"
             ],
             "type": "string"
           }
@@ -1235,6 +1273,10 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "builtins": {
+            "description": "Which built-in themes this list has seen: the highest since in Theme.builtIn (static/js/theme.js) when it was saved. Built-in themes added after that join the list the browser shows. Left out: 0, the first ones.",
+            "type": "integer"
+          },
           "themes": {
             "description": "1 to 40 themes. null goes back to the built-in ones.",
             "oneOf": [
@@ -1312,7 +1354,7 @@
                               "additionalProperties": {
                                 "type": "string"
                               },
-                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                               "type": "object"
                             },
                             "second": {
@@ -1356,7 +1398,7 @@
                               "additionalProperties": {
                                 "type": "string"
                               },
-                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                               "type": "object"
                             },
                             "second": {
@@ -1394,7 +1436,7 @@
                       "additionalProperties": {
                         "type": "string"
                       },
-                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                      "description": "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                       "type": "object"
                     },
                     "second": {
@@ -1521,16 +1563,53 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Set when an account expires (admin)"
+      },
+      "description": "expires_at is when the account stops working (RFC 3339), or null for never. Once it passes the account counts as disabled: sign-in, its sessions and its keys stop, and housekeeping disables it and revokes its access. A later expiry does not re-enable an account housekeeping already disabled. It must be in the future. The owner's account never expires; only the owner sets an admin's.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "description": "When the account stops working (RFC 3339), or null for never.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "description": "The account's id, from GET /api/admin/users (admin_list_users over MCP).",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expires_at",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_user_expiry",
+      "route": "POST /api/admin/users/{user_id}/expiry",
+      "title": "Set when an account expires (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Change an account's role (admin)"
       },
-      "description": "Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.",
+      "description": "Make an account an admin, an ordinary user, or a viewer, who may read but change nothing. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "role": {
             "enum": [
               "admin",
-              "user"
+              "user",
+              "viewer"
             ],
             "type": "string"
           },
@@ -1570,7 +1649,8 @@
                 "role": {
                   "enum": [
                     "admin",
-                    "user"
+                    "user",
+                    "viewer"
                   ],
                   "type": "string"
                 },
@@ -1596,7 +1676,8 @@
               "role": {
                 "enum": [
                   "admin",
-                  "user"
+                  "user",
+                  "viewer"
                 ],
                 "type": "string"
               }
@@ -4717,6 +4798,10 @@
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "builtins": {
+            "description": "Which built-in themes this list has seen: the highest since in Theme.builtIn (static/js/theme.js) when it was saved. Built-in themes added after that join the list the browser shows. Left out: 0, the first ones.",
+            "type": "integer"
+          },
           "theme_id": {
             "description": "The theme you use.",
             "type": "string"
@@ -4798,7 +4883,7 @@
                               "additionalProperties": {
                                 "type": "string"
                               },
-                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                               "type": "object"
                             },
                             "second": {
@@ -4842,7 +4927,7 @@
                               "additionalProperties": {
                                 "type": "string"
                               },
-                              "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                              "description": "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                               "type": "object"
                             },
                             "second": {
@@ -4880,7 +4965,7 @@
                       "additionalProperties": {
                         "type": "string"
                       },
-                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                      "description": "Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                       "type": "object"
                     },
                     "second": {

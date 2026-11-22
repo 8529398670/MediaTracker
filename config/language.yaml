@@ -43,6 +43,9 @@ nav:
   # Foot of the sidebar, for admins.
   version: "Version {version}"
   account: "Account"
+  # Under the account's name in the sidebar, for a viewer: it can look at
+  # everything and change nothing, and the controls that would are hidden.
+  view_only: "View only"
   appearance: "Appearance"
   about: "About"
   admin_heading: "Admin"
@@ -216,9 +219,12 @@ theme:
   color_nested: "Card inside a card"
   color_chrome: "Navbar and sidebar"
   color_border: "Borders"
+  color_row_odd: "Table rows"
+  color_row_even: "Table rows, every other one"
   color_link: "Links"
   color_nav_link: "Sidebar links"
   color_accent_fg: "Button text"
+  color_accent_text: "Outline button"
   color_second_text: "Headings"
   color_second_fg: "Current sidebar item text"
   color_info: "Info box"
@@ -260,9 +266,13 @@ theme:
   check_text_info: "Text in an info box"
   check_link: "Links"
   check_button: "Button text"
+  check_outline_primary: "Outline button on a card"
   check_heading: "Headings"
   check_active_nav: "The current sidebar item"
   check_sidebar_link: "Sidebar links"
+  check_row_odd: "Text in a table row"
+  check_row_even: "Text in every other table row"
+  check_link_row: "Links in every other table row"
   preview_nav: "Here"
   preview_nav_other: "Elsewhere"
   preview_card: "A card"
@@ -270,6 +280,8 @@ theme:
   preview_text: "Some text and"
   preview_link: "a link"
   preview_info: "An info box"
+  # {n} counts the rows.
+  preview_row: "Table row {n}"
   preview_button: "Button"
   preset_default: "Default"
   preset_ocean: "Ocean"
@@ -465,6 +477,7 @@ admin:
   new_name_placeholder: "Their name"
   new_role_label: "Role"
   role_user: "user"
+  role_viewer: "viewer (can only look)"
   role_admin: "admin"
   create_button: "Create login link"
   link_notice: "{summary}. Send it now: it is shown once and cannot be recovered, and any earlier link for this person has stopped working."
@@ -476,6 +489,12 @@ admin:
   table_actions: "Actions"
   status_active: "active"
   status_disabled: "disabled"
+  status_expired: "expired"
+  # Under the status of an account that has an expiry. {when} is the date.
+  expires_line: "expires {when}"
+  # The role picker on each row, and what it asks before changing it.
+  role_select_label: "Role of {name}"
+  role_confirm: "Make {name} {role}? It applies at once. Becoming an admin signs them out everywhere."
   two_factor_badge: "2FA"
   reissue_button: "New link"
   # The New link dialog: its heading, and the line under the choices.
@@ -491,8 +510,6 @@ admin:
   reset_two_factor_button: "Reset 2FA"
   # {name} is replaced with the account's display name.
   reset_two_factor_confirm: "Turn off two-factor sign-in for {name}? Do this only if you are sure it is them asking."
-  make_admin_button: "Make admin"
-  make_user_button: "Make user"
   make_admin_confirm: "Make {name} an admin? They can then manage accounts. This signs them out everywhere and stops their login link, so send them a new link. They can no longer sign in through an invite link."
   make_user_confirm: "Take admin rights from {name}? It applies at once. Their admin API keys drop to user level, and invite links they made stop working until they are an admin again."
   role_changed_toast: "{name} is now: {role}"
@@ -540,13 +557,14 @@ api_keys:
   name_placeholder: "Bot-1"
   role_label: "Permission"
   role_user: "user"
+  role_viewer: "viewer (can only look)"
   role_admin: "admin (can manage accounts)"
   # Under the description, with a link to the API reference: api.json in
   # app.repo, or this server's own copy.
   spec_text: "What a key can call:"
   spec_link: "API reference (api.json)"
-  # Beside it when app.repo is set: the same reference as tables, config/api.md,
-  # which the repository's site shows as a readable page.
+  # Beside it: the same reference as tables, config/api.md, on the repository's
+  # site when app.repo is set, else on this server's /docs/api page.
   doc_link: "readable version (api.md)"
   days_label: "Expires in (days)"
   days_placeholder: "leave blank for the default, 0 for never"
@@ -580,6 +598,15 @@ api_keys:
   sign_in_confirm: "Let this key make sign-in links for your account? Whoever holds the key could then open a browser signed in as you, with everything you can do there. Each link works once, for 15 minutes. You can turn this off again at any time."
   sign_in_turned_on: "This key can now make sign-in links."
   sign_in_turned_off: "This key can no longer make sign-in links. Any unused link it made has stopped working."
+  # The owner's switch for letting one of the owner's admin keys mint keys
+  # for other accounts, as an outside admin tool needs.
+  mint_off_button: "Key minting: off"
+  mint_on_button: "Key minting: on"
+  status_mint: "mints keys"
+  minted_by: "minted by key {key}"
+  mint_confirm: "Let this key mint and revoke API keys for every other account? Whoever holds it can then act as anyone but you, through the keys it makes. Every key it mints is revoked when you revoke this one."
+  mint_turned_on: "This key can now mint keys."
+  mint_turned_off: "This key can no longer mint keys. The keys it already minted keep working until you revoke this one."
   revoke_button: "Revoke"
   # Empty this string to stop asking for confirmation before revoking.
   revoke_confirm: "Revoke this key? Anything using it stops working immediately."
@@ -589,6 +616,16 @@ api_keys:
   # Followed by when, as in "Created 3 days ago".
   created: "Created"
 
+# The readable API and MCP references (static/docs.html, static/js/docs.js):
+# /docs/api and /docs/mcp, linked from the API keys and MCP cards when
+# app.repo is not set.
+docs:
+  api_title: "API reference"
+  mcp_title: "MCP tools"
+  back: "Back to Account"
+  loading: "Loading..."
+  failed: "The reference could not be loaded. Sign in, then try again."
+
 # The MCP card on Account (static/js/mcp.js): an API key set up for an agent.
 mcp:
   heading: "MCP: Claude and other agents"
@@ -597,8 +634,8 @@ mcp:
   # in app.repo, or this server's own copy.
   spec_text: "What an agent can call:"
   spec_link: "MCP reference (mcp.json)"
-  # Beside it when app.repo is set: the same reference as tables, config/mcp.md,
-  # which the repository's site shows as a readable page.
+  # Beside it: the same reference as tables, config/mcp.md, on the repository's
+  # site when app.repo is set, else on this server's /docs/mcp page.
   doc_link: "readable version (mcp.md)"
   endpoint_label: "Endpoint"
   client_label: "Set up for"
@@ -654,6 +691,9 @@ invite_links:
   label_placeholder: "Group-1"
   uses_label: "Places"
   days_label: "Works for (days)"
+  role_label: "Joins as"
+  role_user: "user"
+  role_viewer: "viewer (can only look)"
   create_button: "Create invite link"
   link_notice: "Share this link with the group. It is shown once and cannot be recovered. Anyone holding it can join, so switch it off below if it goes somewhere it should not."
   copy_button: "Copy"

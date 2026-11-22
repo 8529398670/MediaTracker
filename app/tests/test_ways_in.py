@@ -70,6 +70,29 @@ class WaysInTest(RoutesTestCase):
                 self.assertNotEqual(self.redeem(self.browser(), link)[0], 200, "the link Bob's key made still signs in")
                 self.assertEqual(self.call("GET", "/api/me", cookie=person)[0], 200, "a session nobody's key made was signed out")
 
+    def test_revoking_or_deleting_ends_what_the_keys_made(self) -> None:
+        """S22: revoking an account's access, or deleting it, ends what its
+        keys made in other accounts too, as disabling does (S20). Before, both
+        stopped the keys themselves but left their links and the browsers
+        those signed in."""
+        for how in ("revoke-access", "delete"):
+            with self.subTest(how):
+                bob = users.create_user(self.store, "Bob " + how, users.ROLE_ADMIN)
+                key, _ = api_keys.issue_api_key(self.store, bob.id, "ops", users.ROLE_ADMIN, 3600)
+                body = {"max_uses": 0, "expires_in_minutes": 0}
+                status, reply = self.call("POST", self.user_path(self.user.id, "reissue-login"), key=key, body=body)
+                self.assertEqual(status, 200, reply)
+                link = reply["login_path"]
+                early = self.browser()
+                self.assertEqual(self.redeem(early, link)[0], 200)
+                person = self.session(self.user.id)
+
+                status, reply = self.send(self.owner_cookie, self.user_path(bob.id, how))
+                self.assertEqual(status, 200, reply)
+                self.assertFalse(self.signed_in(early), "the browser Bob's key signed in is still signed in")
+                self.assertNotEqual(self.redeem(self.browser(), link)[0], 200, "the link Bob's key made still signs in")
+                self.assertEqual(self.call("GET", "/api/me", cookie=person)[0], 200, "a session nobody's key made was signed out")
+
     def test_signing_in_through_an_admins_link_is_logged(self) -> None:
         """S19: an admin can sign in as anyone below them, by resetting
         two-factor and reissuing a link. That is how links work, so it is made

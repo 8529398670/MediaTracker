@@ -134,6 +134,7 @@ class ServerSection:
     mcp: bool
     maintenance: str
     announcement: str
+    live_reload: str
     # Deprecated: the key lives in secret.key. This is read only so that a
     # config.yaml from before the move can be migrated
     # (config_secret.migrate_legacy_secret); defaults.yaml has no such key,
@@ -372,14 +373,16 @@ class Config:
     # ranges). The switch alone would let any client that reaches the server
     # directly name its own IP and walk past the rate limiter, so validate()
     # refuses one without the other.
-    trust_proxy: bool = False
-    trusted_proxies: tuple[str, ...] = ()
-    proxy_header: str = "X-Forwarded-For"
+    trust_proxy: bool = True
+    trusted_proxies: tuple[str, ...] = ("172.17.0.1", "127.0.0.1", "::1")
+    proxy_header: str = "CF-Connecting-IP"
 
     # server.maintenance: see app/core/maintenance.py.
     maintenance: str = "none"
     # server.announcement: one line on every signed-in page.
     announcement: str = ""
+    # server.live_reload: auto, always or never. See live_reloads.
+    live_reload: str = "auto"
     # app.repo without a trailing / or .git: where the source lives. Empty
     # when it is not set. See repo_file.
     repo: str = ""
@@ -439,6 +442,16 @@ class Config:
     @property
     def listen_address(self) -> str:
         return f"{self.host}:{self.port}"
+
+    def live_reloads(self, version: str) -> bool:
+        """Whether open pages are told about frontend changes, for a build
+        stamped version. auto means a build being worked on: unstamped.
+        Values are not on/off because YAML reads those as true/false."""
+        if self.live_reload == "always":
+            return True
+        if self.live_reload == "never":
+            return False
+        return version == "dev"
 
 
 # ---------------------------------------------------------------------------
@@ -800,6 +813,7 @@ def validate(file: File) -> list[str]:
     check(server.rate_limit_window_seconds > 0, "server.rate_limit_window_seconds must be positive")
     check(server.rate_limit_signin_max > 0, "server.rate_limit_signin_max must be positive")
     check(server.maintenance in ("none", "read_only", "full"), "server.maintenance must be none, read_only or full")
+    check(server.live_reload in ("auto", "always", "never"), "server.live_reload must be auto, always or never")
     check(len(server.announcement) <= 500, "server.announcement must be 500 characters or fewer")
 
     providers = file.providers
@@ -1077,6 +1091,7 @@ def build_config(file: File, path: Path, paths: "Paths", secret_key: str) -> Con
         jobs=file.jobs,
         maintenance=file.server.maintenance,
         announcement=file.server.announcement,
+        live_reload=file.server.live_reload,
         repo=clean_repo(file.app.repo),
         description=file.app.description,
         show_about=file.app.show_about,

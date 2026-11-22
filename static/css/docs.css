@@ -1,0 +1,7 @@
+/* The /docs pages (static/docs.html): what Bootstrap has no class for. */
+.docs-body h2 { margin-top: 2.5rem; padding-top: .5rem; border-top: 1px solid var(--bs-border-color); }
+.docs-body h3 { margin-top: 1.75rem; }
+.docs-body h1, .docs-body h2, .docs-body h3 { scroll-margin-top: 4.5rem; overflow-wrap: anywhere; }
+.docs-body table { font-size: .875rem; }
+.docs-body td code, .docs-body th code { white-space: nowrap; }
+.docs-body pre { background: var(--bs-tertiary-bg); padding: .75rem; border-radius: var(--bs-border-radius); }

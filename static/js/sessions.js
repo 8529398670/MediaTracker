@@ -28,7 +28,7 @@ const Sessions = {
       this.saveOpen( open );
       if ( open ) this.refresh();
     } );
-    window.addEventListener( "hashchange" , () => {
+    window.addEventListener( "nav" , () => {
       if ( Nav.current() === "account" ) this.refresh();
     } );
     await this.refresh();

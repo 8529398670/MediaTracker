@@ -28,9 +28,13 @@ BUNDLED_LANGUAGE = CODE_ROOT / "config" / "language.yaml"
 # Bundled only, unlike language.yaml: it describes the routes in this code, so
 # a copy anywhere else could only disagree with them.
 OPENAPI_SPEC = CODE_ROOT / "config" / "api.json"
+# The same reference as tables for people, which /docs/api renders.
+API_DOC = CODE_ROOT / "config" / "api.md"
 # The tools /mcp offers, written by scripts/api_docs.sh. Bundled only, for the
 # same reason as api.json.
 MCP_MANIFEST = CODE_ROOT / "config" / "mcp.json"
+# The same tools as tables for people, which /docs/mcp renders.
+MCP_DOC = CODE_ROOT / "config" / "mcp.md"
 
 
 @dataclass(frozen=True)

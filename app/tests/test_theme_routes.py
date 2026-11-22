@@ -54,6 +54,36 @@ class ThemeRoutesTest(RoutesTestCase):
         self.post(self.owner_cookie, "/api/admin/theme-defaults", {"themes": None})
         self.assertIsNone(self.mine(self.user_cookie)[0])
 
+    def test_lists_keep_the_built_ins_they_have_seen(self) -> None:
+        """A saved list keeps which built-in themes it has seen, so theme.js can
+        add the newer ones; going back to the defaults (or the built-ins) drops it."""
+        def seen(cookie: str, path: str, key: str) -> object:
+            status, reply = self.call("GET", path, cookie=cookie)
+            self.assertEqual(status, 200, reply)
+            return reply[key]
+
+        # A list saved without builtins: 0.
+        self.post(self.user_cookie, "/api/account/themes", {"themes": theme_list("mine")})
+        self.assertEqual(seen(self.user_cookie, "/api/me", "themes_builtins"), 0)
+        status, reply = self.post(self.user_cookie, "/api/account/themes", {"themes": theme_list("mine"), "builtins": 3})
+        self.assertEqual((status, reply["themes_builtins"]), (200, 3), reply)
+        self.assertEqual(seen(self.user_cookie, "/api/me", "themes_builtins"), 3)
+
+        # The admin's defaults keep their own, which those following them see.
+        status, reply = self.post(self.owner_cookie, "/api/admin/theme-defaults", {"themes": theme_list("one"), "builtins": 2})
+        self.assertEqual((status, reply["builtins"]), (200, 2), reply)
+        self.assertEqual(seen(self.owner_cookie, "/api/admin/theme-defaults", "builtins"), 2)
+        self.post(self.user_cookie, "/api/account/themes", {"themes": None})
+        self.assertEqual(seen(self.user_cookie, "/api/me", "themes_builtins"), 2)
+
+        # Back to the built-in themes: nothing seen.
+        self.post(self.owner_cookie, "/api/admin/theme-defaults", {"themes": None})
+        self.assertEqual(seen(self.owner_cookie, "/api/admin/theme-defaults", "builtins"), 0)
+
+        # Out of range is refused.
+        for bad in (-1, 1001):
+            self.assertEqual(self.post(self.user_cookie, "/api/account/themes", {"themes": theme_list("mine"), "builtins": bad})[0], 400)
+
     def test_defaults_are_for_admins(self) -> None:
         self.assertNotEqual(self.call("GET", "/api/admin/theme-defaults", cookie=self.user_cookie)[0], 200)
         self.assertNotEqual(self.post(self.user_cookie, "/api/admin/theme-defaults", {"themes": theme_list("x")})[0], 200)

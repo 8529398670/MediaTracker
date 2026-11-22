@@ -12,6 +12,12 @@ for the mode not in use (a light theme's "dark", a dark theme's "light"), which
 switching mode swaps in (Theme.setMode in theme.js). Overrides replace any of
 those worked-out colors by name; dropping one puts the safe color back.
 
+A saved list also keeps which built-in themes it has seen: the highest
+"since" in theme.js's built-in list when it was saved ("builtins"). The
+browser adds any built-in theme newer than that to the list it shows, so a
+theme added to the app later reaches people with a list of their own, while
+one they deleted stays deleted.
+
 The server checks the shape only. It does not know the list of built-in
 themes, and it does not judge contrast -- an unreadable color is the person's
 own choice, and the screen warns them."""
@@ -25,13 +31,16 @@ from app.core.db import BUCKET_META, BUCKET_USERS, Record, Store
 MAX_THEMES = 40
 MAX_THEME_NAME = 60
 META_THEME_DEFAULTS_KEY = "theme_defaults"
+# Bounds "builtins": far above any real count of built-in themes.
+MAX_THEME_BUILTINS = 1000
 
 _ID = re.compile(r"[a-z0-9_-]{1,32}")
 _COLOR = re.compile(r"#[0-9a-f]{6}")
 # The fields of Theme.colors() in theme.js that an override may replace.
 OVERRIDE_FIELDS = frozenset({
-    "text", "accent", "accentFg", "second", "secondFg", "secondText", "link", "navLink",
+    "text", "accent", "accentFg", "accentText", "second", "secondFg", "secondText", "link", "navLink",
     "background", "surface", "nested", "chrome", "info", "infoBorder", "border",
+    "rowOdd", "rowEven",
 }) | frozenset(
     # Theme.variants: each button variant's fill, label and outline.
     f"btn{variant}{part}"
@@ -146,20 +155,37 @@ def check(themes: object) -> list[dict[str, Any]]:
     return cleaned
 
 
+def check_builtins(builtins: object) -> int:
+    """A list's "builtins": 0 to MAX_THEME_BUILTINS."""
+    if isinstance(builtins, bool) or not isinstance(builtins, int) or not 0 <= builtins <= MAX_THEME_BUILTINS:
+        raise ThemesError(f"builtins is 0 to {MAX_THEME_BUILTINS}")
+    return builtins
+
+
 def get_defaults(store: Store) -> list[dict[str, Any]] | None:
     """The admin's list, or None when none has been saved and the built-in
     themes apply."""
+    return get_defaults_seen(store)[0]
+
+
+def get_defaults_seen(store: Store) -> tuple[list[dict[str, Any]] | None, int]:
+    """The admin's list (None: the built-in themes) and which built-in themes
+    it has seen. A list saved before builtins existed has 0, the first ones."""
     record = store.get(BUCKET_META, META_THEME_DEFAULTS_KEY)
-    return None if record is None else record.get("themes")
+    if record is None:
+        return None, 0
+    return record.get("themes"), record.get("builtins", 0)
 
 
-def set_defaults(store: Store, themes: object) -> list[dict[str, Any]] | None:
-    """Replaces the admin's list. None goes back to the built-in themes."""
+def set_defaults(store: Store, themes: object, builtins: object = 0) -> list[dict[str, Any]] | None:
+    """Replaces the admin's list and which built-in themes it has seen. None
+    goes back to the built-in themes."""
     if themes is None:
         store.delete(BUCKET_META, META_THEME_DEFAULTS_KEY)
         return None
     cleaned = check(themes)
-    store.put(BUCKET_META, META_THEME_DEFAULTS_KEY, {"themes": cleaned})
+    seen = check_builtins(builtins)
+    store.put(BUCKET_META, META_THEME_DEFAULTS_KEY, {"themes": cleaned, "builtins": seen})
     return cleaned
 
 
@@ -171,17 +197,21 @@ def _theme_id(theme_id: object) -> str:
     return str(theme_id)
 
 
-def set_user_themes(store: Store, user_id: int, themes: object, theme_id: object) -> bool:
-    """Replaces someone's own list and pick. None themes go back to following
-    the defaults. False if there is no such account."""
+def set_user_themes(store: Store, user_id: int, themes: object, theme_id: object, builtins: object = 0) -> bool:
+    """Replaces someone's own list, which built-in themes it has seen, and
+    their pick. None themes go back to following the defaults. False if there
+    is no such account."""
     cleaned = None if themes is None else check(themes)
+    seen = 0 if themes is None else check_builtins(builtins)
     chosen = _theme_id(theme_id)
 
     def mutate(record: Record) -> None:
         if cleaned is None:
             record.pop("themes", None)
+            record.pop("themes_builtins", None)
         else:
             record["themes"] = cleaned
+            record["themes_builtins"] = seen
         record["theme_id"] = chosen
 
     return store.update_value(BUCKET_USERS, user_id, mutate) is not None
@@ -199,9 +229,11 @@ def set_user_theme_id(store: Store, user_id: int, theme_id: object) -> bool:
     return store.update_value(BUCKET_USERS, user_id, mutate) is not None
 
 
-def mine(store: Store, user_themes: list[dict[str, Any]] | None) -> tuple[list[dict[str, Any]] | None, bool]:
+def mine(store: Store, user_themes: list[dict[str, Any]] | None, user_builtins: int = 0) -> tuple[list[dict[str, Any]] | None, bool, int]:
     """What /api/me says about someone's themes: their own list, else the
-    defaults, else None for the built-in ones; and whether it is their own."""
+    defaults, else None for the built-in ones; whether it is their own; and
+    which built-in themes that list has seen."""
     if user_themes is not None:
-        return user_themes, True
-    return get_defaults(store), False
+        return user_themes, True, user_builtins
+    listed, seen = get_defaults_seen(store)
+    return listed, False, seen

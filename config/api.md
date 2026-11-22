@@ -1,6 +1,6 @@
 # Media Tracker API
 
-Every route this server answers, apart from the pages at /login/* and /join/*. Generated from the code by scripts/api_docs.sh: an app's own routes get their docs the same way, and a test fails until they do.
+Every route this server answers, apart from the pages at /login/*, /join/* and /docs/*. Generated from the code by scripts/api_docs.sh: an app's own routes get their docs the same way, and a test fails until they do.
 
 This file is generated: do not edit it. Change the docs next to the handlers and run `scripts/api_docs.sh`.
 
@@ -354,6 +354,7 @@ Replace your whole list of color themes (1 to 40) and pick the one you use. them
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
+| `builtins` | integer | no |  | Which built-in themes this list has seen: the highest since in Theme.builtIn (static/js/theme.js) when it was saved. Built-in themes added after that join the list the browser shows. Left out: 0, the first ones. |
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `theme_id` | string | no |  | The theme you use. |
 | `themes` | array of [`Theme`](#theme) or null | no |  | Your whole list, 1 to 40 themes. null goes back to following the app's defaults. |
@@ -365,6 +366,7 @@ Replace your whole list of color themes (1 to 40) and pick the one you use. them
 | `ok` | boolean | yes |  |  |
 | `theme_id` | string | yes |  |  |
 | `themes` | array of [`Theme`](#theme) or null | yes |  | What you now see; null while the built-in themes apply. |
+| `themes_builtins` | integer | yes |  | Which built-in themes that list has seen (see builtins on POST /api/account/themes). |
 | `themes_custom` | boolean | yes |  |  |
 
 ### POST /api/account/two-factor/confirm
@@ -656,11 +658,14 @@ Finish a sign-in with a code
 | POST | [`/api/admin/keys/{key_id}/expiry`](#post-apiadminkeyskey_idexpiry) | Change when anyone's key expires | browser session only, admins |
 | POST | [`/api/admin/keys/{key_id}/rename`](#post-apiadminkeyskey_idrename) | Rename anyone's key | browser session only, admins |
 | POST | [`/api/admin/keys/{key_id}/restore`](#post-apiadminkeyskey_idrestore) | Undo deleting anyone's key | browser session only, admins |
-| POST | [`/api/admin/keys/{key_id}/revoke`](#post-apiadminkeyskey_idrevoke) | Revoke anyone's key | browser session only, admins |
+| POST | [`/api/admin/keys/{key_id}/revoke`](#post-apiadminkeyskey_idrevoke) | Revoke anyone's key | browser session or API key, admins |
+| GET | [`/api/admin/users/{user_id}/keys`](#get-apiadminusersuser_idkeys) | An account's keys | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/keys`](#post-apiadminusersuser_idkeys) | Make a key for an account | browser session or API key, admins |
 | GET | [`/api/keys`](#get-apikeys) | Your API keys | browser session only, anyone signed in |
 | POST | [`/api/keys`](#post-apikeys) | Create an API key | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/delete`](#post-apikeyskey_iddelete) | Delete one of your keys | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/expiry`](#post-apikeyskey_idexpiry) | Change when one of your keys expires | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/mint-keys`](#post-apikeyskey_idmint-keys) | Let one of your keys make keys | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/rename`](#post-apikeyskey_idrename) | Rename one of your keys | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/restore`](#post-apikeyskey_idrestore) | Undo deleting one of your keys | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/revoke`](#post-apikeyskey_idrevoke) | Revoke one of your keys | browser session only, anyone signed in |
@@ -712,7 +717,7 @@ Any admin may do this for an ordinary user, and only the owner for another admin
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `expires_in_days` | integer or null | no | 0 to 3650 | Absent or null: the configured default. 0: never expires. |
 | `name` | string | yes | 1 to 80 characters |  |
-| `role` | string | no | one of `admin`, `user`; default `user` |  |
+| `role` | string | no | one of `admin`, `user`, `viewer`; default `user` |  |
 | `user_id` | integer | yes | at least 1 |  |
 
 **Reply 201**: Success
@@ -831,9 +836,12 @@ Undo deleting anyone's key
 
 Revoke anyone's key
 
+Stops the key at once, and every key it made, down the chain. Needs a browser session or a key with may_mint_keys (any other key gets 403 key_minting_off), which may not revoke the owner's keys.
+
 |  |  |
 |---|---|
-| Who may call | browser session only, admins |
+| Who may call | browser session or API key, admins |
+| MCP tool | None, HTTP only: Manages API keys, which no MCP tool does. |
 | Errors | 400, 401, 403, 404, 429, 503 |
 
 **Parameters**
@@ -853,6 +861,61 @@ Revoke anyone's key
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
 | `ok` | boolean | yes |  |  |
+
+### GET /api/admin/users/{user_id}/keys
+
+An account's keys
+
+One account's keys, revoked and expired ones included, newest first. Each row says which key minted it (minted_by_key, empty when a person made it). Needs a browser session or a key with may_mint_keys; any other key gets 403 key_minting_off.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | None, HTTP only: Manages API keys, which no MCP tool does. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `keys` | array of [`APIKey`](#apikey) | yes |  |  |
+
+### POST /api/admin/users/{user_id}/keys
+
+Make a key for an account
+
+Needs a browser session or a key the owner allowed to make keys (may_mint_keys); any other key gets 403 key_minting_off. The role is capped at the account's own; expires_in_days is required (1-365). Never for the owner. The new key records the key that made it, can never make keys or sign-in links itself, and is revoked when that key is revoked or deleted. Answers with the key and its credential, shown only now.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | None, HTTP only: Makes an API key, which no MCP tool does. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_days` | integer | yes | 1 to 365 | Required: 1-365. A minted key always expires. |
+| `name` | string | yes | 1 to 80 characters |  |
+| `role` | string | yes | one of `admin`, `user`, `viewer` | Capped at the account's own role. |
+
+**Reply 201**: Success
+
+[`NewAPIKey`](#newapikey).
 
 ### GET /api/keys
 
@@ -898,7 +961,7 @@ Create an API key
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `expires_in_days` | integer or null | no | 0 to 3650 | Absent or null: the configured default. 0: never expires. |
 | `name` | string | yes | 1 to 80 characters |  |
-| `role` | string | no | one of `admin`, `user`; default `user` |  |
+| `role` | string | no | one of `admin`, `user`, `viewer`; default `user` |  |
 
 **Reply 201**: Success
 
@@ -952,6 +1015,34 @@ Change when one of your keys expires
 |---|---|---|---|---|
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `expires_in_days` | integer | yes | 0 to 3650 | Counted from now. 0 means it never expires. |
+
+**Reply 200**: Success
+
+[`APIKey`](#apikey).
+
+### POST /api/keys/{key_id}/mint-keys
+
+Let one of your keys make keys
+
+Owner only, on one of your own admin-role keys. When on, the key may make keys for other accounts (never the owner's) through POST /api/admin/users/{user_id}/keys, list them, and revoke them. Each key it makes records it, and revoking or deleting this key revokes them all.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `may_mint_keys` | boolean | yes |  | true lets this key make, list and revoke other accounts' keys, each recording this key and revoked with it. |
 
 **Reply 200**: Success
 
@@ -1078,6 +1169,7 @@ Off by default. When on, the key may ask POST /api/account/login-link for a link
 | POST | [`/api/admin/users/{user_id}/cancel-login-link`](#post-apiadminusersuser_idcancel-login-link) | Stop an account's login link working | browser session or API key, admins |
 | POST | [`/api/admin/users/{user_id}/delete`](#post-apiadminusersuser_iddelete) | Delete an account | browser session or API key, admins |
 | POST | [`/api/admin/users/{user_id}/disabled`](#post-apiadminusersuser_iddisabled) | Disable or enable a user | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/expiry`](#post-apiadminusersuser_idexpiry) | Set when an account expires | browser session or API key, admins |
 | POST | [`/api/admin/users/{user_id}/reissue-login`](#post-apiadminusersuser_idreissue-login) | A new login link for an account | browser session or API key, admins |
 | POST | [`/api/admin/users/{user_id}/rename`](#post-apiadminusersuser_idrename) | Rename someone | browser session or API key, admins |
 | POST | [`/api/admin/users/{user_id}/reset-two-factor`](#post-apiadminusersuser_idreset-two-factor) | Turn off an account's two-factor | browser session or API key, admins |
@@ -1110,6 +1202,7 @@ The theme list everyone without their own list sees. themes is null while the bu
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
+| `builtins` | integer | yes |  | Which built-in themes that list has seen (see builtins on POST /api/account/themes). |
 | `themes` | array of [`Theme`](#theme) or null | yes |  | null while the built-in themes apply. |
 
 ### POST /api/admin/theme-defaults
@@ -1128,6 +1221,7 @@ Replace the theme list everyone without their own list sees, 1 to 40 themes in t
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
+| `builtins` | integer | no |  | Which built-in themes this list has seen: the highest since in Theme.builtIn (static/js/theme.js) when it was saved. Built-in themes added after that join the list the browser shows. Left out: 0, the first ones. |
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `themes` | array of [`Theme`](#theme) or null | no |  | 1 to 40 themes. null goes back to the built-in ones. |
 
@@ -1135,6 +1229,7 @@ Replace the theme list everyone without their own list sees, 1 to 40 themes in t
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
+| `builtins` | integer | yes |  | Which built-in themes that list has seen (see builtins on POST /api/account/themes). |
 | `ok` | boolean | yes |  |  |
 | `themes` | array of [`Theme`](#theme) or null | yes |  |  |
 
@@ -1172,7 +1267,7 @@ Accounts, a page at a time, including disabled ones, with each one's role and wh
 
 Create an account
 
-Make a new account and its first login link, to hand to the person. role is admin or user. Answers with user_id and the link.
+Make a new account and its first login link, to hand to the person. role is admin, user or viewer (reads only). account_expires_at, when given, is when the account stops working. Answers with user_id and the link.
 
 |  |  |
 |---|---|
@@ -1184,11 +1279,12 @@ Make a new account and its first login link, to hand to the person. role is admi
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
+| `account_expires_at` | string (date-time) or null | no |  | When the account stops working (RFC 3339). Left out: never. expires_in_minutes is the login link's expiry, not this. |
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `display_name` | string | yes | 1 to 80 characters |  |
 | `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
 | `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
-| `role` | string | yes | one of `admin`, `user` |  |
+| `role` | string | yes | one of `admin`, `user`, `viewer` |  |
 
 **Reply 201**: Success
 
@@ -1292,6 +1388,38 @@ Switch an account off (disabled: true) or back on (false). Disabling signs it ou
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/users/{user_id}/expiry
+
+Set when an account expires
+
+expires_at is when the account stops working (RFC 3339), or null for never. Once it passes the account counts as disabled: sign-in, its sessions and its keys stop, and housekeeping disables it and revokes its access. A later expiry does not re-enable an account housekeeping already disabled. It must be in the future. The owner's account never expires; only the owner sets an admin's.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_user_expiry`](mcp.md#admin_set_user_expiry) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_at` | string (date-time) or null | yes |  | When the account stops working (RFC 3339), or null for never. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expires_at` | string (date-time) or null | yes |  | null when it never expires. |
 | `ok` | boolean | yes |  |  |
 
 ### POST /api/admin/users/{user_id}/reissue-login
@@ -1428,7 +1556,7 @@ For an account that may be compromised: ends every session and voids its live lo
 
 Change an account's role
 
-Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.
+Make an account an admin, an ordinary user, or a viewer, who may read but change nothing. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.
 
 |  |  |
 |---|---|
@@ -1447,7 +1575,7 @@ Make an account an admin or an ordinary user. Only the owner takes an admin's ri
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
-| `role` | string | yes | one of `admin`, `user` |  |
+| `role` | string | yes | one of `admin`, `user`, `viewer` |  |
 
 **Reply 200**: Success
 
@@ -1693,10 +1821,10 @@ Runs POST /api/admin/users/{user_id}/role once per item: items holds each one's 
 |---|---|---|---|---|
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
-| `items[].role` | string | no | one of `admin`, `user` |  |
+| `items[].role` | string | no | one of `admin`, `user`, `viewer` |  |
 | `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
 | `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
-| `shared.role` | string | no | one of `admin`, `user` |  |
+| `shared.role` | string | no | one of `admin`, `user`, `viewer` |  |
 
 **Reply 200**: Success
 
@@ -1783,7 +1911,7 @@ Group invite links, a page at a time: label, places used and left, expiry, and w
 
 Create an invite link
 
-One link for a group: each person who opens it joins as a new user, up to max_uses people, for days days.
+One link for a group: each person who opens it joins as a new account with role (user, the default, or viewer), up to max_uses people, for days days.
 
 |  |  |
 |---|---|
@@ -1799,6 +1927,7 @@ One link for a group: each person who opens it joins as a new user, up to max_us
 | `days` | integer | yes | 1 to 365 |  |
 | `label` | string | yes | 1 to 80 characters |  |
 | `max_uses` | integer | yes | 1 to 1000 |  |
+| `role` | string | no | one of `user`, `viewer`; default `user` | The role each person who joins gets: user, or viewer (reads only). |
 
 **Reply 201**: Success
 
@@ -1814,6 +1943,7 @@ One link for a group: each person who opens it joins as a new user, up to max_us
 | `max_uses` | integer | yes |  |  |
 | `remaining` | integer | yes |  |  |
 | `revoked` | boolean | yes |  |  |
+| `role` | string | yes | one of `user`, `viewer` | The role each person who joins gets. |
 | `used` | integer | yes |  |  |
 
 ### POST /api/admin/invite-links/{link_id}/delete
@@ -2397,8 +2527,10 @@ Allow or block an account's password
 | Method | Path | Summary | Who may call |
 |---|---|---|---|
 | GET | [`/api/api.json`](#get-apiapijson) | This document | browser session or API key, anyone signed in |
+| GET | [`/api/api.md`](#get-apiapimd) | The API reference as Markdown tables for people | browser session or API key, anyone signed in |
 | GET | [`/api/health`](#get-apihealth) | Is the process up | anyone |
 | GET | [`/api/mcp.json`](#get-apimcpjson) | The MCP tools: every tool /mcp has, its arguments, and the route it stands for | browser session or API key, anyone signed in |
+| GET | [`/api/mcp.md`](#get-apimcpmd) | The MCP tools as Markdown tables for people | browser session or API key, anyone signed in |
 | GET | [`/api/ready`](#get-apiready) | Can the server do real work | anyone |
 | GET | [`/mcp`](#get-mcp) | Refused: this server has no stream | anyone |
 | POST | [`/mcp`](#post-mcp) | Model Context Protocol, at the key's role | API key only, anyone signed in |
@@ -2417,6 +2549,20 @@ This document
 **Reply 200**: Success
 
 An empty object.
+
+### GET /api/api.md
+
+The API reference as Markdown tables for people
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The API reference itself, for people; GET /api/api.json is the same as JSON. |
+| Errors | 401, 404, 429, 503 |
+
+**Reply 200**: Success
+
+Text, as `text/markdown`.
 
 ### GET /api/health
 
@@ -2446,6 +2592,20 @@ The MCP tools: every tool /mcp has, its arguments, and the route it stands for
 **Reply 200**: Success
 
 An empty object.
+
+### GET /api/mcp.md
+
+The MCP tools as Markdown tables for people
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The MCP reference itself, for people; tools/list gives the same list. |
+| Errors | 401, 404, 429, 503 |
+
+**Reply 200**: Success
+
+Text, as `text/markdown`.
 
 ### GET /api/ready
 
@@ -5056,11 +5216,13 @@ The shapes the routes above refer to by name.
 | `id` | string | yes |  |  |
 | `last_used_at` | string (date-time) | no |  |  |
 | `live` | boolean | yes |  |  |
+| `may_mint_keys` | boolean | yes |  | Whether this key may make keys for other accounts. Only the owner switches it on. |
 | `may_sign_in` | boolean | yes |  | Whether this key may make a login link for its own account. |
+| `minted_by_key` | string | yes |  | The key that made this one, or empty. Revoking that key revokes this one. |
 | `name` | string | yes |  |  |
 | `revoked` | boolean | yes |  |  |
 | `revoked_at` | string (date-time) | no |  |  |
-| `role` | string | yes | one of `admin`, `user` |  |
+| `role` | string | yes | one of `admin`, `user`, `viewer` |  |
 | `user_id` | integer | yes |  |  |
 
 ### BulkReply
@@ -5102,6 +5264,7 @@ The shapes the routes above refer to by name.
 | `max_uses` | integer | yes |  |  |
 | `remaining` | integer | yes |  |  |
 | `revoked` | boolean | yes |  |  |
+| `role` | string | yes | one of `user`, `viewer` | The role each person who joins gets. |
 | `used` | integer | yes |  |  |
 
 ### Joined
@@ -5161,14 +5324,17 @@ One of these:
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
-| `account_role` | string | yes |  |  |
+| `account_role` | string | yes | one of `admin`, `user`, `viewer` |  |
 | `announcement` | string | yes |  | server.announcement. Empty when there is none. |
+| `api_doc_url` | string | yes |  | Where to read the API reference as a page for people: config/api.md in app.repo, or /docs/api when there is no repo. |
 | `api_key_id` | string | no |  | API keys only. |
 | `api_key_name` | string | no |  | API keys only. |
 | `api_keys_enabled` | boolean | yes |  |  |
 | `auth` | string | yes |  |  |
 | `authenticated` | boolean | yes |  |  |
 | `can_show_others` | boolean | yes |  | Whether this caller may use the Showing picker. A user-scoped key of an admin reports what it may actually do, like role. |
+| `capabilities` | array of string | yes |  | The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in. |
+| `contract` | integer | yes |  | Which version of the portal contract this app speaks (ProjectPortal's CROSS_PROJECT.md). |
 | `csrf_token` | string | no |  | Browser sessions only. |
 | `default_subject` | integer or null | yes |  | Whose lists the Showing picker starts on: a user id, or null for your own. |
 | `description` | string | yes |  | app.description. Empty when there is none. |
@@ -5182,17 +5348,20 @@ One of these:
 | `logs_enabled` | boolean | yes |  |  |
 | `logs_ui_clicks` | boolean | yes |  |  |
 | `maintenance` | string | yes | one of `none`, `read_only`, `full` |  |
+| `may_mint_keys` | boolean | no |  | API keys only: whether this key may make keys for other accounts. |
+| `mcp_doc_url` | string | yes |  | Where to read the MCP tools as a page for people: config/mcp.md in app.repo, or /docs/mcp when there is no repo. |
 | `mcp_enabled` | boolean | yes |  | server.mcp: whether POST /mcp answers. |
 | `mcp_url` | string | yes |  | Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on. |
 | `openapi_url` | string | yes |  | Where to read this API's reference: config/api.json in app.repo, or /api/api.json when there is no repo. |
 | `password_blocked` | boolean | yes |  |  |
 | `passwords_enabled` | boolean | yes |  |  |
 | `repo` | string | yes |  | app.repo without a trailing / or .git: where the source lives. Empty when it is not set. |
-| `role` | string | yes |  | The effective role: never higher than an API key's own. |
+| `role` | string | yes | one of `admin`, `user`, `viewer` | The effective role: never higher than an API key's own. A viewer may read, and change nothing. |
 | `show_about` | boolean | yes |  | app.show_about: whether the menu has About. |
 | `showing_locked` | boolean | yes |  | Whether an admin has locked the Showing picker. |
 | `theme_id` | string | yes |  | The theme you use. Empty: the first. |
 | `themes` | array of [`Theme`](#theme) or null | yes |  | Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones. |
+| `themes_builtins` | integer | yes |  | Which built-in themes that list has seen (see builtins on POST /api/account/themes). |
 | `themes_custom` | boolean | yes |  | Whether you have your own list rather than following the defaults. |
 | `two_factor` | boolean | yes |  |  |
 | `two_factor_enabled` | boolean | yes |  |  |
@@ -5220,11 +5389,13 @@ One of these:
 | `id` | string | yes |  |  |
 | `last_used_at` | string (date-time) | no |  |  |
 | `live` | boolean | yes |  |  |
+| `may_mint_keys` | boolean | yes |  | Whether this key may make keys for other accounts. Only the owner switches it on. |
 | `may_sign_in` | boolean | yes |  | Whether this key may make a login link for its own account. |
+| `minted_by_key` | string | yes |  | The key that made this one, or empty. Revoking that key revokes this one. |
 | `name` | string | yes |  |  |
 | `revoked` | boolean | yes |  |  |
 | `revoked_at` | string (date-time) | no |  |  |
-| `role` | string | yes | one of `admin`, `user` |  |
+| `role` | string | yes | one of `admin`, `user`, `viewer` |  |
 | `user_id` | integer | yes |  |  |
 
 ### PruneResult
@@ -5331,19 +5502,19 @@ One of these:
 | `dark` | object or null | no |  | A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped. |
 | `dark.accent` | string | yes |  | The main color: what you can press. |
 | `dark.background` | string | no |  | The page. Left out: the mode's own. |
-| `dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
 | `dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
 | `dark.surface` | string | no |  | Cards. Left out: the mode's own. |
 | `id` | string | yes |  | Lower-case letters, digits, - and _, up to 32. |
 | `light` | object or null | no |  | A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in. |
 | `light.accent` | string | yes |  | The main color: what you can press. |
 | `light.background` | string | no |  | The page. Left out: the mode's own. |
-| `light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
 | `light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
 | `light.surface` | string | no |  | Cards. Left out: the mode's own. |
 | `mode` | string | yes | one of `light`, `dark` |  |
 | `name` | string | yes |  | 1 to 60 characters. |
-| `overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, accentText, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, rowOdd and rowEven (alternating table rows), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
 | `second` | string | yes |  | Says where you are: active nav item, headings, info. |
 | `surface` | string | no |  | Cards. Left out: the mode's own. |
 
@@ -5354,14 +5525,16 @@ One of these:
 | `can_show_others` | boolean | yes |  | Whether this account has the Showing picker (admins always do). |
 | `created_at` | string (date-time) | yes |  |  |
 | `default_subject` | integer or null | yes |  | Whose lists it starts on: a user id, or null for its own. |
-| `disabled` | boolean | yes |  |  |
+| `disabled` | boolean | yes |  | Switched off, or its expiry has passed. |
 | `display_name` | string | yes |  |  |
+| `expired` | boolean | yes |  | Whether expires_at has passed. |
+| `expires_at` | string (date-time) or null | yes |  | When the account stops working, or null for never. |
 | `has_password` | boolean | yes |  |  |
 | `id` | integer | yes |  |  |
 | `login_link` | [`LoginLink`](#loginlink) or null | yes |  | The account's live login link, or null. |
 | `owner` | boolean | yes |  |  |
 | `password_blocked` | boolean | yes |  |  |
-| `role` | string | yes | one of `admin`, `user` |  |
+| `role` | string | yes | one of `admin`, `user`, `viewer` |  |
 | `showing_locked` | boolean | yes |  | Whether an admin has fixed whose lists it sees. |
 | `two_factor` | boolean | yes |  |  |
 | `username` | string | yes |  | Empty until a password is set. |

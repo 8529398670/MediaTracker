@@ -40,6 +40,7 @@ const Settings = {
     window.addEventListener( "beforeunload" , ( event ) => {
       if ( this.changes().count > 0 ) event.preventDefault();
     } );
+    Fresh.holdWhile( () => this.changes().count > 0 );
     await this.load();
     // Pick up hand edits while the screen is open, unless that would throw
     // away something typed here.

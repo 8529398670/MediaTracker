@@ -34,7 +34,7 @@ from starlette.requests import Request
 
 from app.core.config import Config
 from app.core.db import Store
-from app.core.security import Actor
+from app.core.security import Actor, viewer_may_call
 
 
 class Refusal(Exception):
@@ -160,6 +160,10 @@ class Tool:
 
     def visible_to(self, actor: Actor | None, cfg: Config) -> bool:
         if self.enabled is not None and not self.enabled(cfg):
+            return False
+        # A viewer sees only the tools whose route the ViewOnly middleware
+        # would let it call over HTTP: reads, and the few writes it allows.
+        if actor is not None and actor.is_viewer and not viewer_may_call(self.route_name()):
             return False
         return not self.admin_only or (actor is not None and actor.is_admin)
 

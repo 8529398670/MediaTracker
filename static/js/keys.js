@@ -30,18 +30,20 @@ const Keys = {
     if ( me.openapi_url ) {
       Dom.get( "key-spec-link" ).setAttribute( "href" , me.openapi_url );
       Dom.show( Dom.get( "key-spec-line" ) , true );
-      // The same reference written for people, config/api.md, where the
-      // repository's site renders it -- RepoFile( "config/api.md" ) on the
-      // server. Only with app.repo: the server keeps no copy of its own.
-      if ( me.repo ) {
-        Dom.get( "key-doc-link" ).setAttribute( "href" , me.repo + "/blob/HEAD/config/api.md" );
+      // The same reference written for people, config/api.md: where the
+      // repository's site renders it when app.repo is set, else this
+      // server's own /docs/api page.
+      if ( me.api_doc_url ) {
+        Dom.get( "key-doc-link" ).setAttribute( "href" , me.api_doc_url );
         Dom.show( Dom.get( "key-doc-part" ) , true );
       }
     }
-    // Only an admin is offered the role choice. A non-admin has exactly one
-    // option, and an "admin" entry the server would refuse is worse than no
-    // choice at all.
-    Dom.show( Dom.get( "key-role-field" ) , me.role === "admin" );
+    // The role choice: user or viewer for everyone, admin only for an admin.
+    // An "admin" entry the server would refuse is worse than no entry at all.
+    Dom.show( Dom.get( "key-role-field" ) , me.role !== "viewer" );
+    const adminOption = Dom.get( "key-role" ).querySelector( "option[value=admin]" );
+    adminOption.disabled = me.role !== "admin";
+    Dom.show( adminOption , me.role === "admin" );
     Dom.onSubmit( Dom.get( "create-key-form" ) , this.onCreate.bind( this ) );
     Dom.get( "copy-key-button" ).addEventListener( "click" , this.onCopy.bind( this ) );
     Pager.sortable( "keys-table" , () => this.refresh() );
@@ -130,8 +132,11 @@ const Keys = {
     const target = this.targets.get( Dom.get( "user-key-user" ).value );
     const role = Dom.get( "user-key-role" );
     const admin = target !== undefined && target.role === "admin";
+    const viewer = target !== undefined && target.role === "viewer";
     role.querySelector( "option[value=admin]" ).disabled = !admin;
-    if ( !admin ) role.value = "user";
+    role.querySelector( "option[value=user]" ).disabled = viewer;
+    if ( viewer ) role.value = "viewer";
+    else if ( !admin && role.value === "admin" ) role.value = "user";
   },
 
   async onCreateFor( event ) {
@@ -157,7 +162,9 @@ const Keys = {
   // table this one is not. This table keeps its row, so the name being edited
   // does not vanish from under the keyboard; the other shows the same key.
   nameCell( key , rename , refreshOther ) {
-    const cell = Dom.el( "td" , { children: [ Dom.editable( key.name , {
+    // A viewer changes nothing, its own keys' names included.
+    const plain = Keys.me.role === "viewer" ? Dom.el( "span" , { text: key.name } ) : null;
+    const cell = Dom.el( "td" , { children: [ plain || Dom.editable( key.name , {
       label: I18n.get( "api_keys.table_name" ),
       maxLength: 80,
       save: async function ( name ) {
@@ -204,6 +211,12 @@ const Keys = {
     if ( key.may_sign_in && key.live ) {
       badges.push( document.createTextNode( " " ) , Dom.badge( I18n.get( "api_keys.status_sign_in" ) , "warning" ) );
     }
+    if ( key.may_mint_keys && key.live ) {
+      badges.push( document.createTextNode( " " ) , Dom.badge( I18n.get( "api_keys.status_mint" ) , "danger" ) );
+    }
+    if ( key.minted_by_key ) {
+      badges.push( Dom.el( "div" , { class: "small text-body-secondary" , text: I18n.get( "api_keys.minted_by" ).replace( "{key}" , () => key.minted_by_key ) } ) );
+    }
     return Dom.el( "td" , { children: badges } );
   },
 
@@ -233,6 +246,32 @@ const Keys = {
           return;
         }
         Dom.toast( I18n.get( on ? "api_keys.sign_in_turned_on" : "api_keys.sign_in_turned_off" ) , "ok" );
+      } },
+    } );
+  },
+
+  // The owner's switch for letting one of the owner's own admin keys mint
+  // keys for every other account: what an outside admin tool such as
+  // ProjectPortal holds. Only on the owner's own table, on an admin key that
+  // was not minted itself; turning it on asks first.
+  mintButton( key ) {
+    if ( !Keys.me.is_owner || key.minted_by_key || key.role !== "admin" ) return null;
+    if ( !key.live && !key.may_mint_keys ) return null;
+    return Dom.el( "button" , {
+      class: key.may_mint_keys ? "btn btn-sm btn-danger" : "btn btn-sm btn-outline-secondary",
+      text: I18n.get( key.may_mint_keys ? "api_keys.mint_on_button" : "api_keys.mint_off_button" ),
+      attrs: { "aria-pressed": key.may_mint_keys ? "true" : "false" },
+      on: { click: async function () {
+        const on = !key.may_mint_keys;
+        if ( on && !( await Dom.confirm( I18n.get( "api_keys.mint_confirm" ) ) ) ) return;
+        try {
+          await Api.setKeyMintKeys( key.id , on );
+          await Keys.refreshBoth();
+        } catch ( error ) {
+          App.showError( error.message );
+          return;
+        }
+        Dom.toast( I18n.get( on ? "api_keys.mint_turned_on" : "api_keys.mint_turned_off" ) , "ok" );
       } },
     } );
   },
@@ -345,9 +384,11 @@ const Keys = {
         Dom.el( "td" , { children: [ Dom.when( key.last_used_at , I18n.get( "api_keys.never" ) ) ] } ),
         Dom.el( "td" , { children: [ Dom.when( key.expires_at , I18n.get( "api_keys.never" ) ) ] } ),
         Dom.el( "td" , { children: [
-          Dom.rowActions( key.name , [
+          // A viewer's keys are listed, not changed: the server would refuse.
+          Dom.rowActions( key.name , Keys.me.role === "viewer" ? [] : [
             Keys.expiryButton( key , function ( id , days ) { return Api.setKeyExpiry( id , days ); } ),
             Keys.signInButton( key ),
+            Keys.mintButton( key ),
             Keys.revokeButton( key , function ( id ) { return Api.revokeKey( id ); } ),
             Keys.deleteButton( key , function ( id ) { return Api.deleteKey( id ); } , function ( id ) { return Api.restoreKey( id ); } ),
           ] ),

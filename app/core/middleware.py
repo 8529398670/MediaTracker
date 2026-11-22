@@ -102,8 +102,8 @@ class SecurityHeaders:
 class NoStore:
     """Marks every response private and never to be stored, unless it says
     otherwise itself: the static files keep their own rule (images get a long
-    max-age, text its own no-store), and everything else, every API reply,
-    error page and stream, gets this one.
+    max-age, text private no-cache with an ETag), and everything else, every
+    API reply, error page and stream, gets this one.
 
     Without it, a proxy or CDN in front of the app is free to cache an API
     reply: a Cloudflare "cache everything" rule, or its default of caching any
@@ -127,6 +127,28 @@ class NoStore:
             await send(message)
 
         await self.app(scope, receive, send_no_store)
+
+
+class AppVersion:
+    """Every API reply says which build answered it (X-App-Version), so a
+    page left open across a deploy finds out on its next call
+    (static/js/fresh.js)."""
+
+    def __init__(self, app: ASGIApp, version: str) -> None:
+        self.app = app
+        self.version = version
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_version(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["x-app-version"] = self.version
+            await send(message)
+
+        await self.app(scope, receive, send_version)
 
 
 def client_ip(scope: Scope, cfg: Config, trusted: Sequence[IPNetwork]) -> str:

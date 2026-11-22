@@ -19,7 +19,7 @@ const Invites = {
     const maxUses = parseInt( Dom.get( "invite-uses" ).value , 10 );
     const days = parseInt( Dom.get( "invite-days" ).value , 10 );
     try {
-      const created = await Api.createInvite( label , maxUses , days );
+      const created = await Api.createInvite( label , maxUses , days , Dom.get( "invite-role" ).value );
       // A path, not a URL, for the same reason as a login link: the browser
       // knows its public origin, the server behind a proxy may not.
       Dom.text( Dom.get( "invite-link-value" ) , window.location.origin + created.join_path );
