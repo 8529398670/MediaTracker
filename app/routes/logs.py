@@ -23,7 +23,7 @@ from app.apidocs import Request as RequestType
 from app.core import logs, request_id, sse
 from app.core.config import trusted_proxy_networks
 from app.core.middleware import client_ip
-from app.core.security import actor_from, decrypt_cookie, log_actor, still_owner
+from app.core.security import actor_fields, actor_from, decrypt_cookie, log_actor, still_owner
 from app.models import users
 from app.routes.helpers import PAGE_DEFAULT, DateTime, Limit, Refused, error, get_config, get_store, run
 
@@ -314,8 +314,20 @@ def record_ui_events(request: Request, body: RecordUIEvents) -> RecordUIEventsRe
 
 def audit(request: Request, kind: str, message: str, detail: dict[str, Any] | None = None) -> None:
     """Log an auth or admin action by whoever made this request. detail says
-    what it touched: ids and names, never a credential. Never blocks."""
-    audit_as(request, log_actor(actor_from(request)), kind, logs.LEVEL_INFO, message, detail)
+    what it touched: ids and names, never a credential. Never blocks. Who did
+    it goes in the detail too (portal contract v3): an admin action by
+    ProjectPortal's key says so wherever the entry goes."""
+    actor = log_actor(actor_from(request))
+    fields = actor_fields(actor)
+    if fields is not None:
+        detail = {**(detail or {}), **fields}
+    audit_as(request, actor, kind, logs.LEVEL_INFO, message, detail)
+
+
+def webhook_actor(request: Request) -> dict[str, Any] | None:
+    """Who made this request, as a webhook's payload carries it ("actor",
+    portal contract v3). None for nobody, and without the activity log."""
+    return actor_fields(log_actor(actor_from(request)))
 
 
 def audit_as(

@@ -14,6 +14,7 @@ from starlette.requests import Request
 from app.apidocs import ADMIN, PATH, Reply, route
 from app.apidocs import Request as RequestType
 from app.core.db import Store
+from app.core.error_codes import CODE_OWNER_PROTECTED
 from app.core.logs import KIND_ADMIN, KIND_AUTH
 from app.core.security import actor_from
 from app.models import sessions, to_iso, users
@@ -100,7 +101,7 @@ def _target_of(store: Store, self_id: int, user_id: int) -> bool:
     owner_id = users.get_owner_id(store)
     by_owner = self_id == owner_id
     if user_id == owner_id and not by_owner:
-        raise Refused(403, "the owner account's sessions are the owner's own")
+        raise Refused(403, "the owner account's sessions are the owner's own", code=CODE_OWNER_PROTECTED)
     return by_owner
 
 

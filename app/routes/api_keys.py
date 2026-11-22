@@ -32,14 +32,15 @@ from msgspec import UNSET, Meta, UnsetType
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.apidocs import ADMIN, PATH, QUERY, SESSION_ONLY, Reply, route
+from app.apidocs import ADMIN, KEY_ONLY, PATH, QUERY, SESSION_ONLY, Reply, route
 from app.apidocs import Request as RequestType
 from app.core.db import Store
+from app.core.error_codes import CODE_OWNER_PROTECTED, CODE_OWNER_REQUIRED
 from app.core.logs import KIND_ADMIN, KIND_AUTH
 from app.core.security import Guard, RequireKeyMinting, actor_from
 from app.models import RestoreError, api_keys, to_iso, users
 from app.routes.admin import DateTime, OkReply, UserIDPath
-from app.routes.helpers import Dir, Page, Paged, Refused, get_config, get_store, match_rows, not_found, restore_refusal, sorted_page
+from app.routes.helpers import Dir, Page, Paged, Refused, act_on_refusals, get_config, get_store, match_rows, not_found, restore_refusal, sorted_page
 from app.routes.logs import audit
 
 
@@ -248,7 +249,7 @@ def create_key_for_user(request: Request, body: CreateKeyForUser) -> NewAPIKey:
     except api_keys.APIKeyOwnerError:
         raise Refused(404, "no such user") from None
     except (api_keys.APIKeyForOwnerError, api_keys.APIKeyForAdminError) as refusal:
-        raise Refused(403, str(refusal)) from None
+        raise Refused(403, str(refusal), code=CODE_OWNER_PROTECTED if isinstance(refusal, api_keys.APIKeyForOwnerError) else CODE_OWNER_REQUIRED) from None
     except api_keys.APIKeyRoleError:
         raise Refused(403, "a key cannot have more permission than the account it belongs to") from None
     except api_keys.APIKeyLimitError:
@@ -314,9 +315,9 @@ def _rename(request: Request, body: RenameKey, own_only: bool) -> RenameKeyReply
     except users.RenameConflictError as refusal:
         raise Refused(409, str(refusal), name=refusal.current) from None
     except users.OwnerProtectedError:
-        raise Refused(403, "only the owner can rename the owner's keys") from None
+        raise Refused(403, "only the owner can rename the owner's keys", code=CODE_OWNER_PROTECTED) from None
     except users.OwnerRequiredError:
-        raise Refused(403, "only the owner can rename an admin's keys") from None
+        raise Refused(403, "only the owner can rename an admin's keys", code=CODE_OWNER_REQUIRED) from None
     if not renamed:
         raise Refused(404, "no such api key")
     audit(request, KIND_ADMIN, "api key renamed", {"key_id": key.id, "name": body.name.strip()})
@@ -363,7 +364,7 @@ def _set_expiry(request: Request, body: SetKeyExpiry, own_only: bool) -> APIKey:
     except api_keys.APIKeyDeadError:
         raise Refused(400, "only a live key can have its expiry changed -- create a new one instead") from None
     except (api_keys.APIKeyExpiryOwnerError, api_keys.APIKeyExpiryAdminError) as refusal:
-        raise Refused(403, str(refusal)) from None
+        raise Refused(403, str(refusal), code=CODE_OWNER_PROTECTED if isinstance(refusal, api_keys.APIKeyExpiryOwnerError) else CODE_OWNER_REQUIRED) from None
     if key is None:
         raise Refused(404, "no such api key")
     audit(request, KIND_ADMIN, "api key expiry changed", {"key_id": key.id, "expires_in_days": days})
@@ -418,7 +419,7 @@ def set_my_key_mint_keys(request: Request, body: SetKeyMintKeys) -> APIKey:
     try:
         key = api_keys.set_api_key_mint_keys(get_store(request), body.key_id, actor_from(request).user.id, body.may_mint_keys)
     except api_keys.APIKeyNotOwnerError as refusal:
-        raise Refused(403, str(refusal)) from None
+        raise Refused(403, str(refusal), code=CODE_OWNER_REQUIRED) from None
     except api_keys.APIKeyDeadError:
         raise Refused(400, "only a live key can be allowed to mint keys") from None
     except (api_keys.APIKeyMintedError, api_keys.APIKeyMintRoleError) as refusal:
@@ -499,8 +500,8 @@ def _restore(store: Store, key_id: str, actor: users.User) -> APIKey:
 def _owner_refused(refusal: Exception, what: str = "change") -> Refused:
     """users.may_act_on_tx's refusal for a key, worded like the other routes'."""
     if isinstance(refusal, users.OwnerProtectedError):
-        return Refused(403, f"only the owner can {what} the owner's keys")
-    return Refused(403, f"only the owner can {what} an admin's keys")
+        return Refused(403, f"only the owner can {what} the owner's keys", code=CODE_OWNER_PROTECTED)
+    return Refused(403, f"only the owner can {what} an admin's keys", code=CODE_OWNER_REQUIRED)
 
 
 class ListAllKeys(Page):
@@ -544,7 +545,7 @@ def revoke_any_key(request: Request, body: KeyIDPath) -> OkReply:
     if actor.via_api_key:
         found = api_keys.get_api_key(store, body.key_id)
         if found is not None and found.user_id == users.get_owner_id(store):
-            raise Refused(403, OWNER_KEYS_MESSAGE)
+            raise Refused(403, OWNER_KEYS_MESSAGE, code=CODE_OWNER_PROTECTED)
     try:
         revoked = api_keys.revoke_api_key(store, body.key_id, actor.user.id)
     except (users.OwnerProtectedError, users.OwnerRequiredError) as refusal:
@@ -585,9 +586,9 @@ def mint_key_for_user(request: Request, body: MintKey) -> NewAPIKey:
     except api_keys.APIKeyOwnerError:
         raise Refused(404, "no such user") from None
     except api_keys.APIKeyForOwnerError:
-        raise Refused(403, OWNER_KEYS_MESSAGE) from None
+        raise Refused(403, OWNER_KEYS_MESSAGE, code=CODE_OWNER_PROTECTED) from None
     except api_keys.APIKeyForAdminError as refusal:
-        raise Refused(403, str(refusal)) from None
+        raise Refused(403, str(refusal), code=CODE_OWNER_REQUIRED) from None
     except api_keys.APIKeyRoleError:
         raise Refused(403, "a key cannot have more permission than the account it belongs to") from None
     except api_keys.APIKeyLimitError:
@@ -608,7 +609,8 @@ class UserKeysReply(Reply):
     tag="API keys", role=ADMIN, feature="api_keys", use=[RequireKeyMinting], errors=(404,),
     description="One account's keys, revoked and expired ones included, newest first. Each row says which key "
     "minted it (minted_by_key, empty when a person made it). Needs a browser session or a key with may_mint_keys; "
-    "any other key gets 403 key_minting_off.",
+    "any other key gets 403 key_minting_off. Follows the owner ladder: nobody lists the owner's keys this way, and "
+    "only the owner lists another admin's.",
     mcp_http=MANAGES_KEYS_MCP,
 )
 def list_user_keys(request: Request, body: UserIDPath) -> UserKeysReply:
@@ -616,6 +618,8 @@ def list_user_keys(request: Request, body: UserIDPath) -> UserKeysReply:
     store = get_store(request)
     if users.get_user(store, body.user_id) is None:
         raise Refused(404, "no such user")
+    with act_on_refusals("list the keys of"):
+        users.may_act_on(store, actor_from(request).user.id, body.user_id)
     keys = api_keys.list_api_keys_for_user(store, body.user_id)
     names = display_names(store)
     return UserKeysReply(keys=[name_creator(api_key_row(key, names.get(key.user_id, "")), key, names) for key in keys])
@@ -647,3 +651,50 @@ def restore_any_key(request: Request, body: KeyIDPath) -> APIKey:
     row = _restore(get_store(request), body.key_id, actor_from(request).user)
     audit(request, KIND_ADMIN, "api key restored", {"key_id": body.key_id})
     return row
+
+
+class RotatedKey(Reply):
+    api_name: ClassVar[str] = "RotatedKey"
+    credential: Annotated[str, Meta(description="The key's new credential, shown in this response only. The old one stopped working.")]
+
+
+@route(
+    "POST /api/keys/self/rotate", summary="Rotate the calling key",
+    tag="API keys", access=KEY_ONLY, feature="api_keys",
+    description="Gives the calling key a new secret and answers its new credential, shown only now. The old secret "
+    "stops working at once. The key's id, name, role, grants, lineage and expiry stay as they are, so the keys and "
+    "links it made keep working; rotating never extends the expiry. A viewer key may call it.",
+    mcp_http="Makes an API key's credential, which no MCP tool does.",
+)
+def rotate_self(request: Request) -> RotatedKey:
+    """A key giving itself a new secret (portal contract v3): an outside tool
+    rotates its own key on a schedule, with nobody involved."""
+    try:
+        credential, key = api_keys.rotate_api_key(get_store(request), actor_from(request).key_id)
+    except api_keys.APIKeyRotateDeadError as refusal:
+        raise Refused(400, str(refusal)) from None
+    audit(request, KIND_AUTH, "api key rotated", {"key_id": key.id})
+    return RotatedKey(credential=credential)
+
+
+@route(
+    "POST /api/keys/{key_id}/rotate", summary="Rotate one of your keys",
+    tag="API keys", access=SESSION_ONLY, feature="api_keys", errors=(404,),
+    description="The owner only: gives one of the owner's own keys a new secret and answers its new credential, shown "
+    "only now. The old secret stops working at once; nothing else about the key changes.",
+)
+def rotate_my_key(request: Request, body: KeyIDPath) -> RotatedKey:
+    """The owner rotating one of the owner's own keys from a browser session.
+    Someone else's key is "no such api key", as everywhere."""
+    store, user = get_store(request), actor_from(request).user
+    key = api_keys.get_api_key(store, body.key_id)
+    if key is None or key.deleted or key.user_id != user.id:
+        raise Refused(404, "no such api key")
+    if users.get_owner_id(store) != user.id:
+        raise Refused(403, "only the owner rotates a key from here; any key rotates itself", code=CODE_OWNER_REQUIRED)
+    try:
+        credential, _ = api_keys.rotate_api_key(store, key.id)
+    except api_keys.APIKeyRotateDeadError as refusal:
+        raise Refused(400, str(refusal)) from None
+    audit(request, KIND_AUTH, "api key rotated", {"key_id": key.id})
+    return RotatedKey(credential=credential)

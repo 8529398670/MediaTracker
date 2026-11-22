@@ -15,7 +15,7 @@ from app.tests.route_support import RoutesTestCase
 class Discovery(RoutesTestCase):
     def test_me_names_the_contract_and_capabilities(self) -> None:
         _, me = self.call("GET", "/api/me", cookie=self.user_cookie)
-        self.assertEqual(me["contract"], 2)
+        self.assertEqual(me["contract"], 3)
         self.assertIn("viewer_role", me["capabilities"])
         self.assertIn("account_expiry", me["capabilities"])
         self.set_config(api_keys_enabled=True)
@@ -26,6 +26,104 @@ class Discovery(RoutesTestCase):
         self.assertNotIn("invite_links", self.call("GET", "/api/me", cookie=self.user_cookie)[1]["capabilities"])
         self.set_config(invite_links_enabled=True)
         self.assertIn("invite_links", self.call("GET", "/api/me", cookie=self.user_cookie)[1]["capabilities"])
+
+
+class MeSaysWhichTemplateItCameFrom(RoutesTestCase):
+    """/api/me says which skill and commit the app was scaffolded from
+    (portal contract v3, item 8), so the portal can say when it is behind.
+    Read from .skill-origin.yaml at start; without it, both are left out."""
+
+    def test_reported_when_known_and_left_out_when_not(self) -> None:
+        self.app.state.skill, self.app.state.skill_commit = "", ""
+        _, me = self.call("GET", "/api/me", cookie=self.user_cookie)
+        self.assertNotIn("skill", me)
+        self.assertNotIn("skill_commit", me)
+        self.app.state.skill, self.app.state.skill_commit = "python-webserver", "ea9f39c0123456789"
+        _, me = self.call("GET", "/api/me", cookie=self.user_cookie)
+        self.assertEqual((me["skill"], me["skill_commit"]), ("python-webserver", "ea9f39c0123456789"))
+
+    def test_read_from_the_origin_file(self) -> None:
+        from pathlib import Path
+        import tempfile
+
+        from app.core.skill_origin import skill_origin
+
+        with tempfile.TemporaryDirectory() as directory:
+            origin = Path(directory) / ".skill-origin.yaml"
+            self.assertEqual(skill_origin(origin), ("", ""))
+            origin.write_text('skill: python-webserver\ncommit: ea9f39c0123456789\nproject_name: "X"\n')
+            self.assertEqual(skill_origin(origin), ("python-webserver", "ea9f39c0123456789"))
+            origin.write_text("not: [yaml")
+            self.assertEqual(skill_origin(origin), ("", ""))
+
+
+class MeSaysWhatThisCallerMayDo(RoutesTestCase):
+    """/api/me says what this caller may do, not only what the app supports
+    (portal contract v3, item 3): owner and kind always, and for a key, the
+    key's own grants and expiry."""
+
+    def test_a_session_says_owner_and_kind_and_has_no_key(self) -> None:
+        _, me = self.call("GET", "/api/me", cookie=self.owner_cookie)
+        self.assertEqual((me["owner"], me["kind"]), (True, "person"))
+        self.assertNotIn("key", me)
+        _, me = self.call("GET", "/api/me", cookie=self.user_cookie)
+        self.assertEqual((me["owner"], me["kind"]), (False, "person"))
+
+    def test_a_key_says_its_grants_and_expiry(self) -> None:
+        self.set_config(api_keys_enabled=True)
+        credential, key = api_keys.issue_api_key(self.store, self.owner.id, "portal", users.ROLE_ADMIN, 12 * 24 * 3600)
+        _, me = self.call("GET", "/api/me", key=credential)
+        self.assertEqual((me["owner"], me["kind"]), (True, "person"))
+        self.assertEqual(me["key"], {"id": key.id, "name": "portal", "role": "admin", "may_mint_keys": False, "may_sign_in": False, "expires_at": to_iso(key.expires_at)})
+        self.assertIn("key_grants", me["capabilities"])
+
+    def test_a_key_that_never_expires_leaves_expires_at_out(self) -> None:
+        credential, _ = api_keys.issue_api_key(self.store, self.user.id, "cron", users.ROLE_USER, 0)
+        _, me = self.call("GET", "/api/me", key=credential)
+        self.assertFalse(me["owner"])
+        self.assertNotIn("expires_at", me["key"])
+
+
+class AnyAdminRunsAccounts(RoutesTestCase):
+    """The portal works through an admin account of its own, never the
+    owner's (portal contract v3, item 1). Every account route lets any admin
+    run an ordinary account, and keeps to the ladder: nobody acts on the
+    owner's account, and only the owner acts on another admin's."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.portal_user = users.create_user(self.store, "ProjectPortal", users.ROLE_ADMIN)
+        self.portal, _ = api_keys.issue_api_key(self.store, self.portal_user.id, "portal", users.ROLE_ADMIN, 3600)
+
+    def test_a_second_admin_runs_an_ordinary_account(self) -> None:
+        status, reply = self.call("POST", "/api/admin/users", key=self.portal, body={"display_name": "Cy", "role": "user", "max_uses": 1, "expires_in_minutes": 15})
+        self.assertEqual(status, 201, reply)
+        cy = f"/api/admin/users/{reply['user_id']}"
+        self.assertEqual(self.call("GET", "/api/admin/users?limit=1", key=self.portal)[0], 200)
+        soon = to_iso(utc_now() + timedelta(hours=1))
+        for action, body in (
+            ("reissue-login", {"max_uses": 1, "expires_in_minutes": 15}), ("role", {"role": "viewer"}),
+            ("expiry", {"expires_at": soon}), ("disabled", {"disabled": True}), ("disabled", {"disabled": False}),
+            ("revoke-access", {}), ("delete", {}),
+        ):
+            status, reply = self.call("POST", f"{cy}/{action}", key=self.portal, body=body)
+            self.assertEqual(status, 200, f"{action}: {reply}")
+        cookie = self.session(self.portal_user.id)
+        self.assertEqual(self.call("GET", f"/api/admin/users/{self.user.id}/keys", cookie=cookie)[0], 200)
+
+    def test_the_ladder_holds_on_the_owner_and_another_admin(self) -> None:
+        cookie = self.session(self.portal_user.id)
+        soon = to_iso(utc_now() + timedelta(hours=1))
+        for target in (self.owner, self.admin):
+            path = f"/api/admin/users/{target.id}"
+            status, reply = self.call("GET", f"{path}/keys", cookie=cookie)
+            self.assertEqual(status, 403, f"listing {target.display_name}'s keys: {reply}")
+            for action, body in (
+                ("reissue-login", {"max_uses": 1, "expires_in_minutes": 15}), ("role", {"role": "user"}),
+                ("expiry", {"expires_at": soon}), ("disabled", {"disabled": True}), ("revoke-access", {}), ("delete", {}),
+            ):
+                status, reply = self.call("POST", f"{path}/{action}", key=self.portal, body=body)
+                self.assertEqual(status, 403, f"{action} on {target.display_name}: {reply}")
 
 
 class ViewerRole(RoutesTestCase):
@@ -44,7 +142,7 @@ class ViewerRole(RoutesTestCase):
     def test_every_write_is_view_only(self) -> None:
         for path in ("/api/account/rename", "/api/account/login-link", "/api/admin/users"):
             with self.subTest(path=path):
-                self.assertEqual(self.post(path, {"display_name": "x"}), (403, {"error": "view_only"}))
+                self.assertEqual(self.post(path, {"display_name": "x"}), (403, {"error": "view_only", "code": "view_only"}))
         self.assertEqual(self.store.get(BUCKET_USERS, self.viewer.id)["display_name"], "Viewer")
 
     def test_signing_out_and_taking_ways_in_away_still_work(self) -> None:
@@ -56,14 +154,14 @@ class ViewerRole(RoutesTestCase):
                               body={"csrf_token": self.csrf(self.owner_cookie), "role": "viewer"})
         self.assertEqual(status, 200)
         self.assertEqual(self.call("POST", "/api/account/rename", cookie=self.user_cookie,
-                                   body={"csrf_token": self.csrf(self.user_cookie), "display_name": "x"}), (403, {"error": "view_only"}))
+                                   body={"csrf_token": self.csrf(self.user_cookie), "display_name": "x"}), (403, {"error": "view_only", "code": "view_only"}))
 
     def test_a_viewer_key_and_a_viewer_accounts_admin_key_both_view_only(self) -> None:
         self.set_config(api_keys_enabled=True)
         scoped, _ = api_keys.issue_api_key(self.store, self.owner.id, "look", users.ROLE_VIEWER, 3600)
         _, me = self.call("GET", "/api/me", key=scoped)
         self.assertEqual(me["role"], "viewer")
-        self.assertEqual(self.call("POST", "/api/account/rename", key=scoped, body={"display_name": "x"}), (403, {"error": "view_only"}))
+        self.assertEqual(self.call("POST", "/api/account/rename", key=scoped, body={"display_name": "x"}), (403, {"error": "view_only", "code": "view_only"}))
         # A key never outranks its account: the viewer cannot mint a user key.
         with self.assertRaises(api_keys.APIKeyRoleError):
             api_keys.issue_api_key(self.store, self.viewer.id, "more", users.ROLE_USER, 3600)

@@ -23,6 +23,7 @@ from app.core import encryption
 from app.core.config import Config
 from app.core.config_live import Holder
 from app.core.db import Store
+from app.core.error_codes import CODE_KEY_MINTING_OFF, CODE_NOT_ADMIN, CODE_NOT_AUTHENTICATED, CODE_NOT_FOUND, CODE_SESSION_ONLY, CODE_VIEW_ONLY, error_body
 from app.models import utc_now
 from app.models.api_keys import APIKey, load_api_key, narrow_role
 from app.models.sessions import Session, load_session, touch_session
@@ -256,8 +257,8 @@ def actor_from(request: Request) -> Actor | None:
 # ---------------------------------------------------------------------------
 
 
-def _refuse(status: int, message: str) -> JSONResponse:
-    return JSONResponse({"error": message}, status_code=status)
+def _refuse(status: int, message: str, code: str = "") -> JSONResponse:
+    return JSONResponse(error_body(status, message, code), status_code=status)
 
 
 class Guard:
@@ -286,7 +287,7 @@ class RequireLogin(Guard):
 
     def refuse(self, request: Request) -> Response | None:
         if actor_from(request) is None:
-            return _refuse(401, "not authenticated")
+            return _refuse(401, "not authenticated", CODE_NOT_AUTHENTICATED)
         return None
 
 
@@ -296,9 +297,9 @@ class RequireAdmin(Guard):
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
         if actor is None:
-            return _refuse(401, "not authenticated")
+            return _refuse(401, "not authenticated", CODE_NOT_AUTHENTICATED)
         if not actor.is_admin:
-            return _refuse(403, "forbidden")
+            return _refuse(403, "forbidden", CODE_NOT_ADMIN)
         return None
 
 
@@ -338,9 +339,9 @@ class RequireSession(Guard):
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
         if actor is None:
-            return _refuse(401, "not authenticated")
+            return _refuse(401, "not authenticated", CODE_NOT_AUTHENTICATED)
         if actor.via_api_key:
-            return _refuse(403, "this endpoint requires a signed-in session, not an API key")
+            return _refuse(403, "this endpoint requires a signed-in session, not an API key", CODE_SESSION_ONLY)
         return None
 
 
@@ -355,9 +356,9 @@ class RequireKeyMinting(Guard):
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
         if actor is None:
-            return _refuse(401, "not authenticated")
+            return _refuse(401, "not authenticated", CODE_NOT_AUTHENTICATED)
         if actor.api_key is not None and not actor.api_key.may_mint_keys:
-            return _refuse(403, "key_minting_off")
+            return _refuse(403, "key_minting_off", CODE_KEY_MINTING_OFF)
         return None
 
 
@@ -373,7 +374,7 @@ class RequireAPIKey(Guard):
     def refuse(self, request: Request) -> Response | None:
         actor = actor_from(request)
         if actor is None:
-            response = _refuse(401, "not authenticated")
+            response = _refuse(401, "not authenticated", CODE_NOT_AUTHENTICATED)
             response.headers["WWW-Authenticate"] = "Bearer"
             return response
         if not actor.via_api_key:
@@ -390,7 +391,9 @@ class RequireAPIKey(Guard):
 # browser a viewer is signed in on has to work.
 VIEW_ONLY_ALLOWED = re.compile(
     r"^/(?:api/logout|api/account/login-link/cancel|api/account/sessions/revoke-others"
-    r"|api/account/sessions/[^/]+/revoke|mcp|api/login(?:/[^/]+)?|api/join/[^/]+)$"
+    r"|api/account/sessions/[^/]+/revoke|mcp|api/login(?:/[^/]+)?|api/join/[^/]+"
+    # A key rotating its own secret takes the old one away (portal contract v3).
+    r"|api/keys/self/rotate)$"
 )
 
 
@@ -405,7 +408,7 @@ def viewer_may_call(route: str) -> bool:
 class ViewOnly:
     """The viewer role's one rule, for every route at once: a viewer's
     session or key may read (GET and HEAD) and nothing else, bar
-    VIEW_ONLY_ALLOWED. Anything else answers 403 {"error": "view_only"} before
+    VIEW_ONLY_ALLOWED. Anything else answers 403 {"error": "view_only", "code": "view_only"} before
     a handler runs.
 
     Middleware right after LoadActor rather than a guard on each route, so a
@@ -422,7 +425,7 @@ class ViewOnly:
         if scope["type"] == "http":
             actor = actor_from(Request(scope))
             if actor is not None and actor.is_viewer and not viewer_may_call(f"{scope['method']} {scope['path']}"):
-                await _refuse(403, "view_only")(scope, receive, send)
+                await _refuse(403, "view_only", CODE_VIEW_ONLY)(scope, receive, send)
                 return
         await self.app(scope, receive, send)
 
@@ -452,7 +455,7 @@ class RequireOwner(Guard):
             owner_id = await run_in_threadpool(get_owner_id, request.app.state.store)
             allowed = owner_id is not None and owner_id == actor.user.id
         if not allowed:
-            await _refuse(404, "not_found")(scope, receive, send)
+            await _refuse(404, "not_found", CODE_NOT_FOUND)(scope, receive, send)
             return
         await self.app(scope, receive, send)
 
@@ -478,7 +481,21 @@ def log_actor(actor: Actor | None) -> dict:
     result = {"user_id": actor.user.id, "name": actor.user.display_name, "role": actor.role, "method": actor.method}
     if actor.api_key is not None:
         result["key_id"] = actor.api_key.id
+        result["key_name"] = actor.api_key.name
     return result
+
+
+def actor_fields(actor: dict[str, Any]) -> dict[str, Any] | None:
+    """Who acted, as an admin entry's detail and a webhook's actor carry it
+    (portal contract v3): actor_user_id, actor_name, and for a key,
+    actor_key_id and actor_key_name. None for nobody."""
+    if not actor.get("user_id"):
+        return None
+    fields: dict[str, Any] = {"actor_user_id": actor["user_id"], "actor_name": actor.get("name", "")}
+    if actor.get("key_id"):
+        fields["actor_key_id"] = actor["key_id"]
+        fields["actor_key_name"] = actor.get("key_name", "")
+    return fields
 
 
 # ---------------------------------------------------------------------------

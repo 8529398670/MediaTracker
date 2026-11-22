@@ -48,6 +48,8 @@ COPY config/api.json ./config/
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
+ARG SKILL=
+ARG SKILL_COMMIT=
 
 # Three things, all only ever done here:
 #
@@ -56,14 +58,15 @@ ARG BUILD_DATE=unknown
 #                      on 0.0.0.0. This is what
 #                      replaces ENV, and why `docker exec <name> python -m app
 #                      manage ...` needs nothing extra (app/core/layout.py).
-#   build_info.py      VERSION/COMMIT/BUILD_DATE for the version command. The
-#                      values arrive as arguments, so no quoting can break the
-#                      generated file.
+#   build_info.py      VERSION/COMMIT/BUILD_DATE for the version command, and
+#                      SKILL/SKILL_COMMIT for /api/me (the image has no
+#                      .skill-origin.yaml). The values arrive as arguments, so
+#                      no quoting can break the generated file.
 #   compileall         bytecode written now, because --read-only means the
 #                      process can never write .pyc files later.
 RUN cp app/core/layout_container.py app/core/layout_pinned.py \
- && python -c 'import sys; open("app/build_info.py", "w").write("VERSION = %r\nCOMMIT = %r\nBUILD_DATE = %r\n" % tuple(sys.argv[1:4]))' \
-      "$VERSION" "$COMMIT" "$BUILD_DATE" \
+ && python -c 'import sys; open("app/build_info.py", "w").write("VERSION = %r\nCOMMIT = %r\nBUILD_DATE = %r\nSKILL = %r\nSKILL_COMMIT = %r\n" % tuple(sys.argv[1:6]))' \
+      "$VERSION" "$COMMIT" "$BUILD_DATE" "$SKILL" "$SKILL_COMMIT" \
  && python -m compileall -q app
 
 # There is no ENV here, and no config.yaml or secret.key in the image

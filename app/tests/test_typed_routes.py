@@ -8,9 +8,22 @@ import json
 import unittest
 from typing import Any
 
+from app.core.error_codes import ERROR_CODES
 from app.tests.route_support import RoutesTestCase
 
 LINK_LIMITS = "max_uses must be 0 (unlimited) or 1-1000, expires_in_minutes 0 (never) or 1-525600"
+
+
+def plain(result: Any) -> Any:
+    """A refusal as these tests read it: the status and the sentence. Its code
+    (and field) are checked here to be listed, and in test_error_codes.py to
+    be the right one."""
+    if isinstance(result, dict):
+        assert result.get("code") in ERROR_CODES, result
+        return {"error": result["error"]}
+    status, reply = result
+    assert reply.get("code") in ERROR_CODES, reply
+    return status, {"error": reply["error"]}
 
 
 class DeclaredRoutesTest(RoutesTestCase):
@@ -30,7 +43,7 @@ class DeclaredRoutesTest(RoutesTestCase):
         ]
         for name, body, message in cases:
             with self.subTest(name):
-                self.assertEqual(self.send("/api/admin/users", **body), (400, {"error": message}))
+                self.assertEqual(plain(self.send("/api/admin/users", **body)), (400, {"error": message}))
         status, _ = self.send("/api/admin/users", display_name="Bea", role="user", max_uses=None)
         self.assertEqual(status, 201, "a null optional field")
 
@@ -44,19 +57,19 @@ class DeclaredRoutesTest(RoutesTestCase):
         ]
         for path, message in cases:
             with self.subTest(path):
-                self.assertEqual(self.call("GET", path, cookie=self.owner_cookie), (400, {"error": message}))
-        self.assertEqual(self.send("/api/admin/users/abc/rename", display_name="Bea"), (400, {"error": "invalid user id"}))
+                self.assertEqual(plain(self.call("GET", path, cookie=self.owner_cookie)), (400, {"error": message}))
+        self.assertEqual(plain(self.send("/api/admin/users/abc/rename", display_name="Bea")), (400, {"error": "invalid user id"}))
 
     def test_a_declared_route_checks_the_sessions_csrf_token(self) -> None:
         status, reply = self.call("POST", "/api/admin/users", cookie=self.owner_cookie, body={"display_name": "Bea", "role": "user"})
-        self.assertEqual((status, reply), (403, {"error": "invalid csrf token"}))
+        self.assertEqual(plain((status, reply)), (403, {"error": "invalid csrf token"}))
         # The token is checked before the body, as before.
         self.assertEqual(self.call("POST", "/api/admin/users", cookie=self.owner_cookie, body={"colour": "red"})[0], 403)
 
     def test_an_optional_number_in_the_query(self) -> None:
         path = "/api/owner/logs/days/2020-01-02"
-        self.assertEqual(self.call("GET", path + "?before=-1", cookie=self.owner_cookie), (400, {"error": "before must be a line number"}))
-        self.assertEqual(self.call("GET", path + "?before=lots", cookie=self.owner_cookie), (400, {"error": "before must be a line number"}))
+        self.assertEqual(plain(self.call("GET", path + "?before=-1", cookie=self.owner_cookie)), (400, {"error": "before must be a line number"}))
+        self.assertEqual(plain(self.call("GET", path + "?before=lots", cookie=self.owner_cookie)), (400, {"error": "before must be a line number"}))
         self.assertEqual(self.call("GET", path + "?before=3", cookie=self.owner_cookie)[0], 200)
         self.assertEqual(self.call("GET", path, cookie=self.owner_cookie)[0], 200)
 

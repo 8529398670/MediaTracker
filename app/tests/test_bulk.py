@@ -49,7 +49,7 @@ class BulkRouteTest(RoutesTestCase):
             ({"items": [{"user_id": 3}], "extra": 1}, "unknown field: extra"),
             ({"items": [{"user_id": 3}], "shared": {"user_id": 3}}, "unknown field: shared.user_id"),
         ):
-            self.assertEqual(self.send(self.owner_cookie, body), (400, {"error": want}), body)
+            self.assertEqual(self.send(self.owner_cookie, body), (400, {"error": want, "code": "invalid"}), body)
         # The route's guards hold: no csrf token, or not an admin.
         self.assertEqual(self.call("POST", PATH, cookie=self.owner_cookie, body={"items": [{"user_id": self.user.id}]})[0], 403)
         self.assertEqual(self.send(self.user_cookie, {"items": [{"user_id": self.owner.id}]})[0], 403)

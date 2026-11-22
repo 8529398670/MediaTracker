@@ -33,7 +33,7 @@ class NotFoundTests(ErrorPageCase):
 
     def test_the_api_stays_json_even_for_a_browser(self) -> None:
         response = self.fetch("/api/nope", BROWSER)
-        self.assertEqual((response.status_code, response.json()), (404, {"error": "not found"}))
+        self.assertEqual((response.status_code, response.json()), (404, {"error": "not found", "code": "not_found"}))
 
     def test_the_app_pages_still_serve(self) -> None:
         paths = ["/", "/login/some-credential", "/index.html"]
@@ -87,7 +87,7 @@ class RateLimitedTests(ErrorPageCase):
         self.assertIn("Too many requests", page.text)
         self.assertIn("retry-after", page.headers)
         api = self.fetch("/api/me", BROWSER, client)
-        self.assertEqual((api.status_code, api.json()), (429, {"error": "too many requests"}))
+        self.assertEqual((api.status_code, api.json()), (429, {"error": "too many requests", "code": "rate_limited"}))
 
 
 class HeaderTests(ErrorPageCase):

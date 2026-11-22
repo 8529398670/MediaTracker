@@ -274,6 +274,8 @@ class ErrorReply(Reply, kw_only=True):
 
     api_name: ClassVar[str] = "Error"
     error: str
+    code: Annotated[Literal["not_authenticated", "not_admin", "view_only", "session_only", "owner_required", "owner_protected", "key_minting_off", "service_account", "not_found", "invalid", "conflict", "rate_limited", "forbidden"], Meta(description="On a 4xx: why, for a program to branch on (error is for a person). The list is closed.")] | UnsetType = UNSET
+    field: Annotated[str, Meta(description="On a 400 about one field: its name.")] | UnsetType = UNSET
     request_id: Annotated[str, Meta(description="On a 5xx: the reference that finds this failure in the log.")] | UnsetType = UNSET
 
 

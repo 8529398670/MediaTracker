@@ -136,8 +136,9 @@ class Normalizer:
                 result = reflected(self.builder, cls)
             else:
                 result = self.node(self.defs[target.rsplit("/", 1)[-1]], info, top=True)
-            if "description" in raw:
-                result = {**result, "description": raw["description"]}
+            for key in ("description", "x-feature"):
+                if key in raw:
+                    result = {**result, key: raw[key]}
             return result
         if "anyOf" in raw and isinstance(info, msgspec_inspect.UnionType) and info.includes_none:
             variants = [variant for variant in raw["anyOf"] if variant != {"type": "null"}]

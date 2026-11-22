@@ -373,6 +373,8 @@ const Logs = {
     const actor = entry.actor || {};
     if ( !actor.user_id ) return I18n.get( "logs.anonymous" );
     const name = actor.name || "#" + actor.user_id;
+    // A key by its name ("ProjectPortal · key portal"), else the plain note.
+    if ( actor.method === "api_key" && actor.key_name ) return name + " " + I18n.get( "logs.via_named_key" ).replace( "{name}" , () => actor.key_name );
     return actor.method === "api_key" ? name + " " + I18n.get( "logs.via_key" ) : name;
   },
 

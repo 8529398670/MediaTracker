@@ -1,7 +1,7 @@
 # Written by the skill that scaffolded this app; `webserver-upgrade` reads and
 # updates it. Commit it: it is how an update knows where this app started.
 skill: python-webserver
-commit: b3b3e3d6dd09154392f3300a47e04334ed7e67bc
+commit: 917bdb0d47c29511c86946488893e19330ef5761
 project_name: "Media Tracker"
 slug: media-tracker
 port: 30330

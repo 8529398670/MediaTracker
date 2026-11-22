@@ -28,7 +28,7 @@ from app.core.db import BUCKET_SIGN_IN_CHALLENGES
 from app.models import from_iso, to_iso, utc_now
 from app.models.sessions import split_credential
 from app.models.sign_in import SignIn, SignInRules, start_sign_in_tx
-from app.models.users import User, may_act_on_id_tx
+from app.models.users import KIND_SERVICE, ServiceAccountError, User, may_act_on_id_tx
 
 LOGIN_LINK_MAX_USES = 1000
 LOGIN_LINK_MAX_DAYS = 365
@@ -257,9 +257,12 @@ def issue_login_link(store: Store, user_id: int, options: LinkOptions) -> tuple[
         issued_by=options.actor_id if options.actor_id is not None and options.actor_id != user_id else 0,
     )
     with store.transaction() as tx:
-        if tx.get(BUCKET_USERS, user_id) is None:
+        record = tx.get(BUCKET_USERS, user_id)
+        if record is None:
             raise UnknownUserError(user_id)
         may_act_on_id_tx(tx, options.actor_id, user_id)
+        if record.get("kind") == KIND_SERVICE:
+            raise ServiceAccountError()
         delete_pending_login_tokens(tx, user_id)
         tx.put(BUCKET_LOGIN_TOKENS, token_id, token.to_record())
     return f"{token_id}.{secret}", token.info()

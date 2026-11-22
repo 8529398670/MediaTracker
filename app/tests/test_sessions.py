@@ -300,13 +300,13 @@ class RevokeTest(RoutesTestCase):
     def test_a_foreign_id_and_an_unknown_id_look_the_same(self) -> None:
         foreign = self.revoke(self.owner_cookie, self.current_id(self.user_cookie))
         unknown = self.revoke(self.owner_cookie, "no-such-session")
-        self.assertEqual(foreign, (404, {"error": "not found"}))
+        self.assertEqual(foreign, (404, {"error": "not found", "code": "not_found"}))
         self.assertEqual(unknown, foreign)
         self.assertEqual(self.call("GET", "/api/me", cookie=self.user_cookie)[0], 200)
 
     def test_refuses_the_session_in_use(self) -> None:
         current = self.current_id(self.owner_cookie)
-        self.assertEqual(self.revoke(self.owner_cookie, current), (400, {"error": "use sign out for this device"}))
+        self.assertEqual(self.revoke(self.owner_cookie, current), (400, {"error": "use sign out for this device", "code": "invalid"}))
         self.assertEqual(self.call("GET", "/api/me", cookie=self.owner_cookie)[0], 200)
 
     def test_revoke_others_keeps_this_one_and_counts(self) -> None:
@@ -334,7 +334,7 @@ class RevokeTest(RoutesTestCase):
         entries, _ = logger.read_day(logger.today(), logs.Query("kind:auth"))
         messages = [entry.get("msg") for entry in entries]
         self.assertIn("session_revoked", messages)
-        self.assertEqual(next(entry for entry in entries if entry.get("msg") == "sessions_revoked")["detail"], {"removed": 0})
+        self.assertEqual(next(entry for entry in entries if entry.get("msg") == "sessions_revoked")["detail"], {"removed": 0, "actor_user_id": self.owner.id, "actor_name": "Owner"})
 
 
 class LabelTest(RoutesTestCase):

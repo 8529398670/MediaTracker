@@ -12,6 +12,7 @@ from app.apidocs.route import reply_response
 from app.core import db, graceful
 from app.models import users
 from app.routes.admin import OkReply
+from app.core.error_codes import error_body
 
 READY_TIMEOUT_SECONDS = 2.0
 
@@ -74,4 +75,4 @@ async def unknown_api(request: Request) -> Response:
     """An /api/ path nothing claims. Without this the static catch-all would
     answer with index.html and a 200, which is a confusing reply to a script
     that mistyped an endpoint."""
-    return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(error_body(404, "not found"), status_code=404)

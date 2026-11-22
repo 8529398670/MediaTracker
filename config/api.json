@@ -215,7 +215,30 @@
       },
       "Error": {
         "properties": {
+          "code": {
+            "description": "On a 4xx: why, for a program to branch on (error is for a person). The list is closed.",
+            "enum": [
+              "not_authenticated",
+              "not_admin",
+              "view_only",
+              "session_only",
+              "owner_required",
+              "owner_protected",
+              "key_minting_off",
+              "service_account",
+              "not_found",
+              "invalid",
+              "conflict",
+              "rate_limited",
+              "forbidden"
+            ],
+            "type": "string"
+          },
           "error": {
+            "type": "string"
+          },
+          "field": {
+            "description": "On a 400 about one field: its name.",
             "type": "string"
           },
           "request_id": {
@@ -477,14 +500,14 @@
             "type": "boolean"
           },
           "capabilities": {
-            "description": "The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in.",
+            "description": "The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in, service_accounts, key_grants, error_codes, key_rotation.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "contract": {
-            "description": "Which version of the portal contract this app speaks (ProjectPortal's CROSS_PROJECT.md).",
+            "description": "Which version of the portal contract this app speaks: the Portal contract section of the webserver skills' SKILL.md.",
             "type": "integer"
           },
           "csrf_token": {
@@ -523,6 +546,19 @@
           },
           "is_owner": {
             "type": "boolean"
+          },
+          "key": {
+            "$ref": "#/components/schemas/MeKey",
+            "description": "API keys only: what this key may do.",
+            "x-feature": "api_keys"
+          },
+          "kind": {
+            "description": "person, or service for an account that only has API keys and is never signed into (ProjectPortal's own).",
+            "enum": [
+              "person",
+              "service"
+            ],
+            "type": "string"
           },
           "login_link": {
             "description": "Your own live login link, or null.",
@@ -577,6 +613,10 @@
             "type": "string",
             "x-feature": "openapi"
           },
+          "owner": {
+            "description": "Whether this is the owner's account: the same as is_owner, under portal contract v3's name.",
+            "type": "boolean"
+          },
           "password_blocked": {
             "type": "boolean",
             "x-feature": "passwords"
@@ -606,6 +646,14 @@
           "showing_locked": {
             "description": "Whether an admin has locked the Showing picker.",
             "type": "boolean"
+          },
+          "skill": {
+            "description": "The webserver skill this app was scaffolded from (go-webserver or python-webserver), from its .skill-origin.yaml. Absent when that is not known.",
+            "type": "string"
+          },
+          "skill_commit": {
+            "description": "The skill's commit this app was scaffolded from or last upgraded to, from its .skill-origin.yaml. Absent when that is not known.",
+            "type": "string"
           },
           "theme_id": {
             "description": "The theme you use. Empty: the first.",
@@ -672,6 +720,7 @@
           "id",
           "invite_links_enabled",
           "is_owner",
+          "kind",
           "login_link",
           "logs_enabled",
           "logs_ui_clicks",
@@ -680,6 +729,7 @@
           "mcp_enabled",
           "mcp_url",
           "openapi_url",
+          "owner",
           "password_blocked",
           "passwords_enabled",
           "repo",
@@ -694,6 +744,46 @@
           "two_factor_enabled",
           "username",
           "version"
+        ],
+        "type": "object"
+      },
+      "MeKey": {
+        "properties": {
+          "expires_at": {
+            "description": "When the key stops working. Absent when it never does.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "may_mint_keys": {
+            "description": "Whether this key may make keys for other accounts.",
+            "type": "boolean"
+          },
+          "may_sign_in": {
+            "description": "Whether this key may make a login link for its own account.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "description": "The key's own role. The role it acts with is the lower of this and the account's.",
+            "enum": [
+              "admin",
+              "user",
+              "viewer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "may_mint_keys",
+          "may_sign_in",
+          "name",
+          "role"
         ],
         "type": "object"
       },
@@ -800,6 +890,29 @@
         ],
         "type": "object"
       },
+      "PortalAccount": {
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "keys": {
+            "description": "Its live keys, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/APIKey"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "display_name",
+          "id",
+          "keys"
+        ],
+        "type": "object"
+      },
       "PruneResult": {
         "properties": {
           "bytes_after": {
@@ -845,6 +958,18 @@
           "login_links",
           "passwords",
           "sessions"
+        ],
+        "type": "object"
+      },
+      "RotatedKey": {
+        "properties": {
+          "credential": {
+            "description": "The key's new credential, shown in this response only. The old one stopped working.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential"
         ],
         "type": "object"
       },
@@ -1351,6 +1476,14 @@
           "id": {
             "type": "integer"
           },
+          "kind": {
+            "description": "person, or service for an account with API keys only (ProjectPortal's own).",
+            "enum": [
+              "person",
+              "service"
+            ],
+            "type": "string"
+          },
           "login_link": {
             "description": "The account's live login link, or null.",
             "oneOf": [
@@ -1401,6 +1534,7 @@
           "expires_at",
           "has_password",
           "id",
+          "kind",
           "login_link",
           "owner",
           "password_blocked",
@@ -4492,6 +4626,15 @@
                       "null"
                     ]
                   },
+                  "kind": {
+                    "default": "person",
+                    "description": "person, the default. service is refused (403 service_account): a service account is made by Connect on the owner's API keys screen.",
+                    "enum": [
+                      "person",
+                      "service"
+                    ],
+                    "type": "string"
+                  },
                   "max_uses": {
                     "description": "Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1.",
                     "maximum": 1000,
@@ -4979,7 +5122,7 @@
     },
     "/api/admin/users/{user_id}/keys": {
       "get": {
-        "description": "One account's keys, revoked and expired ones included, newest first. Each row says which key minted it (minted_by_key, empty when a person made it). Needs a browser session or a key with may_mint_keys; any other key gets 403 key_minting_off.",
+        "description": "One account's keys, revoked and expired ones included, newest first. Each row says which key minted it (minted_by_key, empty when a person made it). Needs a browser session or a key with may_mint_keys; any other key gets 403 key_minting_off. Follows the owner ladder: nobody lists the owner's keys this way, and only the owner lists another admin's.",
         "operationId": "get_api_admin_users_user_id_keys",
         "parameters": [
           {
@@ -10587,6 +10730,70 @@
       },
       "x-feature": "api_keys"
     },
+    "/api/keys/self/rotate": {
+      "post": {
+        "description": "Gives the calling key a new secret and answers its new credential, shown only now. The old secret stops working at once. The key's id, name, role, grants, lineage and expiry stay as they are, so the keys and links it made keep working; rotating never extends the expiry. A viewer key may call it.",
+        "operationId": "post_api_keys_self_rotate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotatedKey"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Rotate the calling key",
+        "tags": [
+          "API keys"
+        ],
+        "x-mcp-http": "Makes an API key's credential, which no MCP tool does."
+      },
+      "x-feature": "api_keys"
+    },
     "/api/keys/{key_id}/delete": {
       "post": {
         "operationId": "post_api_keys_key_id_delete",
@@ -11086,6 +11293,80 @@
           }
         ],
         "summary": "Revoke one of your keys",
+        "tags": [
+          "API keys"
+        ]
+      },
+      "x-feature": "api_keys"
+    },
+    "/api/keys/{key_id}/rotate": {
+      "post": {
+        "description": "The owner only: gives one of the owner's own keys a new secret and answers its new credential, shown only now. The old secret stops working at once; nothing else about the key changes.",
+        "operationId": "post_api_keys_key_id_rotate",
+        "parameters": [
+          {
+            "description": "The key's id, from GET /api/keys (GET /api/admin/keys for anyone's).",
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotatedKey"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Rotate one of your keys",
         "tags": [
           "API keys"
         ]
@@ -12405,6 +12686,214 @@
         "x-required-role": "owner"
       },
       "x-feature": "logs"
+    },
+    "/api/owner/portal": {
+      "get": {
+        "description": "The service accounts ProjectPortal works through, each with its live keys and when they expire.",
+        "operationId": "get_api_owner_portal",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accounts": {
+                      "description": "Every service account, oldest first.",
+                      "items": {
+                        "$ref": "#/components/schemas/PortalAccount"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "accounts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "ProjectPortal's accounts",
+        "tags": [
+          "Owner"
+        ],
+        "x-required-role": "owner"
+      },
+      "x-feature": "api_keys"
+    },
+    "/api/owner/portal/connect": {
+      "post": {
+        "description": "Makes the service account named name (ProjectPortal when left out) if there is none, and one admin key for it, lasting days (1-365), that may make keys for other accounts and never makes sign-in links. Answers with the key and its credential, shown only now: paste it into ProjectPortal as this app's admin key.",
+        "operationId": "post_api_owner_portal_connect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "days": {
+                    "description": "How long the key lasts, in days.",
+                    "maximum": 365,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "default": "ProjectPortal",
+                    "description": "The service account's name. Left out: ProjectPortal.",
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "days"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAPIKey"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Connect ProjectPortal",
+        "tags": [
+          "Owner"
+        ],
+        "x-required-role": "owner"
+      },
+      "x-feature": "api_keys"
+    },
+    "/api/owner/portal/disconnect": {
+      "post": {
+        "description": "Revokes every key of the service account user_id, and with them every key and link those keys made. The account stays, with no way in, until Connect gives it a key again.",
+        "operationId": "post_api_owner_portal_disconnect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "user_id": {
+                    "description": "The service account.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "user_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "revoked": {
+                      "description": "Its keys revoked. The keys and links they made went with them.",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "revoked"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Disconnect ProjectPortal",
+        "tags": [
+          "Owner"
+        ],
+        "x-required-role": "owner"
+      },
+      "x-feature": "api_keys"
     },
     "/api/owner/settings": {
       "get": {

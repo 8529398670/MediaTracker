@@ -194,6 +194,7 @@ const App = {
     // Side by side: the wait is the slowest screen, not all of them added up.
     const loading = [];
     loading.push( Keys.init( me ) );
+    loading.push( Portal.init( me ) );
     Mcp.init( me );
     loading.push( Sessions.init() );
     About.init( me );
@@ -780,6 +781,7 @@ const App = {
         if ( user.showing_locked ) words += " · " + I18n.get( "admin.showing_badge_locked" );
         status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( words , "info" ) ] } ) );
       }
+      if ( user.kind === "service" ) status.push( Dom.el( "span" , { class: "ms-1" , children: [ Dom.badge( I18n.get( "admin.service_badge" ) , "info" ) ] } ) );
       if ( user.expires_at && !user.expired ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , children: [ document.createTextNode( I18n.get( "admin.expires_line" ).split( "{when}" )[ 0 ] ) , Dom.when( user.expires_at ) ] } ) );
       if ( user.login_link ) status.push( Dom.el( "div" , { class: "small text-body-secondary" , text: LoginLinks.live( user.login_link , "live" ) } ) );
 

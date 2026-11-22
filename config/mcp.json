@@ -44,6 +44,10 @@
       "route": "POST /api/admin/users/{user_id}/keys"
     },
     {
+      "reason": "Makes an API key's credential, which no MCP tool does.",
+      "route": "POST /api/keys/self/rotate"
+    },
+    {
       "reason": "Ends a browser session; a key has none to end.",
       "route": "POST /api/logout"
     },
@@ -373,6 +377,15 @@
               "integer",
               "null"
             ]
+          },
+          "kind": {
+            "default": "person",
+            "description": "person, the default. service is refused (403 service_account): a service account is made by Connect on the owner's API keys screen.",
+            "enum": [
+              "person",
+              "service"
+            ],
+            "type": "string"
           },
           "max_uses": {
             "description": "Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1.",

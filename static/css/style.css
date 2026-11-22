@@ -352,6 +352,10 @@ progress { accent-color: var(--app-second); }
    font stops iOS Safari zooming in on focus. Small buttons stay small for a
    mouse. On a touch screen they get the floor too, which a row can afford now
    that most of its buttons are in a menu. */
+/* A button's label never wraps and a flex row never squeezes it: the 44px
+   floor below replaces the button's own minimum width, so without this a
+   long neighbour (a link in .link-box) crushes "Copy" onto two lines. */
+.btn { white-space: nowrap; flex-shrink: 0; }
 .btn:not(.btn-sm) { min-height: 44px; }
 @media (pointer: coarse), (max-width: 575.98px) {
   .btn-sm { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
@@ -541,7 +545,6 @@ html { scrollbar-gutter: stable; overflow-anchor: auto; }
 .table > tbody > tr:nth-child(even) > * { --bs-table-bg: var(--app-row-even); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 td .row-actions { flex-wrap: nowrap; }
-.row-actions .btn { white-space: nowrap; }
 .row-menu-toggle .spinner-border { margin-right: 0 !important; }
 .row-menu-toggle[aria-busy="true"] .bi { display: none; }
 

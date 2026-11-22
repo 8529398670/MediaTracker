@@ -130,26 +130,26 @@ class PasswordTest(AuthRoutesTestCase):
             "disabled": self.login(self.new_client(), "dee", "correct horse"),
         }
         for name, response in answers.items():
-            self.assertEqual((response.status_code, response.json()), (400, {"error": "invalid_login"}), name)
+            self.assertEqual((response.status_code, response.json()), (400, {"error": "invalid_login", "code": "invalid"}), name)
 
     def test_a_raw_password_is_refused(self) -> None:
         alice = self.sign_in_with_link(self.alice.id)
         response = alice.post("/api/account/password", json={
             "username": "alice", "password_digest": "hunter2", "csrf_token": self.csrf(alice),
         })
-        self.assertEqual(response.json(), {"error": "bad_digest"})
+        self.assertEqual(response.json(), {"error": "bad_digest", "code": "invalid"})
 
     def test_lockout_treats_unknown_names_alike(self) -> None:
         for name in ("alice", "nobody"):
             for _ in range(5):
                 self.login(self.new_client(), name, "wrong")
-            self.assertEqual(self.login(self.new_client(), name, "wrong").json(), {"error": "login_locked"})
+            self.assertEqual(self.login(self.new_client(), name, "wrong").json(), {"error": "login_locked", "code": "rate_limited"})
 
     def test_usernames_are_unique(self) -> None:
         alice = self.sign_in_with_link(self.alice.id)
         owner = self.sign_in_with_link(self.owner.id)
         self.set_password(alice, "same", "correct horse")
-        self.assertEqual(self.set_password(owner, "Same", "correct horse").json(), {"error": "username_taken"})
+        self.assertEqual(self.set_password(owner, "Same", "correct horse").json(), {"error": "username_taken", "code": "conflict"})
 
     def test_changing_it_ends_other_sessions_only(self) -> None:
         first = self.sign_in_with_link(self.alice.id)
@@ -181,7 +181,7 @@ class PasswordTest(AuthRoutesTestCase):
         self.assertEqual(owner.post(path, json={"allowed": False, "csrf_token": self.csrf(owner)}).status_code, 200)
 
         self.assertEqual(self.login(self.new_client(), "alice", "correct horse").status_code, 400)
-        self.assertEqual(self.set_password(alice, "alice", "another one").json(), {"error": "password_blocked"})
+        self.assertEqual(self.set_password(alice, "alice", "another one").json(), {"error": "password_blocked", "code": "forbidden"})
         self.assertEqual(alice.get("/api/me").status_code, 200, "a block is not a sign-out")
 
         owner.post(path, json={"allowed": True, "csrf_token": self.csrf(owner)})
@@ -222,7 +222,7 @@ class InviteClaimTest(AuthRoutesTestCase):
     def test_a_password_closes_the_claim(self) -> None:
         self.assertEqual(self.claim().status_code, 200)
         self.set_password(self.bob_client, "bob", "correct horse")
-        self.assertEqual(self.claim().json(), {"error": "use_password"})
+        self.assertEqual(self.claim().json(), {"error": "use_password", "code": "forbidden"})
 
     def test_a_pin_keeps_the_claim_open(self) -> None:
         self.set_password(self.bob_client, "bob", "correct horse")
@@ -264,7 +264,7 @@ class TwoFactorTest(AuthRoutesTestCase):
         self.assertEqual(fresh.get("/api/me").status_code, 401)
 
         wrong = fresh.post("/api/login/two-factor", json={"challenge": response["challenge"], "code": "000000"})
-        self.assertEqual(wrong.json(), {"error": "two_factor_wrong"})
+        self.assertEqual(wrong.json(), {"error": "two_factor_wrong", "code": "forbidden"})
         right = fresh.post("/api/login/two-factor", json={"challenge": response["challenge"], "code": code_for(secret, 1)})
         self.assertEqual(right.status_code, 200)
         self.assertEqual(fresh.get("/api/me").json()["id"], self.alice.id)
@@ -297,7 +297,7 @@ class TwoFactorTest(AuthRoutesTestCase):
         _, recovery = self.enrol(alice)
         challenge = self.new_challenge()
         self.assertEqual(self.finish(challenge, recovery[0]).status_code, 200)
-        self.assertEqual(self.finish(challenge, recovery[1]).json(), {"error": "challenge_invalid"})
+        self.assertEqual(self.finish(challenge, recovery[1]).json(), {"error": "challenge_invalid", "code": "invalid"})
 
     def new_challenge(self) -> str:
         return login_tokens.redeem_login_token(
@@ -320,7 +320,7 @@ class TwoFactorTest(AuthRoutesTestCase):
         challenge = self.new_challenge()
         for _ in range(5):
             self.finish(challenge, "000000")
-        self.assertEqual(self.finish(challenge, code_for(secret, 1)).json(), {"error": "two_factor_locked"})
+        self.assertEqual(self.finish(challenge, code_for(secret, 1)).json(), {"error": "two_factor_locked", "code": "rate_limited"})
 
     def test_parallel_wrong_codes_cannot_pass_the_lockout(self) -> None:
         """S4: twenty wrong codes sent at once get at most five evaluated. The
@@ -373,7 +373,7 @@ class TwoFactorTest(AuthRoutesTestCase):
     def test_changing_a_password_needs_a_code(self) -> None:
         alice = self.sign_in_with_link(self.alice.id)
         secret, _ = self.enrol(alice)
-        self.assertEqual(self.set_password(alice, "alice", "correct horse").json(), {"error": "two_factor_wrong"})
+        self.assertEqual(self.set_password(alice, "alice", "correct horse").json(), {"error": "two_factor_wrong", "code": "forbidden"})
         self.assertEqual(self.set_password(alice, "alice", "correct horse", code_for(secret, 1)).status_code, 200)
 
     def test_the_toggle_stops_asking_and_restores(self) -> None:
@@ -392,7 +392,7 @@ class TwoFactorTest(AuthRoutesTestCase):
         secret, _ = self.enrol(alice)
         challenge = self.new_challenge()
         credentials.set_user_disabled(self.store, self.alice.id, True)
-        self.assertEqual(self.finish(challenge, code_for(secret, 1)).json(), {"error": "challenge_invalid"})
+        self.assertEqual(self.finish(challenge, code_for(secret, 1)).json(), {"error": "challenge_invalid", "code": "invalid"})
 
     def test_turning_two_factor_on_ends_other_sessions(self) -> None:
         """S15: an attacker's session stayed signed in after the victim

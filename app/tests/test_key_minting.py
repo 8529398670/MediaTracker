@@ -24,8 +24,8 @@ class KeyMinting(RoutesTestCase):
                          body={"name": "portal", "role": role, "expires_in_days": days})
 
     def test_a_key_needs_the_owners_say_so(self) -> None:
-        self.assertEqual(self.mint(self.admin_key, self.user.id), (403, {"error": "key_minting_off"}))
-        self.assertEqual(self.call("GET", f"/api/admin/users/{self.user.id}/keys", key=self.admin_key), (403, {"error": "key_minting_off"}))
+        self.assertEqual(self.mint(self.admin_key, self.user.id), (403, {"error": "key_minting_off", "code": "key_minting_off"}))
+        self.assertEqual(self.call("GET", f"/api/admin/users/{self.user.id}/keys", key=self.admin_key), (403, {"error": "key_minting_off", "code": "key_minting_off"}))
         status, row = self.allow(self.minter_id)
         self.assertEqual((status, row["may_mint_keys"]), (200, True))
         status, minted = self.mint(self.admin_key, self.user.id)
@@ -51,12 +51,12 @@ class KeyMinting(RoutesTestCase):
         self.assertEqual(self.mint(self.admin_key, self.user.id, days=0)[0], 400)
         self.assertEqual(self.mint(self.admin_key, self.user.id, days=366)[0], 400)
         owner_key = self.user_key.split(".")[0]
-        self.assertEqual(self.call("POST", f"/api/admin/keys/{owner_key}/revoke", key=self.admin_key, body={}), (403, {"error": "the owner's keys cannot be minted or revoked this way"}))
+        self.assertEqual(self.call("POST", f"/api/admin/keys/{owner_key}/revoke", key=self.admin_key, body={}), (403, {"error": "the owner's keys cannot be minted or revoked this way", "code": "owner_protected"}))
 
     def test_a_minted_key_never_mints_or_signs_in(self) -> None:
         self.allow(self.minter_id)
         _, minted = self.mint(self.admin_key, self.admin.id, role="admin")
-        self.assertEqual(self.mint(minted["credential"], self.user.id), (403, {"error": "key_minting_off"}))
+        self.assertEqual(self.mint(minted["credential"], self.user.id), (403, {"error": "key_minting_off", "code": "key_minting_off"}))
         with self.assertRaises(api_keys.APIKeyMintedError):
             api_keys.set_api_key_sign_in(self.store, minted["id"], self.admin.id, True)
 

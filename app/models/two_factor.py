@@ -16,7 +16,7 @@ import time
 from app.core import encryption
 from app.core.db import BUCKET_USERS, Record, Store
 from app.models.sessions import destroy_other_sessions_for_user
-from app.models.users import User
+from app.models.users import KIND_SERVICE, ServiceAccountError, User
 
 RECOVERY_CODE_COUNT = 10
 
@@ -95,6 +95,8 @@ def start_setup(store: Store, user_id: int, secret_key: str) -> str | None:
     secret = encryption.totp_new_secret()
 
     def mutate(record: Record) -> None:
+        if record.get("kind") == KIND_SERVICE:
+            raise ServiceAccountError()
         if _record_is_on(record):
             raise AlreadyOnError()
         record["totp_pending"] = encryption.xchacha_encrypt_string(encryption.subkey(secret_key, encryption.PURPOSE_TOTP), secret)

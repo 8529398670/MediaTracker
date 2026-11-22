@@ -25,7 +25,8 @@ from app.core.config_live import Holder
 from app.core.db import Store
 from app.core.middleware import internal_error
 from app.models import RestoreError, RestoreForbiddenError, RestoreGoneError, RestoreOutrankedError
-from app.models.users import OwnerProtectedError, OwnerRequiredError
+from app.core.error_codes import CODE_INVALID, CODE_OWNER_PROTECTED, CODE_OWNER_REQUIRED, CODE_SERVICE_ACCOUNT, error_body
+from app.models.users import OwnerProtectedError, OwnerRequiredError, ServiceAccountError
 
 run = run_in_threadpool
 
@@ -152,12 +153,15 @@ class Refused(Exception):
     as a status and an error body (response), an MCP tool as a tool error with
     the same words. A helper both doors call raises it, so the rule is written
     once. extra is more for the caller, such as the current value a 409 was
-    about. Refused.internal is a failure on our side: a 500 whose cause goes
-    to the log, never to the caller."""
+    about. code is the machine-readable reason (app/core/error_codes.py):
+    left empty it is the one the status says, so it is set only where the
+    status cannot tell (the owner ladder, key minting, a service account).
+    Refused.internal is a failure on our side: a 500 whose cause goes to the
+    log, never to the caller."""
 
-    def __init__(self, status: int, message: str, **extra: Any) -> None:
+    def __init__(self, status: int, message: str, code: str = "", **extra: Any) -> None:
         super().__init__(message)
-        self.status, self.message, self.extra = status, message, extra
+        self.status, self.message, self.code, self.extra = status, message, code, extra
         self.cause: object = message
 
     @classmethod
@@ -171,7 +175,7 @@ class Refused(Exception):
         # lookups_off) is answered as itself.
         if self.status == 500 and request is not None:
             return server_error(request, self.cause)
-        return JSONResponse({"error": self.message, **self.extra}, status_code=self.status)
+        return JSONResponse(error_body(self.status, self.message, self.code, **self.extra), status_code=self.status)
 
 
 @contextmanager
@@ -182,16 +186,27 @@ def act_on_refusals(what: str) -> Iterator[None]:
     try:
         yield
     except OwnerProtectedError:
-        raise Refused(403, f"nobody can {what} the owner account") from None
+        raise Refused(403, f"nobody can {what} the owner account", code=CODE_OWNER_PROTECTED) from None
     except OwnerRequiredError:
-        raise Refused(403, f"only the owner can {what} an admin account") from None
+        raise Refused(403, f"only the owner can {what} an admin account", code=CODE_OWNER_REQUIRED) from None
+    except ServiceAccountError:
+        raise service_account_refusal() from None
 
 
-def error(status: int, message: str) -> JSONResponse:
-    return JSONResponse({"error": message}, status_code=status)
+def service_account_refusal() -> Refused:
+    """The answer to a way in for a service account (users.KIND_SERVICE): it
+    has API keys only, and is never signed into."""
+    return Refused(403, str(ServiceAccountError()), code=CODE_SERVICE_ACCOUNT)
 
 
-def bad_request(message: str) -> JSONResponse:
+def error(status: int, message: str, code: str = "") -> JSONResponse:
+    return JSONResponse(error_body(status, message, code), status_code=status)
+
+
+def bad_request(message: str, field: str = "") -> JSONResponse:
+    """A 400; field names the one field it is about, when it is one."""
+    if field:
+        return JSONResponse(error_body(400, message, CODE_INVALID, field=field), status_code=400)
     return error(400, message)
 
 

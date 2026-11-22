@@ -83,6 +83,10 @@ build_image() {
   VERSION="$( date -u +%Y.%m.%d-%H%M )"
   commit="$( git rev-parse --short HEAD 2>/dev/null || echo "unknown" )"
   build_date="$( date -u +%Y-%m-%dT%H:%M:%SZ )"
+  # The skill and commit this app was scaffolded from, for /api/me. Empty
+  # without .skill-origin.yaml.
+  skill="$( sed -n 's/^skill:[[:space:]]*//p' .skill-origin.yaml 2>/dev/null | head -n 1 | tr -d "\"' \r" )"
+  skill_commit="$( sed -n 's/^commit:[[:space:]]*//p' .skill-origin.yaml 2>/dev/null | head -n 1 | tr -d "\"' \r" )"
 
   id_file="$( mktemp )"
   echo "Building the image from ${DOCKERFILE}, version ${VERSION} (commit ${commit})"
@@ -98,6 +102,8 @@ build_image() {
          --build-arg "VERSION=${VERSION}" \
          --build-arg "COMMIT=${commit}" \
          --build-arg "BUILD_DATE=${build_date}" \
+         --build-arg "SKILL=${skill}" \
+         --build-arg "SKILL_COMMIT=${skill_commit}" \
          .; then
     rm -f "$id_file"
     echo "" >&2

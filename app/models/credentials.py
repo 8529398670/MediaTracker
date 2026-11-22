@@ -25,10 +25,12 @@ from app.models.revision import bump
 from app.models.sign_in import delete_challenges_for_user
 from app.models.two_factor import clear_record
 from app.models.users import (  # noqa: F401 -- the errors are re-exported for the routes
+    KIND_SERVICE,
     ROLE_ADMIN,
     OwnerProtectedError,
     OwnerRequiredError,
     RenameConflictError,
+    ServiceAccountError,
     User,
     may_act_on_tx,
     owner_id_tx,
@@ -163,6 +165,9 @@ def set_user_role(store: Store, user_id: int, actor_id: int, role: str) -> bool 
         if record["role"] == role:
             return False
         may_act_on_tx(tx, actor_id, record)
+        # A service account is an admin, always (app/models/portal.py).
+        if record.get("kind") == KIND_SERVICE:
+            raise ServiceAccountError()
         record["role"] = role
         tx.put(BUCKET_USERS, user_id, record)
         if role == ROLE_ADMIN:

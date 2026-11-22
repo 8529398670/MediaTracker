@@ -24,6 +24,7 @@ from starlette.responses import JSONResponse, Response
 
 from app.core.security import Actor, actor_from
 from app.mcp.registry import Call, InvalidArguments, Refusal, Registry
+from app.core.error_codes import error_body
 
 # The protocol revisions this server can answer, newest first. Everything used
 # here (tools, JSON responses, annotations) means the same in each of them.
@@ -73,13 +74,13 @@ class Server:
         # either, so a cross-origin one is refused rather than reasoned about.
         origin = request.headers.get("origin")
         if origin is not None and urlsplit(origin).netloc != request.headers.get("host", ""):
-            return JSONResponse({"error": "cross-origin requests are not accepted"}, status_code=403)
+            return JSONResponse(error_body(403, "cross-origin requests are not accepted"), status_code=403)
         # After initialize, a client names the revision it settled on in this
         # header on every request. One we never offered means the two sides
         # disagree about the protocol, which is better said than guessed past.
         version = request.headers.get("mcp-protocol-version")
         if version is not None and version not in SUPPORTED_VERSIONS:
-            return JSONResponse({"error": "unsupported MCP-Protocol-Version"}, status_code=400)
+            return JSONResponse(error_body(400, "unsupported MCP-Protocol-Version"), status_code=400)
 
         try:
             message = json.loads(await request.body())

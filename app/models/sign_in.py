@@ -22,7 +22,7 @@ from app.models import from_iso, to_iso, utc_now
 from app.models import two_factor
 from app.models.sessions import new_session
 from app.models.sessions import split_credential
-from app.models.users import User
+from app.models.users import ServiceAccountError, User
 
 CHALLENGE_TTL_SECONDS = 5 * 60
 
@@ -62,7 +62,11 @@ class SignIn:
 
 
 def start_sign_in_tx(tx: Transaction, user: User, rules: SignInRules) -> SignIn:
-    """Store a session, or a challenge if this account has to give a code."""
+    """Store a session, or a challenge if this account has to give a code.
+    Every way in comes through here, so a service account is refused once
+    for all of them."""
+    if user.is_service:
+        raise ServiceAccountError()
     if rules.two_factor and two_factor.is_on(user):
         challenge_id = encryption.url_token(12)
         secret = encryption.url_token(24)

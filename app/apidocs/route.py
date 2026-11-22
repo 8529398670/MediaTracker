@@ -145,27 +145,33 @@ class InputType:
         message, whether it is a fault in the request itself rather than one
         field's own refusal). strict_places is MCP's way: every field, URL
         ones included, comes typed from values."""
+        value, message, _, malformed = self.decode_field(values, strict_places)
+        return value, message, malformed
+
+    def decode_field(self, values: dict[str, Any], strict_places: bool) -> tuple[Any, str, str, bool]:
+        """decode, and the one field the 400 is about when it is about one:
+        the unknown one, the missing one, the one that breaks a limit."""
         known = self.by_name()
         unknown = sorted(name for name in values if name not in known)
         if unknown:
-            return None, f"unknown field: {unknown[0]}", True
+            return None, f"unknown field: {unknown[0]}", unknown[0], True
         for item in self.fields:
             if item.name not in values:
                 if item.required:
-                    return None, item.message("required"), False
+                    return None, item.message("required"), item.name, False
                 continue
             try:
                 msgspec.convert(values[item.name], item.hint)
             except msgspec.ValidationError as error:
                 if wrong_type(str(error)):
                     if item.place and not strict_places:
-                        return None, item.message("invalid"), False
-                    return None, "malformed request body", True
-                return None, item.refusal(), False
+                        return None, item.message("invalid"), item.name, False
+                    return None, "malformed request body", "", True
+                return None, item.refusal(), item.name, False
         try:
-            return msgspec.convert(values, self.kind), "", False
+            return msgspec.convert(values, self.kind), "", "", False
         except msgspec.ValidationError:
-            return None, "malformed request body", True
+            return None, "malformed request body", "", True
 
     def arguments_schema(self, builder: Any) -> dict[str, Any]:
         """An MCP tool's arguments: the whole request, URL fields included, as
@@ -406,10 +412,10 @@ async def handle(declared: Declared, request: HTTPRequest) -> Response:
         try:
             values[item.name] = text if not isinstance(text, str) else msgspec.convert(text, item.bare, strict=False)
         except msgspec.ValidationError:
-            return bad_request(item.message("invalid"))
-    body, message, _ = declared.input.decode(values, strict_places=False)
+            return bad_request(item.message("invalid"), item.name)
+    body, message, field, _ = declared.input.decode_field(values, strict_places=False)
     if message:
-        return bad_request(message)
+        return bad_request(message, field)
     arguments = (request, body) if declared.takes_input else (request,)
     try:
         if inspect.iscoroutinefunction(declared.handler):

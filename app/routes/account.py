@@ -17,6 +17,7 @@ from app.core.encryption import BadKeyError, CipherTextError
 from app.core.logs import KIND_AUTH
 from app.core.security import actor_from, clear_session_cookie, decrypt_cookie
 from app.models import login_tokens, sessions, users
+from app.models import to_iso
 from app.models import api_keys
 from app.models import passwords
 from app.models import pins
@@ -26,9 +27,24 @@ from app.routes.api_docs_md import api_doc_url
 from app.routes.api_docs_md import mcp_doc_url
 from app.routes.admin import CancelLoginLinkReply, DisplayName, ExpiresInMinutes, LoginLink, LoginLinkReply, MaxUses, OkReply, RenameUserReply, link_options, link_reply
 from app.routes.helpers import Refused, get_config, get_store, run
+from app.routes.helpers import DateTime
 from app.routes.logs import audit
 from app.routes.themes import Theme, theme_list
 from app.routes.mcp_tools_accounts import with_login_url
+
+
+class MeKey(Reply, kw_only=True):
+    """What /api/me says about the calling key, so an outside tool knows
+    before it clicks whether the key can make keys, and when it stops
+    working."""
+
+    api_name: ClassVar[str] = "MeKey"
+    id: str
+    name: str
+    role: Annotated[Literal["admin", "user", "viewer"], Meta(description="The key's own role. The role it acts with is the lower of this and the account's.")]
+    may_mint_keys: Annotated[bool, Meta(description="Whether this key may make keys for other accounts.")]
+    may_sign_in: Annotated[bool, Meta(description="Whether this key may make a login link for its own account.")]
+    expires_at: Annotated[DateTime, Meta(description="When the key stops working. Absent when it never does.")] | UnsetType = UNSET
 
 
 class Me(Reply, kw_only=True):
@@ -36,16 +52,20 @@ class Me(Reply, kw_only=True):
 
     api_name: ClassVar[str] = "Me"
     authenticated: bool
-    contract: Annotated[int, Meta(description="Which version of the portal contract this app speaks (ProjectPortal's CROSS_PROJECT.md).")]
-    capabilities: Annotated[list[str], Meta(description="The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in.")]
+    contract: Annotated[int, Meta(description="Which version of the portal contract this app speaks: the Portal contract section of the webserver skills' SKILL.md.")]
+    capabilities: Annotated[list[str], Meta(description="The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in, service_accounts, key_grants, error_codes, key_rotation.")]
     id: int
     display_name: str
     role: Annotated[Literal["admin", "user", "viewer"], Meta(description="The effective role: never higher than an API key's own. A viewer may read, and change nothing.")]
     account_role: Literal["admin", "user", "viewer"]
     is_owner: bool
+    owner: Annotated[bool, Meta(description="Whether this is the owner's account: the same as is_owner, under portal contract v3's name.")]
+    kind: Annotated[Literal["person", "service"], Meta(description="person, or service for an account that only has API keys and is never signed into (ProjectPortal's own).")]
     login_link: Annotated[LoginLink | None, Meta(description="Your own live login link, or null.")]
     maintenance: Annotated[Literal["none", "read_only", "full"], Meta(extra_json_schema={"x-feature": "maintenance"})]
     version: Annotated[str, Meta(description="The running build. dev when none was stamped.")]
+    skill: Annotated[str, Meta(description="The webserver skill this app was scaffolded from (go-webserver or python-webserver), from its .skill-origin.yaml. Absent when that is not known.")] | UnsetType = UNSET
+    skill_commit: Annotated[str, Meta(description="The skill's commit this app was scaffolded from or last upgraded to, from its .skill-origin.yaml. Absent when that is not known.")] | UnsetType = UNSET
     announcement: Annotated[str, Meta(description="server.announcement. Empty when there is none.")]
     repo: Annotated[str, Meta(description="app.repo without a trailing / or .git: where the source lives. Empty when it is not set.")]
     description: Annotated[str, Meta(description="app.description. Empty when there is none.")]
@@ -78,6 +98,7 @@ class Me(Reply, kw_only=True):
     api_key_id: Annotated[str, Meta(description="API keys only.", extra_json_schema={"x-feature": "api_keys"})] | UnsetType = UNSET
     api_key_name: Annotated[str, Meta(description="API keys only.", extra_json_schema={"x-feature": "api_keys"})] | UnsetType = UNSET
     may_mint_keys: Annotated[bool, Meta(description="API keys only: whether this key may make keys for other accounts.", extra_json_schema={"x-feature": "api_keys"})] | UnsetType = UNSET
+    key: Annotated[MeKey, Meta(description="API keys only: what this key may do.", extra_json_schema={"x-feature": "api_keys"})] | UnsetType = UNSET
 
 
 @route(
@@ -115,6 +136,8 @@ def me(request: Request) -> Me:
         role=actor.role,  # type: ignore[arg-type]
         account_role=actor.user.role,  # type: ignore[arg-type]
         is_owner=actor.user.id == owner_id,
+        owner=actor.user.id == owner_id,
+        kind=actor.user.kind,  # type: ignore[arg-type]
         login_link=LoginLink(**link) if link is not None else None,
         maintenance=cfg.maintenance,
         version=request.app.state.version,
@@ -156,17 +179,29 @@ def me(request: Request) -> Me:
     # check_csrf.
     if actor.session is not None:
         reply.csrf_token = actor.session.csrf_token
+    skill, skill_commit = getattr(request.app.state, "skill", ""), getattr(request.app.state, "skill_commit", "")
+    if skill:
+        reply.skill = skill
+    if skill_commit:
+        reply.skill_commit = skill_commit
     if actor.api_key is not None:
         reply.api_key_id = actor.api_key.id
         reply.api_key_name = actor.api_key.name
         reply.may_mint_keys = actor.api_key.may_mint_keys
+        reply.key = MeKey(
+            id=actor.api_key.id, name=actor.api_key.name, role=actor.api_key.role,  # type: ignore[arg-type]
+            may_mint_keys=actor.api_key.may_mint_keys, may_sign_in=actor.api_key.may_sign_in,
+        )
+        if actor.api_key.expires_at is not None:
+            reply.key.expires_at = to_iso(actor.api_key.expires_at)
     return reply
 
 
-# The portal contract version this template speaks (ProjectPortal's
-# CROSS_PROJECT.md, "Portal contract v2"). The portal turns a part of its
-# Manage screen on only when capabilities lists it.
-PORTAL_CONTRACT = 2
+# The portal contract version this template speaks (the "Portal contract"
+# section of the python-webserver skill's SKILL.md, which ProjectPortal's
+# CROSS_PROJECT.md points at). The portal turns a part of its Manage screen on
+# only when capabilities lists it. The webserver-upgrade skill's status reads it.
+PORTAL_CONTRACT = 3
 
 
 def capabilities(cfg: Config) -> list[str]:
@@ -179,6 +214,11 @@ def capabilities(cfg: Config) -> list[str]:
         found.append("invite_links")
     if cfg.api_keys_enabled:
         found.append("key_sign_in")
+        found.append("service_accounts")
+        found.append("key_grants")
+    found.append("error_codes")
+    if cfg.api_keys_enabled:
+        found.append("key_rotation")
     return found
 
 

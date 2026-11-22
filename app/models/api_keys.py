@@ -40,8 +40,10 @@ from app.models import RestoreGoneError, deleted_long_ago, from_iso, mark_delete
 from app.models import login_tokens
 from app.models.sessions import split_credential
 from app.models.users import (
+    KIND_SERVICE,
     ROLE_ADMIN,
     ROLE_USER,
+    ServiceAccountError,
     OwnerProtectedError,
     OwnerRequiredError,
     RenameConflictError,
@@ -623,6 +625,8 @@ def set_api_key_sign_in(store: Store, key_id: str, user_id: int, on: bool) -> AP
             raise APIKeyDeadError()
         if on and key.minted_by_key:
             raise APIKeyMintedError("make sign-in links")
+        if on and (tx.get(BUCKET_USERS, key.user_id) or {}).get("kind") == KIND_SERVICE:
+            raise ServiceAccountError()
         key.may_sign_in = on
         tx.put(BUCKET_API_KEYS, key_id, key.to_record())
         if not on:
@@ -644,7 +648,12 @@ def set_api_key_mint_keys(store: Store, key_id: str, user_id: int, on: bool) -> 
         if record is None:
             return None
         key = APIKey.from_record(record)
-        if key.deleted or key.user_id != user_id:
+        if key.deleted:
+            return None
+        # The owner's own keys, or a service account's (ProjectPortal's,
+        # whose keys only the owner runs).
+        account = tx.get(BUCKET_USERS, key.user_id) or {}
+        if key.user_id != user_id and account.get("kind") != KIND_SERVICE:
             return None
         if owner_id_tx(tx) != user_id:
             raise APIKeyNotOwnerError()
@@ -747,3 +756,26 @@ def purge_dead_api_keys(store: Store) -> int:
         )
 
     return store.delete_where(BUCKET_API_KEYS, dead)
+
+
+class APIKeyRotateDeadError(APIKeyError):
+    def __init__(self) -> None:
+        super().__init__("only a live API key can be rotated")
+
+
+def rotate_api_key(store: Store, key_id: str) -> tuple[str, APIKey]:
+    """Give a key a new secret and return (its new credential, the key). The
+    old secret stops working at once. Everything else stays -- id, name,
+    role, grants, lineage, and expires_at, which rotation never extends -- so
+    the keys and links it made keep working, and a leaked key that rotates
+    itself still dies on schedule. APIKeyRotateDeadError for a key that is not
+    live."""
+    secret = encryption.url_token(32)
+    with store.transaction() as tx:
+        record = tx.get(BUCKET_API_KEYS, key_id)
+        key = APIKey.from_record(record) if record is not None else None
+        if key is None or key.deleted or not key.live:
+            raise APIKeyRotateDeadError()
+        key.secret_hash = encryption.sha256_hex(secret)
+        tx.put(BUCKET_API_KEYS, key_id, key.to_record())
+    return f"{key_id}.{secret}", key

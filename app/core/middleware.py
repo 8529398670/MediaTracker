@@ -28,6 +28,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.core import error_page, logs, request_id
 from app.core.config import Config, trusted_proxy_networks
 from app.core.config_live import Holder
+from app.core.error_codes import error_body
 
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
@@ -398,7 +399,7 @@ class RateLimit:
             response: Response = (
                 error_page.response(request, 429, headers=headers)
                 if error_page.wanted(request)
-                else JSONResponse({"error": "too many requests"}, status_code=429, headers=headers)
+                else JSONResponse(error_body(429, "too many requests"), status_code=429, headers=headers)
             )
             await response(scope, receive, send)
             return
@@ -463,7 +464,7 @@ async def http_error(request: Request, exc: Exception) -> Response:
         return internal_error(request, exc.detail, exc.status_code, exc.headers)
     if error_page.wanted(request):
         return error_page.response(request, exc.status_code, headers=exc.headers)
-    return JSONResponse({"error": status_text(exc.status_code)}, status_code=exc.status_code, headers=exc.headers)
+    return JSONResponse(error_body(exc.status_code, status_text(exc.status_code)), status_code=exc.status_code, headers=exc.headers)
 
 
 async def server_error(request: Request, exc: Exception) -> Response:
