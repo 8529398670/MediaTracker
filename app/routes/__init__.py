@@ -59,7 +59,7 @@ from app.routes import (
     themes,
     two_factor,
 )
-from app.routes import discover, dupes, images, jobs, library, lookup, media_types, playlists, porting, prefs, state, titles
+from app.routes import discover, dupes, images, jobs, library, lookup, media_types, playlists, porting, prefs, state, suggestions, titles
 from app.routes.api_keys import RequireAPIKeys
 from app.routes.helpers import get_config
 from app.routes.helpers import not_found
@@ -151,6 +151,7 @@ MODULES = [
     discover,
     jobs,
     prefs,
+    suggestions,
     playlists,
     media_types,
 ]

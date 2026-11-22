@@ -33,6 +33,7 @@ const SearchExtras = {
         Card.toggle( article );
         return;
       }
+      if ( action === "suggest" ) { Suggestions.pick( control.getAttribute( "data-value" ) , row ); return; }
       Dom.steady( control , () => DiscoverScreen.act( action , row ).then( () => this.draw() ) );
     } );
     // Right-click / long-press: a Discover film's menu (Add to library

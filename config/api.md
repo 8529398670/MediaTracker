@@ -20,6 +20,7 @@ This file is generated: do not edit it. Change the docs next to the handlers and
 - [Library](#library)
 - [Playlists](#playlists)
 - [Settings](#settings)
+- [Suggestions](#suggestions)
 - [Schemas](#schemas)
 
 ## Calling the API
@@ -4619,6 +4620,424 @@ Change a saved view's name, query, card layout or icon. Returns the previous val
 |---|---|---|---|---|
 | `previous` | object | yes |  | What the changed fields were before: send them back to undo. |
 | `view` | object | yes |  |  |
+
+## Suggestions
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/bulk/suggestions/delete`](#post-apibulksuggestionsdelete) | Delete a suggestion list, for many at once | browser session or API key, anyone signed in |
+| POST | [`/api/bulk/suggestions/restore`](#post-apibulksuggestionsrestore) | Restore a suggestion list, for many at once | browser session or API key, anyone signed in |
+| GET | [`/api/suggestions`](#get-apisuggestions) | Suggestion lists | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions`](#post-apisuggestions) | Create a suggestion list | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/reorder`](#post-apisuggestionsreorder) | Order suggestion lists | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/add`](#post-apisuggestionslist_idadd) | Add suggestions | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/delete`](#post-apisuggestionslist_iddelete) | Delete a suggestion list | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/move`](#post-apisuggestionslist_idmove) | Move a suggestion | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/note`](#post-apisuggestionslist_idnote) | Change a suggestion's note | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/remove`](#post-apisuggestionslist_idremove) | Remove suggestions | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/restore`](#post-apisuggestionslist_idrestore) | Restore a suggestion list | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/set`](#post-apisuggestionslist_idset) | Set a suggestion list's items | browser session or API key, anyone signed in |
+| POST | [`/api/suggestions/{list_id}/update`](#post-apisuggestionslist_idupdate) | Rename a suggestion list | browser session or API key, anyone signed in |
+
+### POST /api/bulk/suggestions/delete
+
+Delete a suggestion list, for many at once
+
+Runs POST /api/suggestions/{list_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_suggestion_list_bulk`](mcp.md#delete_suggestion_list_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `items[].user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/suggestions/restore
+
+Restore a suggestion list, for many at once
+
+Runs POST /api/suggestions/{list_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`restore_suggestion_list_bulk`](mcp.md#restore_suggestion_list_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `items[].user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### GET /api/suggestions
+
+Suggestion lists
+
+A person's suggestion lists, in their order. Each item has its ref, note and added_at, the library title it is (title_id, or null for a Discover film not imported yet) and, for a Discover film, the film as GET /api/discover gives it.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_suggestions`](mcp.md#list_suggestions) |
+| Errors | 400, 401, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | query | integer or null | no | at least 1 | Over MCP only: that one list's items, numbered in its order, instead of the lists. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Reply 200**: Success
+
+Array of object.
+
+### POST /api/suggestions
+
+Create a suggestion list
+
+A new, empty suggestion list. Fill it with add.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_suggestion_list`](mcp.md#create_suggestion_list) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string | yes |  | Up to 80 characters. |
+
+**Reply 201**: Success
+
+An empty object.
+
+### POST /api/suggestions/reorder
+
+Order suggestion lists
+
+Put the suggestion lists in this order (ids: every list id, first to last).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`reorder_suggestion_lists`](mcp.md#reorder_suggestion_lists) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `ids` | array of integer | yes |  | Ids, first to last. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/suggestions/{list_id}/add
+
+Add suggestions
+
+Suggest Discover films (film_keys) and/or library titles (title_ids) at position (the end by default), each with the note given. One already in the list stays where it is, and takes the new note. A Discover film the library already has counts as that title. Returns the items before.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`add_suggestions`](mcp.md#add_suggestions) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `film_keys` | array of string | no |  | Discover film keys, from GET /api/discover (discover_search over MCP). |
+| `note` | string | no | at most 200 characters | Why it is suggested, in a line: shown under the card. |
+| `position` | integer or null | no | at least 1 | 1-based; the end by default. |
+| `title_ids` | array of string | no |  | Library title ids, from GET /api/library (search_library over MCP). |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `previous_items` | array of object | yes |  | The items before: what setting the items takes back. |
+| `suggestion_list` | object | yes |  |  |
+
+### POST /api/suggestions/{list_id}/delete
+
+Delete a suggestion list
+
+Delete a suggestion list. Soft: restoring it brings it back within the undo window.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_suggestion_list`](mcp.md#delete_suggestion_list) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `deleted` | boolean | yes |  |  |
+
+### POST /api/suggestions/{list_id}/move
+
+Move a suggestion
+
+Move one item to position; the rest renumber. Returns the items before.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`move_suggestion`](mcp.md#move_suggestion) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `position` | integer | yes | at least 1 | 1-based. |
+| `ref` | string | yes |  | An item's ref: a title id, or cat:<film key>. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `previous_items` | array of object | yes |  | The items before: what setting the items takes back. |
+| `suggestion_list` | object | yes |  |  |
+
+### POST /api/suggestions/{list_id}/note
+
+Change a suggestion's note
+
+Replace one item's note (empty clears it). Returns the items before.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_suggestion_note`](mcp.md#set_suggestion_note) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `note` | string | yes | at most 200 characters | Why it is suggested, in a line: shown under the card. |
+| `ref` | string | yes |  | An item's ref: a title id, or cat:<film key>. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `previous_items` | array of object | yes |  | The items before: what setting the items takes back. |
+| `suggestion_list` | object | yes |  |  |
+
+### POST /api/suggestions/{list_id}/remove
+
+Remove suggestions
+
+Take items off a suggestion list, by ref. Returns the items before.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`remove_suggestions`](mcp.md#remove_suggestions) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `refs` | array of string | yes |  | Item refs, as GET /api/suggestions gives them. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `previous_items` | array of object | yes |  | The items before: what setting the items takes back. |
+| `suggestion_list` | object | yes |  |  |
+
+### POST /api/suggestions/{list_id}/restore
+
+Restore a suggestion list
+
+Bring back a deleted suggestion list, within the undo window.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`restore_suggestion_list`](mcp.md#restore_suggestion_list) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `suggestion_list` | object | yes |  |  |
+
+### POST /api/suggestions/{list_id}/set
+
+Set a suggestion list's items
+
+Replace a list's items, in order: the undo of add, remove, move and note. Returns the items before.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_suggestion_items`](mcp.md#set_suggestion_items) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | Every item ({ref, note, added_at}), in order. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `previous_items` | array of object | yes |  | The items before: what setting the items takes back. |
+| `suggestion_list` | object | yes |  |  |
+
+### POST /api/suggestions/{list_id}/update
+
+Rename a suggestion list
+
+Give a suggestion list a new name. Returns the previous one.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`rename_suggestion_list`](mcp.md#rename_suggestion_list) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `list_id` | path | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string | yes |  | Up to 80 characters. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `previous_name` | string | yes |  |  |
+| `suggestion_list` | object | yes |  |  |
 
 ## Schemas
 

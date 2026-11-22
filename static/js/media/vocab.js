@@ -53,6 +53,7 @@ const Vocab = {
     trailer: { kind: "link" , icon: "youtube" },
     edit: { kind: "action" , icon: "pencil-square" },
     playlist: { kind: "action" , icon: "collection-play" , tone: "primary" },
+    suggest: { kind: "action" , icon: "lightbulb" , tone: "warning" },
     // Discover only: films not (yet) in the library.
     add: { kind: "action" , icon: "bookmark-plus" , tone: "primary" },
     seen: { kind: "action" , icon: "check-circle" , tone: "success" },
@@ -78,16 +79,16 @@ const Vocab = {
   // order: the face's links, then the rest of them, then my state.
   detailsButtons() {
     const main = this.mainButtons();
-    return main.concat( this.LINK_BUTTONS.filter( ( id ) => main.indexOf( id ) < 0 ) , [ "watched" , "playlist" , "love" ] );
+    return main.concat( this.LINK_BUTTONS.filter( ( id ) => main.indexOf( id ) < 0 ) , [ "watched" , "playlist" , "suggest" , "love" ] );
   },
 
   // The order a Discover card's own More row lists its buttons in.
-  MORE_ORDER: [ "parents" , "plot" , "add" , "seen" , "skip" ],
+  MORE_ORDER: [ "parents" , "plot" , "add" , "seen" , "skip" , "suggest" ],
 
   // The details buttons offered per screen in the customizer.
   SCREEN_BUTTONS: {
-    library: [ "watched" , "playlist" , "watching" , "drop" , "love" , "rate" , "parents" , "plot" , "wiki" , "justwatch" , "edit" ],
-    discover: [ "add" , "seen" , "skip" , "parents" , "plot" , "wiki" , "justwatch" , "edit" ],
+    library: [ "watched" , "playlist" , "suggest" , "watching" , "drop" , "love" , "rate" , "parents" , "plot" , "wiki" , "justwatch" , "edit" ],
+    discover: [ "add" , "seen" , "skip" , "suggest" , "parents" , "plot" , "wiki" , "justwatch" , "edit" ],
   },
 
   DEFAULT_CARD: {

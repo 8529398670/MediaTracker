@@ -48,6 +48,68 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Add suggestions"
+      },
+      "description": "Suggest films for the person to import or watch: Discover films by key (film_keys, from discover_search) and/or library titles (title_ids, from search_library), with a one-line note saying why (\"same director as Heat\"). Call once per note. One already in the list keeps its place and takes the new note. Returns the items before.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "film_keys": {
+            "description": "Discover film keys, from GET /api/discover (discover_search over MCP).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "description": "Why it is suggested, in a line: shown under the card.",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "position": {
+            "description": "1-based; the end by default.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title_ids": {
+            "description": "Library title ids, from GET /api/library (search_library over MCP).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "add_suggestions",
+      "route": "POST /api/suggestions/{list_id}/add",
+      "title": "Add suggestions"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Add a title"
       },
       "description": "Add a title to the family library and put it on a person's list (state.status: queue by default). Refused with 409 possible_duplicate and the dupes it resembles unless force is true. Details are filled in in the background. A possible duplicate answers created: false with possible_duplicates instead.",
@@ -1894,6 +1956,40 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Create a suggestion list"
+      },
+      "description": "A new, empty suggestion list. Fill it with add.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Up to 80 characters.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "create_suggestion_list",
+      "route": "POST /api/suggestions",
+      "title": "Create a suggestion list"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Save a view"
       },
       "description": "Save a named view of a screen.",
@@ -2111,6 +2207,97 @@
       "name": "delete_source_bulk",
       "route": "POST /api/bulk/sources/delete",
       "title": "Delete a source, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete a suggestion list"
+      },
+      "description": "Delete a suggestion list. Soft: restoring it brings it back within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "delete_suggestion_list",
+      "route": "POST /api/suggestions/{list_id}/delete",
+      "title": "Delete a suggestion list"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Delete a suggestion list, for many at once"
+      },
+      "description": "Runs delete_suggestion_list once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "list_id": {
+                  "description": "A suggestion list's id, from GET /api/suggestions.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "user": {
+                  "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "list_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "delete_suggestion_list_bulk",
+      "route": "POST /api/bulk/suggestions/delete",
+      "title": "Delete a suggestion list, for many at once"
     },
     {
       "adminOnly": false,
@@ -2971,6 +3158,41 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": true,
+        "title": "Suggestion lists"
+      },
+      "description": "A person's suggestion lists: id, name and how many items each holds. With list_id, that one list's items, numbered, each with its note, IMDb score and whether it is in the library yet.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "Over MCP only: that one list's items, numbered in its order, instead of the lists.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_suggestions",
+      "route": "GET /api/suggestions",
+      "title": "Suggestion lists"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
         "title": "List team"
       },
       "description": "People with an active account, a page at a time: id and display name. Use the id wherever another tool asks for a user. next is the offset of the following page, or null on the last one.",
@@ -3223,6 +3445,52 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Move a suggestion"
+      },
+      "description": "Move one item to position; the rest renumber. Returns the items before.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "description": "1-based.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "ref": {
+            "description": "An item's ref: a title id, or cat:<film key>.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id",
+          "position",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "name": "move_suggestion",
+      "route": "POST /api/suggestions/{list_id}/move",
+      "title": "Move a suggestion"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Remove from a playlist"
       },
       "description": "Take titles off a playlist; the rest renumber. Returns the items before, which setting the items takes back.",
@@ -3259,6 +3527,50 @@
       "name": "remove_from_playlist",
       "route": "POST /api/playlists/{playlist_id}/remove",
       "title": "Remove from a playlist"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Remove suggestions"
+      },
+      "description": "Take items off a suggestion list, by ref. Returns the items before.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "refs": {
+            "description": "Item refs, as GET /api/suggestions gives them.",
+            "items": {
+              "description": "An item's ref: a title id, or cat:<film key>.",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id",
+          "refs"
+        ],
+        "type": "object"
+      },
+      "name": "remove_suggestions",
+      "route": "POST /api/suggestions/{list_id}/remove",
+      "title": "Remove suggestions"
     },
     {
       "adminOnly": false,
@@ -3339,6 +3651,46 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Rename a suggestion list"
+      },
+      "description": "Give a suggestion list a new name. Returns the previous one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Up to 80 characters.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "rename_suggestion_list",
+      "route": "POST /api/suggestions/{list_id}/update",
+      "title": "Rename a suggestion list"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Order playlists"
       },
       "description": "Put the playlists in this order (ids: every playlist id, first to last).",
@@ -3369,6 +3721,43 @@
       "name": "reorder_playlists",
       "route": "POST /api/playlists/reorder",
       "title": "Order playlists"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Order suggestion lists"
+      },
+      "description": "Put the suggestion lists in this order (ids: every list id, first to last).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Ids, first to last.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "reorder_suggestion_lists",
+      "route": "POST /api/suggestions/reorder",
+      "title": "Order suggestion lists"
     },
     {
       "adminOnly": false,
@@ -3570,6 +3959,97 @@
       "name": "restore_source_bulk",
       "route": "POST /api/bulk/sources/restore",
       "title": "Restore a source, for many at once"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a suggestion list"
+      },
+      "description": "Bring back a deleted suggestion list, within the undo window.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "restore_suggestion_list",
+      "route": "POST /api/suggestions/{list_id}/restore",
+      "title": "Restore a suggestion list"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Restore a suggestion list, for many at once"
+      },
+      "description": "Runs restore_suggestion_list once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "One entry per thing to change: its id, and any field that differs from shared.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "list_id": {
+                  "description": "A suggestion list's id, from GET /api/suggestions.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "user": {
+                  "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                  "minimum": 1,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "list_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "shared": {
+            "additionalProperties": false,
+            "description": "Fields every item gets, unless the item sets its own.",
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "name": "restore_suggestion_list_bulk",
+      "route": "POST /api/bulk/suggestions/restore",
+      "title": "Restore a suggestion list, for many at once"
     },
     {
       "adminOnly": false,
@@ -4109,6 +4589,95 @@
       "name": "set_states",
       "route": "POST /api/state/bulk",
       "title": "Set state on many titles"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Set a suggestion list's items"
+      },
+      "description": "Replace a list's items, in order: the undo of add, remove, move and note. Returns the items before.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "Every item ({ref, note, added_at}), in order.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "set_suggestion_items",
+      "route": "POST /api/suggestions/{list_id}/set",
+      "title": "Set a suggestion list's items"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change a suggestion's note"
+      },
+      "description": "Replace one item's note (empty clears it). Returns the items before.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "list_id": {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "description": "Why it is suggested, in a line: shown under the card.",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "ref": {
+            "description": "An item's ref: a title id, or cat:<film key>.",
+            "type": "string"
+          },
+          "user": {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "list_id",
+          "note",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "name": "set_suggestion_note",
+      "route": "POST /api/suggestions/{list_id}/note",
+      "title": "Change a suggestion's note"
     },
     {
       "adminOnly": false,

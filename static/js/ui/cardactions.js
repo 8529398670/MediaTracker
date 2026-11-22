@@ -86,6 +86,9 @@ const CardActions = {
           }
           return;
         }
+        case "suggest":
+          await Suggestions.pick( control.getAttribute( "data-value" ) , row );
+          return;
         case "rate": {
           const value = control.getAttribute( "data-value" );
           const rating = value ? Number( value ) : null;

@@ -1299,14 +1299,7 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
     # row a beat after the row is the wrong way round. Copied rather than set
     # on the record, which is the shard cache's and shared with every query.
     # IMDb's score comes the same way, for the same reason.
-    page = []
-    for film in full_records(hits[offset:offset + limit]):
-        imdb_id, found = answers.get(film["key"]) or ["", []]
-        score = imdb.STORE.get(imdb_id)
-        page.append({**film, "ratings": found,
-                     "rating": found[0] if found else "",
-                     "imdb": imdb_id, "imdbScore": list(score) if score else None,
-                     "runtime": imdb_genres.STORE.runtime(imdb_id)})
+    page = [_with_answers(film, answers) for film in full_records(hits[offset:offset + limit])]
     return {"total": len(hits), "offset": offset,
             "films": page,
             "genres": wanted, "genreMode": "all" if every else "any",
@@ -1318,6 +1311,28 @@ def query(year_from: int = 0, year_to: int = 0, text: str = "",
             "verdicts": {"skip": len(passed), "watched": len(seen),
                          "library": len(owned & catalogue_keys())},
             "coverage": coverage()}
+
+
+def _with_answers(film: dict, answers: dict) -> dict:
+    """A full record with its rating, IMDb id, score and running time, as a
+    copy: the record is the shard cache's and shared with every query."""
+    imdb_id, found = answers.get(film["key"]) or ["", []]
+    score = imdb.STORE.get(imdb_id)
+    return {**film, "ratings": found,
+            "rating": found[0] if found else "",
+            "imdb": imdb_id, "imdbScore": list(score) if score else None,
+            "runtime": imdb_genres.STORE.runtime(imdb_id)}
+
+
+def films_by_keys(keys: object) -> dict[str, dict]:
+    """Catalogue films by key, shaped as query() gives them; keys the
+    catalogue does not have are left out."""
+    wanted = {key for key in (keys or ()) if isinstance(key, str)}
+    if not wanted:
+        return {}
+    rows = [row for row in catalogue() if row[R_KEY] in wanted]
+    answers = certs.STORE.snapshot()
+    return {film["key"]: _with_answers(film, answers) for film in full_records(rows)}
 
 
 # Past this many films holding the words, some title surely does too: a word

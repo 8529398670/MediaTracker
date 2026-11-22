@@ -19,7 +19,7 @@ from app.models.api_keys import APIKey, void_what_keys_made_tx
 from app.models.login_tokens import delete_login_tokens_for_user, delete_pending_login_tokens
 from app.models.sessions import destroy_sessions_for_user
 from app.models.users import User, owner_id_tx
-from app.models import playlists, prefs, user_state, verdicts, views
+from app.models import playlists, prefs, suggestions, user_state, verdicts, views
 from app.models.revision import bump
 from app.models.sign_in import delete_challenges_for_user
 from app.models.two_factor import clear_record
@@ -265,6 +265,7 @@ def delete_user(store: Store, user_id: int, actor_id: int | None) -> Revoked | N
         prefs.delete_for_user_tx(tx, user_id)
         views.delete_for_user_tx(tx, user_id)
         playlists.delete_for_user_tx(tx, user_id)
+        suggestions.delete_for_user_tx(tx, user_id)
         verdicts.delete_for_user_tx(tx, user_id)
         bump(tx)
         delete_challenges_for_user(tx, user_id)

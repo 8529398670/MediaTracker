@@ -29,6 +29,8 @@ const Sorter = {
     family: { value: ( row ) => ( row.social ? row.social.watched.length : 0 ) },
     loved: { value: ( row ) => ( row.social ? row.social.loved.length : 0 ) },
     cert: { value: ( row ) => { const at = Filters.CERT_ORDER.indexOf( row.t.certification ); return at < 0 ? null : at; } },
+    // A list's own order (Suggestions): its place in the list, from 0.
+    order: { value: ( row ) => ( row.order == null ? null : row.order ) },
     // Stable for a day, so a random order does not reshuffle on every click.
     random: { value: ( row ) => Sorter.hash( row.t.id + Sorter.today() ) },
   },

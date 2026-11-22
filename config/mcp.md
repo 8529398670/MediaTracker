@@ -12,6 +12,7 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 
 | Tool | Route | Who | What |
 |---|---|---|---|
+| [`add_suggestions`](#add_suggestions) | [`POST /api/suggestions/{list_id}/add`](api.md#post-apisuggestionslist_idadd) | any key | Add suggestions |
 | [`add_title`](#add_title) | [`POST /api/titles`](api.md#post-apititles) | any key | Add a title |
 | [`add_to_playlist`](#add_to_playlist) | [`POST /api/playlists/{playlist_id}/add`](api.md#post-apiplaylistsplaylist_idadd) | any key | Add to a playlist |
 | [`admin_cancel_login_link`](#admin_cancel_login_link) | [`POST /api/admin/users/{user_id}/cancel-login-link`](api.md#post-apiadminusersuser_idcancel-login-link) | admin keys | Stop an account's login link working (admin) |
@@ -55,11 +56,14 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`create_my_login_link`](#create_my_login_link) | [`POST /api/account/login-link`](api.md#post-apiaccountlogin-link) | any key | A login link for yourself |
 | [`create_playlist`](#create_playlist) | [`POST /api/playlists`](api.md#post-apiplaylists) | any key | Create a playlist |
 | [`create_source`](#create_source) | [`POST /api/sources`](api.md#post-apisources) | any key | Add a source |
+| [`create_suggestion_list`](#create_suggestion_list) | [`POST /api/suggestions`](api.md#post-apisuggestions) | any key | Create a suggestion list |
 | [`create_view`](#create_view) | [`POST /api/views`](api.md#post-apiviews) | any key | Save a view |
 | [`delete_playlist`](#delete_playlist) | [`POST /api/playlists/{playlist_id}/delete`](api.md#post-apiplaylistsplaylist_iddelete) | any key | Delete a playlist |
 | [`delete_playlist_bulk`](#delete_playlist_bulk) | [`POST /api/bulk/playlists/delete`](api.md#post-apibulkplaylistsdelete) | any key | Delete a playlist, for many at once |
 | [`delete_source`](#delete_source) | [`POST /api/sources/{source_id}/delete`](api.md#post-apisourcessource_iddelete) | any key | Delete a source |
 | [`delete_source_bulk`](#delete_source_bulk) | [`POST /api/bulk/sources/delete`](api.md#post-apibulksourcesdelete) | any key | Delete a source, for many at once |
+| [`delete_suggestion_list`](#delete_suggestion_list) | [`POST /api/suggestions/{list_id}/delete`](api.md#post-apisuggestionslist_iddelete) | any key | Delete a suggestion list |
+| [`delete_suggestion_list_bulk`](#delete_suggestion_list_bulk) | [`POST /api/bulk/suggestions/delete`](api.md#post-apibulksuggestionsdelete) | any key | Delete a suggestion list, for many at once |
 | [`delete_title`](#delete_title) | [`POST /api/titles/{title_id}/delete`](api.md#post-apititlestitle_iddelete) | any key | Delete a title |
 | [`delete_type`](#delete_type) | [`POST /api/types/{type_id}/delete`](api.md#post-apitypestype_iddelete) | any key | Delete a type |
 | [`delete_type_bulk`](#delete_type_bulk) | [`POST /api/bulk/types/delete`](api.md#post-apibulktypesdelete) | any key | Delete a type, for many at once |
@@ -83,6 +87,7 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`list_my_sessions`](#list_my_sessions) | [`GET /api/account/sessions`](api.md#get-apiaccountsessions) | any key | Your signed-in devices |
 | [`list_playlists`](#list_playlists) | [`GET /api/playlists`](api.md#get-apiplaylists) | any key | Playlists |
 | [`list_sources`](#list_sources) | [`GET /api/sources`](api.md#get-apisources) | any key | Sources |
+| [`list_suggestions`](#list_suggestions) | [`GET /api/suggestions`](api.md#get-apisuggestions) | any key | Suggestion lists |
 | [`list_team`](#list_team) | [`GET /api/team`](api.md#get-apiteam) | any key | List team |
 | [`list_types`](#list_types) | [`GET /api/types`](api.md#get-apitypes) | any key | Media types |
 | [`list_views`](#list_views) | [`GET /api/views`](api.md#get-apiviews) | any key | Saved views |
@@ -90,15 +95,21 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`merge_titles`](#merge_titles) | [`POST /api/titles/{title_id}/merge`](api.md#post-apititlestitle_idmerge) | any key | Merge duplicates |
 | [`merge_titles_bulk`](#merge_titles_bulk) | [`POST /api/bulk/titles/merge`](api.md#post-apibulktitlesmerge) | any key | Merge duplicates, for many at once |
 | [`move_in_playlist`](#move_in_playlist) | [`POST /api/playlists/{playlist_id}/move`](api.md#post-apiplaylistsplaylist_idmove) | any key | Move within a playlist |
+| [`move_suggestion`](#move_suggestion) | [`POST /api/suggestions/{list_id}/move`](api.md#post-apisuggestionslist_idmove) | any key | Move a suggestion |
 | [`remove_from_playlist`](#remove_from_playlist) | [`POST /api/playlists/{playlist_id}/remove`](api.md#post-apiplaylistsplaylist_idremove) | any key | Remove from a playlist |
+| [`remove_suggestions`](#remove_suggestions) | [`POST /api/suggestions/{list_id}/remove`](api.md#post-apisuggestionslist_idremove) | any key | Remove suggestions |
 | [`rename_account`](#rename_account) | [`POST /api/account/rename`](api.md#post-apiaccountrename) | any key | Rename your account |
 | [`rename_playlist`](#rename_playlist) | [`POST /api/playlists/{playlist_id}/update`](api.md#post-apiplaylistsplaylist_idupdate) | any key | Rename a playlist |
+| [`rename_suggestion_list`](#rename_suggestion_list) | [`POST /api/suggestions/{list_id}/update`](api.md#post-apisuggestionslist_idupdate) | any key | Rename a suggestion list |
 | [`reorder_playlists`](#reorder_playlists) | [`POST /api/playlists/reorder`](api.md#post-apiplaylistsreorder) | any key | Order playlists |
+| [`reorder_suggestion_lists`](#reorder_suggestion_lists) | [`POST /api/suggestions/reorder`](api.md#post-apisuggestionsreorder) | any key | Order suggestion lists |
 | [`reorder_views`](#reorder_views) | [`POST /api/views/reorder`](api.md#post-apiviewsreorder) | any key | Order views |
 | [`restore_playlist`](#restore_playlist) | [`POST /api/playlists/{playlist_id}/restore`](api.md#post-apiplaylistsplaylist_idrestore) | any key | Restore a playlist |
 | [`restore_playlist_bulk`](#restore_playlist_bulk) | [`POST /api/bulk/playlists/restore`](api.md#post-apibulkplaylistsrestore) | any key | Restore a playlist, for many at once |
 | [`restore_source`](#restore_source) | [`POST /api/sources/{source_id}/restore`](api.md#post-apisourcessource_idrestore) | any key | Restore a source |
 | [`restore_source_bulk`](#restore_source_bulk) | [`POST /api/bulk/sources/restore`](api.md#post-apibulksourcesrestore) | any key | Restore a source, for many at once |
+| [`restore_suggestion_list`](#restore_suggestion_list) | [`POST /api/suggestions/{list_id}/restore`](api.md#post-apisuggestionslist_idrestore) | any key | Restore a suggestion list |
+| [`restore_suggestion_list_bulk`](#restore_suggestion_list_bulk) | [`POST /api/bulk/suggestions/restore`](api.md#post-apibulksuggestionsrestore) | any key | Restore a suggestion list, for many at once |
 | [`restore_title`](#restore_title) | [`POST /api/titles/{title_id}/restore`](api.md#post-apititlestitle_idrestore) | any key | Restore a title |
 | [`restore_type`](#restore_type) | [`POST /api/types/{type_id}/restore`](api.md#post-apitypestype_idrestore) | any key | Restore a type |
 | [`restore_type_bulk`](#restore_type_bulk) | [`POST /api/bulk/types/restore`](api.md#post-apibulktypesrestore) | any key | Restore a type, for many at once |
@@ -113,6 +124,8 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`set_playlist_items`](#set_playlist_items) | [`POST /api/playlists/{playlist_id}/set`](api.md#post-apiplaylistsplaylist_idset) | any key | Set a playlist's titles |
 | [`set_state`](#set_state) | [`POST /api/state/{title_id}`](api.md#post-apistatetitle_id) | any key | Set status, rating or heart |
 | [`set_states`](#set_states) | [`POST /api/state/bulk`](api.md#post-apistatebulk) | any key | Set state on many titles |
+| [`set_suggestion_items`](#set_suggestion_items) | [`POST /api/suggestions/{list_id}/set`](api.md#post-apisuggestionslist_idset) | any key | Set a suggestion list's items |
+| [`set_suggestion_note`](#set_suggestion_note) | [`POST /api/suggestions/{list_id}/note`](api.md#post-apisuggestionslist_idnote) | any key | Change a suggestion's note |
 | [`set_theme`](#set_theme) | [`POST /api/account/theme`](api.md#post-apiaccounttheme) | any key | Pick your theme |
 | [`set_themes`](#set_themes) | [`POST /api/account/themes`](api.md#post-apiaccountthemes) | any key | Replace your own themes |
 | [`set_verdict`](#set_verdict) | [`POST /api/discover/verdict`](api.md#post-apidiscoververdict) | any key | Skip a Discover film |
@@ -125,6 +138,27 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`update_title_bulk`](#update_title_bulk) | [`POST /api/bulk/titles/update`](api.md#post-apibulktitlesupdate) | any key | Edit a title, for many at once |
 | [`update_view`](#update_view) | [`POST /api/views/{view_id}/update`](api.md#post-apiviewsview_idupdate) | any key | Change a view |
 | [`whoami`](#whoami) | [`GET /api/me`](api.md#get-apime) | any key | Who am I |
+
+## add_suggestions
+
+Suggest films for the person to import or watch: Discover films by key (film_keys, from discover_search) and/or library titles (title_ids, from search_library), with a one-line note saying why ("same director as Heat"). Call once per note. One already in the list keeps its place and takes the new note. Returns the items before.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/add`](api.md#post-apisuggestionslist_idadd) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `film_keys` | array of string | no |  | Discover film keys, from GET /api/discover (discover_search over MCP). |
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `note` | string | no | at most 200 characters | Why it is suggested, in a line: shown under the card. |
+| `position` | integer or null | no | at least 1 | 1-based; the end by default. |
+| `title_ids` | array of string | no |  | Library title ids, from GET /api/library (search_library over MCP). |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 
 ## add_title
 
@@ -905,6 +939,23 @@ Remember a list or page titles were found on.
 | `title` | string | no |  | Up to 300 characters. |
 | `url` | string | yes |  | An http(s) link. |
 
+## create_suggestion_list
+
+A new, empty suggestion list. Fill it with add.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions`](api.md#post-apisuggestions) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `name` | string | yes |  | Up to 80 characters. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
 ## create_view
 
 Save a named view of a screen.
@@ -995,6 +1046,42 @@ Runs delete_source once per item: items holds each call's arguments, shared the 
 |---|---|---|---|---|
 | `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
 | `items[].source_id` | string | yes |  | A source's id, from GET /api/sources. |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+## delete_suggestion_list
+
+Delete a suggestion list. Soft: restoring it brings it back within the undo window.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/delete`](api.md#post-apisuggestionslist_iddelete) |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+## delete_suggestion_list_bulk
+
+Runs delete_suggestion_list once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/bulk/suggestions/delete`](api.md#post-apibulksuggestionsdelete) |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `items[].user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 | `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
 
 ## delete_title
@@ -1410,6 +1497,23 @@ The lists and pages titles were found on, newest first.
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
 
+## list_suggestions
+
+A person's suggestion lists: id, name and how many items each holds. With list_id, that one list's items, numbered, each with its note, IMDb score and whether it is in the library yet.
+
+|  |  |
+|---|---|
+| Route | [`GET /api/suggestions`](api.md#get-apisuggestions) |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer or null | no | at least 1 | Over MCP only: that one list's items, numbered in its order, instead of the lists. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
 ## list_team
 
 People with an active account, a page at a time: id and display name. Use the id wherever another tool asks for a user. next is the offset of the following page, or null on the last one.
@@ -1531,6 +1635,25 @@ Move one title to position; the rest renumber. Returns the items before, which s
 | `title_id` | string | yes |  | The title to move. |
 | `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 
+## move_suggestion
+
+Move one item to position; the rest renumber. Returns the items before.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/move`](api.md#post-apisuggestionslist_idmove) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `position` | integer | yes | at least 1 | 1-based. |
+| `ref` | string | yes |  | An item's ref: a title id, or cat:<film key>. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
 ## remove_from_playlist
 
 Take titles off a playlist; the rest renumber. Returns the items before, which setting the items takes back.
@@ -1547,6 +1670,24 @@ Take titles off a playlist; the rest renumber. Returns the items before, which s
 |---|---|---|---|---|
 | `playlist_id` | integer | yes | at least 1 | A playlist's id, from GET /api/playlists. |
 | `title_ids` | array of string | yes |  | Title ids, from GET /api/library (search_library over MCP). |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+## remove_suggestions
+
+Take items off a suggestion list, by ref. Returns the items before.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/remove`](api.md#post-apisuggestionslist_idremove) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `refs` | array of string | yes |  | Item refs, as GET /api/suggestions gives them. |
 | `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 
 ## rename_account
@@ -1584,6 +1725,24 @@ Give a playlist a new name. Returns the previous one.
 | `playlist_id` | integer | yes | at least 1 | A playlist's id, from GET /api/playlists. |
 | `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 
+## rename_suggestion_list
+
+Give a suggestion list a new name. Returns the previous one.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/update`](api.md#post-apisuggestionslist_idupdate) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `name` | string | yes |  | Up to 80 characters. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
 ## reorder_playlists
 
 Put the playlists in this order (ids: every playlist id, first to last).
@@ -1591,6 +1750,23 @@ Put the playlists in this order (ids: every playlist id, first to last).
 |  |  |
 |---|---|
 | Route | [`POST /api/playlists/reorder`](api.md#post-apiplaylistsreorder) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ids` | array of integer | yes |  | Ids, first to last. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+## reorder_suggestion_lists
+
+Put the suggestion lists in this order (ids: every list id, first to last).
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/reorder`](api.md#post-apisuggestionsreorder) |
 | Read only | no |
 | Destructive | no |
 
@@ -1686,6 +1862,42 @@ Runs restore_source once per item: items holds each call's arguments, shared the
 |---|---|---|---|---|
 | `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
 | `items[].source_id` | string | yes |  | A source's id, from GET /api/sources. |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+## restore_suggestion_list
+
+Bring back a deleted suggestion list, within the undo window.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/restore`](api.md#post-apisuggestionslist_idrestore) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+## restore_suggestion_list_bulk
+
+Runs restore_suggestion_list once per item: items holds each call's arguments, shared the arguments they have in common (an item's own win). In order; one failing does not stop the rest, and the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/bulk/suggestions/restore`](api.md#post-apibulksuggestionsrestore) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `items[].user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 | `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
 
 ## restore_title
@@ -1935,6 +2147,43 @@ changes is {title id: {status, rating, heart, note, watched_at}}, up to 2000 tit
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
 | `changes` | map of object | yes |  | {title id: {status, rating, heart, note, watched_at}}, up to 2000 titles. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+## set_suggestion_items
+
+Replace a list's items, in order: the undo of add, remove, move and note. Returns the items before.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/set`](api.md#post-apisuggestionslist_idset) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `items` | array of object | yes |  | Every item ({ref, note, added_at}), in order. |
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
+
+## set_suggestion_note
+
+Replace one item's note (empty clears it). Returns the items before.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/suggestions/{list_id}/note`](api.md#post-apisuggestionslist_idnote) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `list_id` | integer | yes | at least 1 | A suggestion list's id, from GET /api/suggestions. |
+| `note` | string | yes | at most 200 characters | Why it is suggested, in a line: shown under the card. |
+| `ref` | string | yes |  | An item's ref: a title id, or cat:<film key>. |
 | `user` | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 
 ## set_theme

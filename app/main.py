@@ -32,7 +32,7 @@ from app.core.static_files import StaticServer
 from app.discover import catalogue, certs
 from app.jobs import runner as media_jobs
 from app.jobs import scheduler
-from app.models import playlists, sources, titles, types, views
+from app.models import playlists, sources, suggestions, titles, types, views
 from app.providers import compat, net
 from app.reference import images, imdb, imdb_genres
 from app.reference import paths as reference_paths
@@ -50,6 +50,7 @@ def purge_media(store: db.Store, settings: config_live.Holder) -> tuple[str, str
     removed_titles = titles.purge_deleted_titles(store, cfg.library.restore_days)
     views.purge_deleted_views(store)
     playlists.purge_deleted_playlists(store)
+    suggestions.purge_deleted_lists(store)
     sources.purge_deleted_sources(store)
     note = f"removed {removed_titles} titles deleted more than {cfg.library.restore_days} days ago"
     if removed_titles:

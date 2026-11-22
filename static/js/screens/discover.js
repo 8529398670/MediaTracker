@@ -482,6 +482,7 @@ const DiscoverScreen = {
       if ( Card.clicked( event , article ) ) return;
       const control = event.target.closest( "[data-action]" );
       if ( !control ) return;
+      if ( control.getAttribute( "data-action" ) === "suggest" ) { Suggestions.pick( control.getAttribute( "data-value" ) , row ); return; }
       Dom.steady( control , () => this.act( control.getAttribute( "data-action" ) , row ) );
     } );
     CardMenu.wire( this.grid , {

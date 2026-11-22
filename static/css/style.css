@@ -1132,3 +1132,8 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 /* The app's mark beside its name in the top bar. */
 .app-brand { display: inline-flex; align-items: center; gap: 0.5rem; }
 .app-logo { width: 2rem; height: 2rem; flex: none; }
+
+/* Suggestions: a playlist's rows, with the note under each card. Sorted by
+   anything but the list's own order, the number box goes. */
+.suggestion-note { overflow-wrap: anywhere; }
+.suggestion-items.is-sorted .playlist-handle { width: auto; }

@@ -287,6 +287,11 @@ const Api = {
   createPlaylist( name , items ) { return this.post( this.forSubject( "/api/playlists" ) , { name: name , items: items || [] } ); },
   reorderPlaylists( ids )      { return this.post( this.forSubject( "/api/playlists/reorder" ) , { ids: ids } ); },
   playlistCall( id , action , body ) { return this.post( this.forSubject( "/api/playlists/" + id + "/" + action ) , body ); },
+  // Suggestion lists, the same way: personal, following Showing.
+  suggestions()                { return this.request( this.forSubject( "/api/suggestions" ) ); },
+  createSuggestionList( name ) { return this.post( this.forSubject( "/api/suggestions" ) , { name: name } ); },
+  reorderSuggestionLists( ids ) { return this.post( this.forSubject( "/api/suggestions/reorder" ) , { ids: ids } ); },
+  suggestionCall( id , action , body ) { return this.post( this.forSubject( "/api/suggestions/" + id + "/" + action ) , body ); },
   types()                      { return this.request( "/api/types" ); },
   saveType( type )             { return this.post( "/api/types" , type ); },
   deleteType( id , reassignTo ) { return this.post( "/api/types/" + this.id( id ) + "/delete" , { reassign_to: reassignTo || null } ); },

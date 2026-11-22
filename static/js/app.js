@@ -203,6 +203,7 @@ const App = {
     this.initCardLinks();
     Acting.init( me );
     await Playlists.init();
+    await Suggestions.init();
     await LibraryScreen.init( me );
     AddScreen.init( me );
     DupesScreen.init( me );
@@ -211,6 +212,7 @@ const App = {
     await TypesScreen.init( me );
     JobsScreen.init( me );
     PlaylistsScreen.init( me );
+    SuggestionsScreen.init( me );
     Library.startPolling();
 
     if ( me.role === "admin" ) {
@@ -262,6 +264,7 @@ const App = {
       LibraryScreen.render();
       if ( DiscoverScreen.meta ) DiscoverScreen.render();
       PlaylistsScreen.render();
+      SuggestionsScreen.refresh();
     };
     box.addEventListener( "change" , () => {
       const on = box.checked;
@@ -285,6 +288,7 @@ const App = {
       LibraryScreen.render();
       if ( DiscoverScreen.meta ) DiscoverScreen.render();
       PlaylistsScreen.render();
+      SuggestionsScreen.refresh();
     };
     box.addEventListener( "change" , () => {
       const on = box.checked;
@@ -311,6 +315,8 @@ const App = {
         LibraryScreen.render();
         if ( DiscoverScreen.meta ) DiscoverScreen.render();
         PlaylistsScreen.render();
+        SuggestionsScreen.refresh();
+      SuggestionsScreen.refresh();
       },
     } );
   },

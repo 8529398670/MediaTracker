@@ -7200,6 +7200,206 @@
         "x-bulk-of": "POST /api/sources/{source_id}/restore"
       }
     },
+    "/api/bulk/suggestions/delete": {
+      "post": {
+        "description": "Runs POST /api/suggestions/{list_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_suggestions_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "list_id": {
+                          "description": "A suggestion list's id, from GET /api/suggestions.",
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "user": {
+                          "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "list_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete a suggestion list, for many at once",
+        "tags": [
+          "Suggestions"
+        ],
+        "x-bulk-of": "POST /api/suggestions/{list_id}/delete"
+      }
+    },
+    "/api/bulk/suggestions/restore": {
+      "post": {
+        "description": "Runs POST /api/suggestions/{list_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
+        "operationId": "post_api_bulk_suggestions_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "One entry per thing to change: its id, and any field that differs from shared.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "list_id": {
+                          "description": "A suggestion list's id, from GET /api/suggestions.",
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "user": {
+                          "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+                          "minimum": 1,
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "list_id"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "shared": {
+                    "additionalProperties": false,
+                    "description": "Fields every item gets, unless the item sets its own.",
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReply"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Restore a suggestion list, for many at once",
+        "tags": [
+          "Suggestions"
+        ],
+        "x-bulk-of": "POST /api/suggestions/{list_id}/restore"
+      }
+    },
     "/api/bulk/titles/enrich": {
       "post": {
         "description": "Runs POST /api/titles/{title_id}/enrich once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.",
@@ -13723,6 +13923,1156 @@
         ]
       }
     },
+    "/api/suggestions": {
+      "get": {
+        "description": "A person's suggestion lists, in their order. Each item has its ref, note and added_at, the library title it is (title_id, or null for a Discover film not imported yet) and, for a Discover film, the film as GET /api/discover gives it.",
+        "operationId": "get_api_suggestions",
+        "parameters": [
+          {
+            "description": "Over MCP only: that one list's items, numbered in its order, instead of the lists.",
+            "in": "query",
+            "name": "list_id",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Suggestion lists",
+        "tags": [
+          "Suggestions"
+        ]
+      },
+      "post": {
+        "description": "A new, empty suggestion list. Fill it with add.",
+        "operationId": "post_api_suggestions",
+        "parameters": [
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Up to 80 characters.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Create a suggestion list",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/reorder": {
+      "post": {
+        "description": "Put the suggestion lists in this order (ids: every list id, first to last).",
+        "operationId": "post_api_suggestions_reorder",
+        "parameters": [
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "ids": {
+                    "description": "Ids, first to last.",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "ids"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Order suggestion lists",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/add": {
+      "post": {
+        "description": "Suggest Discover films (film_keys) and/or library titles (title_ids) at position (the end by default), each with the note given. One already in the list stays where it is, and takes the new note. A Discover film the library already has counts as that title. Returns the items before.",
+        "operationId": "post_api_suggestions_list_id_add",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "film_keys": {
+                    "description": "Discover film keys, from GET /api/discover (discover_search over MCP).",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "note": {
+                    "description": "Why it is suggested, in a line: shown under the card.",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "position": {
+                    "description": "1-based; the end by default.",
+                    "minimum": 1,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "title_ids": {
+                    "description": "Library title ids, from GET /api/library (search_library over MCP).",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "previous_items": {
+                      "description": "The items before: what setting the items takes back.",
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "previous_items",
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Add suggestions",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/delete": {
+      "post": {
+        "description": "Delete a suggestion list. Soft: restoring it brings it back within the undo window.",
+        "operationId": "post_api_suggestions_list_id_delete",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Delete a suggestion list",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/move": {
+      "post": {
+        "description": "Move one item to position; the rest renumber. Returns the items before.",
+        "operationId": "post_api_suggestions_list_id_move",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "position": {
+                    "description": "1-based.",
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "ref": {
+                    "description": "An item's ref: a title id, or cat:<film key>.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "position",
+                  "ref"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "previous_items": {
+                      "description": "The items before: what setting the items takes back.",
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "previous_items",
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Move a suggestion",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/note": {
+      "post": {
+        "description": "Replace one item's note (empty clears it). Returns the items before.",
+        "operationId": "post_api_suggestions_list_id_note",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "note": {
+                    "description": "Why it is suggested, in a line: shown under the card.",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "ref": {
+                    "description": "An item's ref: a title id, or cat:<film key>.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "note",
+                  "ref"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "previous_items": {
+                      "description": "The items before: what setting the items takes back.",
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "previous_items",
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Change a suggestion's note",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/remove": {
+      "post": {
+        "description": "Take items off a suggestion list, by ref. Returns the items before.",
+        "operationId": "post_api_suggestions_list_id_remove",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "refs": {
+                    "description": "Item refs, as GET /api/suggestions gives them.",
+                    "items": {
+                      "description": "An item's ref: a title id, or cat:<film key>.",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "refs"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "previous_items": {
+                      "description": "The items before: what setting the items takes back.",
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "previous_items",
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Remove suggestions",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/restore": {
+      "post": {
+        "description": "Bring back a deleted suggestion list, within the undo window.",
+        "operationId": "post_api_suggestions_list_id_restore",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "409": {
+            "$ref": "#/components/responses/E409"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Restore a suggestion list",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/set": {
+      "post": {
+        "description": "Replace a list's items, in order: the undo of add, remove, move and note. Returns the items before.",
+        "operationId": "post_api_suggestions_list_id_set",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "items": {
+                    "description": "Every item ({ref, note, added_at}), in order.",
+                    "items": {
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "items"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "previous_items": {
+                      "description": "The items before: what setting the items takes back.",
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "previous_items",
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Set a suggestion list's items",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
+    "/api/suggestions/{list_id}/update": {
+      "post": {
+        "description": "Give a suggestion list a new name. Returns the previous one.",
+        "operationId": "post_api_suggestions_list_id_update",
+        "parameters": [
+          {
+            "description": "A suggestion list's id, from GET /api/suggestions.",
+            "in": "path",
+            "name": "list_id",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Whose lists: a user id, for an admin or someone given Showing. Default: your own.",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Up to 80 characters.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "previous_name": {
+                      "type": "string"
+                    },
+                    "suggestion_list": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "previous_name",
+                    "suggestion_list"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Rename a suggestion list",
+        "tags": [
+          "Suggestions"
+        ]
+      }
+    },
     "/api/team": {
       "get": {
         "description": "People with an active account, a page at a time: id and display name.",
@@ -15734,6 +17084,9 @@
     },
     {
       "name": "Settings"
+    },
+    {
+      "name": "Suggestions"
     }
   ]
 }

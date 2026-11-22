@@ -13,7 +13,7 @@
 // menu always ends with Details.
 const CardMenu = {
   // Need a value, so they only work as the card's own dropdowns.
-  NOT_IN_MENU: [ "rate" , "playlist" ],
+  NOT_IN_MENU: [ "rate" , "playlist" , "suggest" ],
 
   ids( card , details ) {
     const ids = card.buttons.filter( ( id ) => this.NOT_IN_MENU.indexOf( id ) < 0 );

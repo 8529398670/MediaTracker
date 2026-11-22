@@ -1,6 +1,7 @@
 // Acting on several titles at once: pick cards (tap, or Shift+click for a
 // range) with Select on, then one action for all of them --
-// Watched, Love, Not for me, Remove from my list, a playlist, a type, a tag,
+// Watched, Love, Not for me, Remove from my list, a playlist, a suggestion
+// list, a type, a tag,
 // or delete.
 // Each is one undo step for the whole group.
 const BulkBar = {
@@ -13,6 +14,7 @@ const BulkBar = {
     Dom.text( Dom.get( "bulk-count" ) , I18n.fill( "bulk.count" , { n: count } ) );
     Dom.all( "[data-bulk]" , bar ).forEach( ( button ) => { button.disabled = count === 0; } );
     Dom.get( "bulk-playlist-toggle" ).disabled = count === 0;
+    Dom.get( "bulk-suggest-toggle" ).disabled = count === 0;
     if ( !bar._wired ) {
       bar._wired = true;
       bar.addEventListener( "click" , ( event ) => {
@@ -40,6 +42,21 @@ const BulkBar = {
       class: "dropdown-item",
       text: I18n.get( "playlist.menu_new" ),
       attrs: { type: "button" , "data-bulk": "playlist" , "data-value": "new" },
+    } ) ] } ) );
+    const suggestLists = Dom.get( "bulk-suggestions" );
+    Dom.clear( suggestLists );
+    Suggestions.list.forEach( ( entry ) => {
+      suggestLists.appendChild( Dom.el( "li" , { children: [ Dom.el( "button" , {
+        class: "dropdown-item",
+        text: entry.name,
+        attrs: { type: "button" , "data-bulk": "suggest" , "data-value": String( entry.id ) },
+      } ) ] } ) );
+    } );
+    if ( Suggestions.list.length ) suggestLists.appendChild( Dom.el( "li" , { children: [ Dom.el( "hr" , { class: "dropdown-divider" } ) ] } ) );
+    suggestLists.appendChild( Dom.el( "li" , { children: [ Dom.el( "button" , {
+      class: "dropdown-item",
+      text: I18n.get( "suggestion.menu_new" ),
+      attrs: { type: "button" , "data-bulk": "suggest" , "data-value": "new" },
     } ) ] } ) );
     const types = Dom.get( "bulk-types" );
     Dom.clear( types );
@@ -69,6 +86,15 @@ const BulkBar = {
           }
           const playlist = Playlists.get( Number( value ) );
           if ( playlist ) await Playlists.add( playlist , ids , I18n.fill( "undo.bulk_playlist" , { n: n , name: playlist.name } ) , true );
+          break;
+        }
+        case "suggest": {
+          if ( value === "new" ) {
+            await Suggestions.create( ids , ( name ) => I18n.fill( "undo.bulk_suggest" , { n: n , name: name } ) );
+            break;
+          }
+          const entry = Suggestions.get( Number( value ) );
+          if ( entry ) await Suggestions.add( entry , ids , I18n.fill( "undo.bulk_suggest" , { n: n , name: entry.name } ) , true );
           break;
         }
         case "type": await this.titles( ids , "set_type" , value , I18n.fill( "undo.bulk_type" , { n: n , type: Vocab.typeLabel( value ) } ) ); break;

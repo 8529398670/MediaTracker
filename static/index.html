@@ -73,6 +73,7 @@
                next list; filled in by LibraryNav (screens/library.js). -->
           <a class="nav-link nav-link-add" href="#add" data-nav="add"><i class="bi bi-plus-circle-fill" aria-hidden="true"></i><span data-i18n="nav.add"></span></a>
           <a class="nav-link" href="#discover" data-nav="discover"><i class="bi bi-compass" aria-hidden="true"></i><span data-i18n="nav.discover"></span></a>
+          <a class="nav-link" href="#suggestions" data-nav="suggestions"><i class="bi bi-lightbulb" aria-hidden="true"></i><span data-i18n="nav.suggestions"></span></a>
           <a class="nav-link" href="#playlists" data-nav="playlists"><i class="bi bi-collection-play" aria-hidden="true"></i><span data-i18n="nav.playlists"></span></a>
           <a id="sidebar-watched" class="nav-link" href="#library/all/watched"><i class="bi bi-check-circle" aria-hidden="true"></i><span class="nav-link-text flex-grow-1" data-i18n="nav.watched"></span><span id="sidebar-watched-count" class="nav-count"></span></a>
           <a id="sidebar-skipped" class="nav-link" href="#library/all/skipped" hidden><i class="bi bi-hand-thumbs-down" aria-hidden="true"></i><span class="nav-link-text flex-grow-1" data-i18n="nav.skipped"></span><span id="sidebar-skipped-count" class="nav-count"></span></a>
@@ -295,6 +296,10 @@
                 <button id="bulk-playlist-toggle" class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-collection-play" aria-hidden="true"></i> <span data-i18n="bulk.playlist"></span></button>
                 <ul id="bulk-playlists" class="dropdown-menu"></ul>
               </div>
+              <div class="dropdown">
+                <button id="bulk-suggest-toggle" class="btn btn-sm btn-outline-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-lightbulb" aria-hidden="true"></i> <span data-i18n="bulk.suggest"></span></button>
+                <ul id="bulk-suggestions" class="dropdown-menu"></ul>
+              </div>
               <button class="btn btn-sm btn-outline-danger" type="button" data-bulk="delete"><i class="bi bi-trash3" aria-hidden="true"></i> <span data-i18n="bulk.delete"></span></button>
               <button id="bulk-done" class="btn btn-sm btn-secondary ms-auto" type="button" data-i18n="bulk.done"></button>
             </div>
@@ -391,6 +396,45 @@
               </div>
             </div>
           </section>
+        </section>
+
+        <!--
+          Suggestions: lists that also hold Discover films, each item with a
+          note; #suggestions, #suggestions/12, #suggestions/12?sort=-imdb.
+          See static/js/screens/suggestions.js.
+        -->
+        <section class="view playlists-view view-edge" data-view="suggestions" id="suggestions-panel" hidden>
+          <div id="suggestions-index">
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+              <h2 class="h4 mb-0 me-auto" data-i18n="suggestion.heading"></h2>
+              <button id="suggestions-new" class="btn btn-primary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> <span data-i18n="suggestion.new"></span></button>
+            </div>
+            <p class="text-body-secondary" data-i18n="suggestion.description"></p>
+            <div id="suggestions-list" class="row row-cols-1 row-cols-lg-2 row-cols-xxl-3 g-2 playlists-list"></div>
+            <div id="suggestions-empty" class="card library-empty" hidden>
+              <div class="card-body text-body-secondary" data-i18n="suggestion.empty_index"></div>
+            </div>
+          </div>
+
+          <div id="suggestion-detail" hidden>
+            <a class="btn btn-sm btn-link px-0" href="#suggestions"><i class="bi bi-chevron-left" aria-hidden="true"></i> <span data-i18n="suggestion.back"></span></a>
+            <div class="d-flex align-items-baseline gap-2 flex-wrap mb-3">
+              <h2 id="suggestion-heading" class="h4 mb-0"></h2>
+              <span id="suggestion-count" class="text-body-secondary me-auto"></span>
+              <div id="suggestion-tools" class="d-flex gap-2 flex-wrap">
+                <div class="dropdown">
+                  <button id="suggestion-sort-button" class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"></button>
+                  <div id="suggestion-sort-menu" class="dropdown-menu dropdown-menu-end sort-menu p-3"></div>
+                </div>
+                <button id="suggestion-rename" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-pencil" aria-hidden="true"></i> <span data-i18n="suggestion.rename"></span></button>
+                <button id="suggestion-delete" class="btn btn-sm btn-outline-danger" type="button"><i class="bi bi-trash3" aria-hidden="true"></i> <span data-i18n="suggestion.delete"></span></button>
+              </div>
+            </div>
+            <div id="suggestion-items" class="playlist-items"></div>
+            <div id="suggestion-empty" class="card library-empty" hidden>
+              <div class="card-body text-body-secondary" data-i18n="suggestion.empty"></div>
+            </div>
+          </div>
         </section>
 
         <!--
@@ -1518,6 +1562,7 @@
   <script src="/js/media/prefs.js"></script>
   <script src="/js/media/acting.js"></script>
   <script src="/js/media/playlists.js"></script>
+  <script src="/js/media/suggestions.js"></script>
   <script src="/js/ui/card.js"></script>
   <script src="/js/ui/cardactions.js"></script>
   <script src="/js/ui/cardmenu.js"></script>
@@ -1538,6 +1583,7 @@
   <script src="/js/screens/discover.js"></script>
   <script src="/js/screens/jobs.js"></script>
   <script src="/js/screens/playlists.js"></script>
+  <script src="/js/screens/suggestions.js"></script>
   <script src="/js/keys.js"></script>
   <script src="/js/mcp.js"></script>
   <script src="/js/sessions.js"></script>

@@ -16,7 +16,7 @@ from typing import Any
 
 from app.core.db import BUCKET_DUPE_DISMISSALS, BUCKET_MERGES, BUCKET_TITLES, BUCKET_USER_STATE, Store
 from app.media import dupes
-from app.models import playlists, to_iso, utc_now
+from app.models import playlists, suggestions, to_iso, utc_now
 from app.models.revision import ConflictError, NotFoundError, bump
 from app.models.titles import delete_title_tx
 from app.models.user_state import key as state_key
@@ -83,6 +83,7 @@ def merge(store: Store, keep_id: str, drop_ids: list[str], actor_id: int | None)
                 "drop_ids": drop_ids,
                 "states_before": states_before,
                 "playlists_before": playlists.merge_titles_tx(tx, keep_id, drop_ids),
+                "suggestions_before": suggestions.merge_titles_tx(tx, keep_id, drop_ids),
                 "by": actor_id,
                 "at": to_iso(utc_now()),
                 "undone": False,
@@ -117,6 +118,7 @@ def undo_merge(store: Store, merge_id: str) -> dict[str, Any]:
                 state["rev"] = rev
                 tx.put(BUCKET_USER_STATE, key, state)
         playlists.restore_items_tx(tx, record.get("playlists_before") or {})
+        suggestions.restore_items_tx(tx, record.get("suggestions_before") or {})
         record["undone"] = True
         tx.put(BUCKET_MERGES, merge_id, record)
         return before

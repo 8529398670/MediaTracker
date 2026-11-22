@@ -97,6 +97,7 @@ const Card = {
     const main = Vocab.mainButtons();
     const more = card.buttons.filter( ( id ) => main.indexOf( id ) < 0 );
     if ( more.indexOf( "parents" ) < 0 && main.indexOf( "parents" ) < 0 ) more.push( "parents" );
+    if ( more.indexOf( "suggest" ) < 0 ) more.push( "suggest" );
     const rank = ( id ) => { const at = Vocab.MORE_ORDER.indexOf( id ); return at < 0 ? Vocab.MORE_ORDER.length : at; };
     more.sort( ( a , b ) => rank( a ) - rank( b ) );
     const details = this.buttonRow( "media-more media-actions" , more , row );
@@ -383,6 +384,7 @@ const Card = {
     button.setAttribute( "data-tone" , tone );
     if ( id === "rate" ) return this.rateMenu( button , row );
     if ( id === "playlist" ) return row.discover && !row.inLibrary ? null : this.playlistMenu( button , row );
+    if ( id === "suggest" ) return this.suggestMenu( button , row );
     if ( id === "edit" && !row.inLibrary && row.discover ) return null;
     if ( def.kind === "action" && !def.tone ) button.removeAttribute( "data-tone" );
     return button;
@@ -421,6 +423,36 @@ const Card = {
         class: "dropdown-item",
         attrs: { type: "button" , "data-action": "playlist" , "data-value": "new" },
         children: [ this.icon( "plus-lg" ) , Dom.el( "span" , { text: " " + I18n.get( "playlist.menu_new" ) } ) ],
+      } ) ] } ) );
+    } );
+    return box;
+  },
+
+  // Suggest opens a menu of your suggestion lists, ticked where this title or
+  // film is in one, and New list. Library titles and Discover films alike.
+  suggestMenu( button , row ) {
+    button.setAttribute( "data-bs-toggle" , "dropdown" );
+    button.setAttribute( "aria-expanded" , "false" );
+    button.removeAttribute( "data-action" );
+    const menu = Dom.el( "ul" , { class: "dropdown-menu playlist-menu" } );
+    const box = Dom.el( "div" , { class: "dropdown media-playlist" , children: [ button , menu ] } );
+    box.addEventListener( "show.bs.dropdown" , () => {
+      Dom.clear( menu );
+      menu.appendChild( Dom.el( "li" , { children: [ Dom.el( "h3" , { class: "dropdown-header" , text: I18n.get( "suggestion.menu_heading" ) } ) ] } ) );
+      if ( !Suggestions.list.length ) menu.appendChild( Dom.el( "li" , { children: [ Dom.el( "span" , { class: "dropdown-item-text small text-body-secondary" , text: I18n.get( "suggestion.menu_none" ) } ) ] } ) );
+      Suggestions.list.forEach( ( entry ) => {
+        const on = Boolean( Suggestions.itemFor( entry , row ) );
+        menu.appendChild( Dom.el( "li" , { children: [ Dom.el( "button" , {
+          class: "dropdown-item" + ( on ? " active" : "" ),
+          attrs: { type: "button" , "data-action": "suggest" , "data-value": String( entry.id ) , "aria-pressed": String( on ) },
+          children: [ this.icon( on ? "check-square-fill" : "square" ) , Dom.el( "span" , { text: " " + entry.name } ) ],
+        } ) ] } ) );
+      } );
+      menu.appendChild( Dom.el( "li" , { children: [ Dom.el( "hr" , { class: "dropdown-divider" } ) ] } ) );
+      menu.appendChild( Dom.el( "li" , { children: [ Dom.el( "button" , {
+        class: "dropdown-item",
+        attrs: { type: "button" , "data-action": "suggest" , "data-value": "new" },
+        children: [ this.icon( "plus-lg" ) , Dom.el( "span" , { text: " " + I18n.get( "suggestion.menu_new" ) } ) ],
       } ) ] } ) );
     } );
     return box;

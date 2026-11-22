@@ -64,6 +64,8 @@ BUCKET_SOURCES = "sources"
 BUCKET_PREFS = "prefs"
 BUCKET_VIEWS = "views"
 BUCKET_PLAYLISTS = "playlists"
+# Suggestion lists: like playlists, but Discover films can be in them too.
+BUCKET_SUGGESTIONS = "suggestions"
 BUCKET_VERDICTS = "verdicts"
 # Book-keeping for undo: "these two are not duplicates", what a merge
 # replaced, which titles an import created.
@@ -90,6 +92,7 @@ BUCKETS = (
     BUCKET_PREFS,
     BUCKET_VIEWS,
     BUCKET_PLAYLISTS,
+    BUCKET_SUGGESTIONS,
     BUCKET_VERDICTS,
     BUCKET_DUPE_DISMISSALS,
     BUCKET_MERGES,

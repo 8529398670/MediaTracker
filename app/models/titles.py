@@ -22,7 +22,7 @@ from typing import Any
 
 from app.core.db import BUCKET_META, BUCKET_TITLES, BUCKET_USER_STATE, Store, Transaction
 from app.media import genres, normalize
-from app.models import playlists
+from app.models import playlists, suggestions
 from app.models import RestoreExpiredError, RestoreGoneError, from_iso, to_iso, utc_now
 from app.models.revision import NotFoundError, bump, check_expect, mark_purged
 
@@ -254,6 +254,7 @@ def purge_deleted_titles(store: Store, restore_days: int) -> int:
             tx.delete(BUCKET_TITLES, key)
         tx.delete_where(BUCKET_USER_STATE, lambda _key, state: state.get("title_id") in doomed)
         playlists.forget_titles_tx(tx, doomed)
+        suggestions.forget_titles_tx(tx, doomed)
         mark_purged(tx, bump(tx))
         return len(doomed)
 

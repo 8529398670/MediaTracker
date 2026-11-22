@@ -11,6 +11,7 @@ const SortControl = {
     added: [ "oldest" , "newest" ],
     updated: [ "oldest" , "newest" ],
     watched: [ "oldest" , "newest" ],
+    order: [ "first_last" , "last_first" ],
   },
 
   dirWord( key , dir ) {
