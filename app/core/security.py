@@ -74,6 +74,27 @@ class Actor:
         return self.api_key.id if self.api_key is not None else ""
 
     @property
+    def lineage_key(self) -> str:
+        """The key whatever this request makes is answerable to: the calling
+        key, or for a browser session that a key's login link opened, that key
+        (Session.minted_by_key). Every key, login link and invite link a
+        request makes records it, so revoking the key -- or its expiry, for a
+        key -- ends what it made through a session too. key_id stays the
+        calling key alone, for what only a key does to itself (rotating)."""
+        if self.key_id:
+            return self.key_id
+        return self.session.minted_by_key if self.session is not None else ""
+
+    @property
+    def key_born(self) -> bool:
+        """True for a browser session a key's login link opened. It may do
+        what any session does, except what would hand out a way in that
+        nothing ties to the key: a password, a PIN, two-factor, or a fresh
+        secret for another key. Those need a session the person signed in to
+        themselves."""
+        return not self.key_id and self.session is not None and bool(self.session.minted_by_key)
+
+    @property
     def method(self) -> str:
         return METHOD_API_KEY if self.via_api_key else METHOD_SESSION
 

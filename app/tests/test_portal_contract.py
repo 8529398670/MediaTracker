@@ -193,7 +193,8 @@ class AccountExpiry(RoutesTestCase):
 
     def test_the_owner_never_expires_and_only_the_owner_sets_an_admins(self) -> None:
         self.assertEqual(self.post(self.admin_cookie, f"/api/admin/users/{self.owner.id}/expiry", {"expires_at": self.soon(days=1)})[0], 403)
-        self.assertEqual(self.post(self.admin_cookie, f"/api/admin/users/{self.admin.id}/expiry", {"expires_at": self.soon(days=1)})[0], 200)
+        # Nobody sets their own: an admin could clear the one the owner gave them.
+        self.assertEqual(self.post(self.admin_cookie, f"/api/admin/users/{self.admin.id}/expiry", {"expires_at": self.soon(days=1)})[0], 403)
         other = users.create_user(self.store, "Third admin", users.ROLE_ADMIN)
         self.assertEqual(self.post(self.admin_cookie, f"/api/admin/users/{other.id}/expiry", {"expires_at": self.soon(days=1)})[0], 403)
 

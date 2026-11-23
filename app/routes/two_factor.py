@@ -21,6 +21,7 @@ from app.models import sign_in, two_factor
 from app.models.attempts import AttemptGuard
 from app.routes.admin import OkReply
 from app.routes.auth import SignedIn, issuer, sign_in_response
+from app.routes.helpers import refuse_key_born
 from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.logs import audit, audit_as, user_actor
 from app.routes.auth import SameOriginLogin
@@ -84,6 +85,7 @@ def start_setup(request: Request) -> StartSetupReply:
     """A new secret for the person's authenticator app. The page builds the
     QR code from it, so nothing about it is stored as anything but cipher text
     and it is shown only here."""
+    refuse_key_born(request)
     try:
         secret = two_factor.start_setup(get_store(request), actor_from(request).user.id, get_config(request).secret_key)
     except two_factor.AlreadyOnError:
@@ -108,6 +110,7 @@ class ConfirmSetupReply(Reply):
 def confirm_setup(request: Request, body: Code) -> ConfirmSetupReply:
     """The code that proves the app has the secret. Answers with the recovery
     codes, which are never shown again."""
+    refuse_key_born(request)
     user_id = actor_from(request).user.id
     attempt = CODES.reserve(user_id)
     if attempt is None:
@@ -134,6 +137,7 @@ def confirm_setup(request: Request, body: Code) -> ConfirmSetupReply:
     tag="Account", access=SESSION_ONLY, feature="two_factor", errors=(409,),
 )
 def disable(request: Request, body: Code) -> OkReply:
+    refuse_key_born(request)
     user_id = actor_from(request).user.id
     attempt = CODES.reserve(user_id)
     if attempt is None:

@@ -112,6 +112,14 @@ class APIKeyDeadError(APIKeyError):
         super().__init__("only a live API key can have its expiry changed")
 
 
+class ParentKeyDeadError(APIKeyError):
+    """Making a key through a key (minted_by_key) that no longer works: what
+    it would make would already be dead."""
+
+    def __init__(self) -> None:
+        super().__init__("the API key this request answers to no longer works")
+
+
 class APIKeyNotYoursError(APIKeyError):
     def __init__(self) -> None:
         super().__init__("only the account a key acts as may let it make sign-in links")
@@ -299,7 +307,7 @@ def narrow_role(account_role: str, key_role: str) -> str:
     return lower_role(account_role, key_role)
 
 
-def issue_api_key_for(store: Store, actor_id: int, user_id: int, name: str, role: str, ttl_seconds: int) -> tuple[str, APIKey]:
+def issue_api_key_for(store: Store, actor_id: int, lineage_key: str, user_id: int, name: str, role: str, ttl_seconds: int) -> tuple[str, APIKey]:
     """An admin minting a key that acts as someone else, so it follows the
     ladder deleting an account does, for the same reason -- acting as an
     account is as much power over it as removing it:
@@ -310,10 +318,48 @@ def issue_api_key_for(store: Store, actor_id: int, user_id: int, name: str, role
 
     Your own account is simply your own key. The rules are checked inside the
     issuing transaction, so ownership cannot move between the check and the
-    key."""
-    if actor_id == user_id:
-        return issue_api_key(store, user_id, name, role, ttl_seconds)
-    return issue_api_key(store, user_id, name, role, ttl_seconds, created_by=actor_id)
+    key.
+
+    lineage_key is the key the asking session answers to (Actor.lineage_key):
+    empty for a session someone signed in to themselves, the key for one a
+    key's login link opened. The new key records it as minted_by_key, so
+    revoking that key revokes this one, and it cannot outlive that key's
+    expiry -- a key that signs a browser in must not leave a key behind."""
+    created_by = None if actor_id == user_id else actor_id
+    return issue_api_key(store, user_id, name, role, ttl_seconds, created_by=created_by, minted_by_key=lineage_key)
+
+
+def cap_at_parent_tx(tx: Transaction, key: APIKey) -> None:
+    """Keep a key made by another key (minted_by_key) from outliving it: its
+    expiry is brought forward to the parent's when the parent's comes first,
+    or when it would never expire and the parent will. Revoking the parent
+    already ends it (login_tokens.void_links_minted_by_key); this is the same
+    promise for the parent's expiry, so a 30-day key cannot leave a 365-day one
+    behind. A parent that is gone or no longer live is ParentKeyDeadError."""
+    if not key.minted_by_key:
+        return
+    record = tx.get(BUCKET_API_KEYS, key.minted_by_key)
+    if record is None:
+        raise ParentKeyDeadError()
+    parent = APIKey.from_record(record)
+    if not parent.live:
+        raise ParentKeyDeadError()
+    if parent.expires_at is None:
+        return
+    if key.expires_at is None or key.expires_at > parent.expires_at:
+        key.expires_at = parent.expires_at
+
+
+def key_born_session_dead(store: Store, minted_by_key: str) -> bool:
+    """True for a session a key's login link opened (Session.minted_by_key)
+    once that key no longer works. Revoking or deleting the key already
+    deletes such sessions (login_tokens.void_links_minted_by_key); this is the
+    same for its expiry, which nothing runs at, so a key that expires cannot
+    leave a browser signed in behind it."""
+    if not minted_by_key:
+        return False
+    record = store.get(BUCKET_API_KEYS, minted_by_key)
+    return record is None or not APIKey.from_record(record).live
 
 
 def issue_api_key(store: Store, user_id: int, name: str, role: str, ttl_seconds: int, created_by: int | None = None, minted_by_key: str = "", minting: bool = False) -> tuple[str, APIKey]:
@@ -359,6 +405,7 @@ def issue_api_key(store: Store, user_id: int, name: str, role: str, ttl_seconds:
         if owner_record is None:
             raise APIKeyOwnerError(user_id)
         owner = User.from_record(owner_record)
+        cap_at_parent_tx(tx, key)
         if minting:
             if owner_id_tx(tx) == user_id:
                 raise APIKeyForOwnerError()
@@ -594,6 +641,7 @@ def set_api_key_expiry(store: Store, key_id: str, actor_id: int, ttl_seconds: in
         except OwnerRequiredError:
             raise APIKeyExpiryAdminError() from None
         key.expires_at = utc_now() + timedelta(seconds=ttl_seconds) if ttl_seconds > 0 else None
+        cap_at_parent_tx(tx, key)
         tx.put(BUCKET_API_KEYS, key_id, key.to_record())
     return key
 

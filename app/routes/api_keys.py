@@ -40,6 +40,7 @@ from app.core.logs import KIND_ADMIN, KIND_AUTH
 from app.core.security import Guard, RequireKeyMinting, actor_from
 from app.models import RestoreError, api_keys, to_iso, users
 from app.routes.admin import DateTime, OkReply, UserIDPath
+from app.routes.helpers import refuse_key_born
 from app.routes.helpers import Dir, Page, Paged, Refused, act_on_refusals, get_config, get_store, match_rows, not_found, restore_refusal, sorted_page
 from app.routes.logs import audit
 
@@ -205,8 +206,13 @@ def create_my_key(request: Request, body: CreateMyKey) -> NewAPIKey:
     if not api_keys.valid_name(body.name):
         raise Refused(400, "name must be 1-80 characters")
     ttl_seconds = _ttl_seconds(request, body.expires_in_days)
+    # Through issue_api_key_for for the lineage: a key made in a session a
+    # key's login link opened answers to that key, and dies with it.
+    actor = actor_from(request)
     try:
-        credential, key = api_keys.issue_api_key(get_store(request), actor_from(request).user.id, body.name, body.role, ttl_seconds)
+        credential, key = api_keys.issue_api_key_for(get_store(request), actor.user.id, actor.lineage_key, actor.user.id, body.name, body.role, ttl_seconds)
+    except api_keys.ParentKeyDeadError as refusal:
+        raise Refused(403, str(refusal)) from None
     except api_keys.APIKeyRoleError:
         raise Refused(403, "you cannot create an API key with more permission than your own account") from None
     except api_keys.APIKeyLimitError:
@@ -245,7 +251,9 @@ def create_key_for_user(request: Request, body: CreateKeyForUser) -> NewAPIKey:
     ttl_seconds = _ttl_seconds(request, body.expires_in_days)
     actor = actor_from(request).user
     try:
-        credential, key = api_keys.issue_api_key_for(get_store(request), actor.id, body.user_id, body.name, body.role, ttl_seconds)
+        credential, key = api_keys.issue_api_key_for(get_store(request), actor.id, actor_from(request).lineage_key, body.user_id, body.name, body.role, ttl_seconds)
+    except api_keys.ParentKeyDeadError as refusal:
+        raise Refused(403, str(refusal)) from None
     except api_keys.APIKeyOwnerError:
         raise Refused(404, "no such user") from None
     except (api_keys.APIKeyForOwnerError, api_keys.APIKeyForAdminError) as refusal:
@@ -363,6 +371,8 @@ def _set_expiry(request: Request, body: SetKeyExpiry, own_only: bool) -> APIKey:
         key = api_keys.set_api_key_expiry(store, found.id, actor.id, ttl_seconds)
     except api_keys.APIKeyDeadError:
         raise Refused(400, "only a live key can have its expiry changed -- create a new one instead") from None
+    except api_keys.ParentKeyDeadError:
+        raise Refused(400, "the key that made this one no longer works, so neither can this one -- create a new one instead") from None
     except (api_keys.APIKeyExpiryOwnerError, api_keys.APIKeyExpiryAdminError) as refusal:
         raise Refused(403, str(refusal), code=CODE_OWNER_PROTECTED if isinstance(refusal, api_keys.APIKeyExpiryOwnerError) else CODE_OWNER_REQUIRED) from None
     if key is None:
@@ -581,8 +591,10 @@ def mint_key_for_user(request: Request, body: MintKey) -> NewAPIKey:
     actor = actor_from(request)
     try:
         credential, key = api_keys.mint_api_key(
-            get_store(request), actor.user.id, actor.key_id, body.user_id, body.name, body.role, body.expires_in_days * 24 * 60 * 60,
+            get_store(request), actor.user.id, actor.lineage_key, body.user_id, body.name, body.role, body.expires_in_days * 24 * 60 * 60,
         )
+    except api_keys.ParentKeyDeadError as refusal:
+        raise Refused(403, str(refusal)) from None
     except api_keys.APIKeyOwnerError:
         raise Refused(404, "no such user") from None
     except api_keys.APIKeyForOwnerError:
@@ -686,6 +698,7 @@ def rotate_self(request: Request) -> RotatedKey:
 def rotate_my_key(request: Request, body: KeyIDPath) -> RotatedKey:
     """The owner rotating one of the owner's own keys from a browser session.
     Someone else's key is "no such api key", as everywhere."""
+    refuse_key_born(request)
     store, user = get_store(request), actor_from(request).user
     key = api_keys.get_api_key(store, body.key_id)
     if key is None or key.deleted or key.user_id != user.id:

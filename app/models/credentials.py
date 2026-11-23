@@ -304,6 +304,14 @@ class ExpiryPastError(Exception):
         super().__init__("expires_at must be in the future")
 
 
+class ExpirySelfError(Exception):
+    """Your own expiry is set for you: an admin could otherwise clear the one
+    the owner gave them."""
+
+    def __init__(self) -> None:
+        super().__init__("you cannot change when your own account expires")
+
+
 class OwnerExpiryError(Exception):
     """The owner is always an enabled admin, so it never expires."""
 
@@ -313,8 +321,9 @@ class OwnerExpiryError(Exception):
 
 def set_user_expiry(store: Store, user_id: int, actor_id: int | None, expires_at: datetime | None) -> bool:
     """Set when an account stops working, or None for never; False if there
-    is no such account. The owner never expires (OwnerExpiryError), and
-    otherwise the ladder is may_act_on_tx's: only the owner sets an admin's.
+    is no such account. The owner never expires (OwnerExpiryError), nobody
+    sets their own (ExpirySelfError), and otherwise the ladder is
+    may_act_on_tx's: only the owner sets an admin's.
     A time not in the future is ExpiryPastError: switching an account off now
     is what disabling is for.
 
@@ -329,6 +338,8 @@ def set_user_expiry(store: Store, user_id: int, actor_id: int | None, expires_at
             return False
         if owner_id_tx(tx) == user_id:
             raise OwnerExpiryError()
+        if actor_id and actor_id == user_id:
+            raise ExpirySelfError()
         may_act_on_tx(tx, actor_id, record)
         record["expires_at"] = to_iso(expires_at)
         tx.put(BUCKET_USERS, user_id, record)

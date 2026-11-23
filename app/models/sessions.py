@@ -149,6 +149,11 @@ def load_session(store: Store, credential: str) -> tuple[Session, User] | None:
     user = get_user(store, session.user_id)
     if user is None or user.disabled:
         return None
+    # A session a key's login link opened ends with the key's expiry, as it
+    # does with its revoking. Imported here: api_keys imports this module.
+    from app.models.api_keys import key_born_session_dead
+    if key_born_session_dead(store, session.minted_by_key):
+        return None
     return session, user
 
 

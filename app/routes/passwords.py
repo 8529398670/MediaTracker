@@ -24,6 +24,7 @@ from app.models.attempts import AttemptGuard
 from app.models.sessions import split_credential
 from app.routes.admin import UserIDPath
 from app.routes.auth import SIGN_IN, SignedIn, sign_in_response, sign_in_rules
+from app.routes.helpers import refuse_key_born
 from app.routes.helpers import Refused, get_config, get_store, run
 from app.routes.logs import audit, audit_as, user_actor
 from app.routes.two_factor import CODES
@@ -137,6 +138,7 @@ def set_password(request: Request, body: SetPassword) -> SetPasswordReply:
     """Set the account's username and password, or with an empty
     password_digest remove the password. Session only: a key that could set
     one could turn itself into a session."""
+    refuse_key_born(request)
     store, cfg = get_store(request), get_config(request)
     user = actor_from(request).user
     digest = body.password_digest

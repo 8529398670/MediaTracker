@@ -27,6 +27,7 @@ from app.core.db import Store
 from app.core.logs import KIND_ADMIN
 from app.core.security import actor_from
 from app.models import credentials, from_iso, login_tokens, to_iso, users, utc_now
+from app.models import api_keys
 from app.models import passwords
 from app.models import two_factor
 from app.routes.helpers import DateTime, Dir, Page, Paged, Refused, act_on_refusals, get_config, get_store, service_account_refusal, sorted_page
@@ -165,7 +166,7 @@ def link_options(request: Request, body: Any) -> login_tokens.LinkOptions:
         )
     except login_tokens.BadLoginLinkError as refusal:
         raise Refused(400, str(refusal)) from None
-    return replace(options, minted_by_key=actor_from(request).key_id)
+    return replace(options, minted_by_key=actor_from(request).lineage_key)
 
 
 class LoginLinkReply(Reply):
@@ -266,6 +267,22 @@ class ReissueLogin(UserIDPath):
     expires_in_minutes: ExpiresInMinutes | None = None
 
 
+def key_login_link_options(request: Request, options: login_tokens.LinkOptions) -> login_tokens.LinkOptions:
+    """The rules for a login link an API key asks for its own account, the same
+    on every route that makes one: only a key its account let make sign-in
+    links (may_sign_in), and only once, for at most 15 minutes, whatever it
+    asked for. Unchanged for a browser session."""
+    actor = actor_from(request)
+    if actor.api_key is None:
+        return options
+    if not actor.api_key.may_sign_in:
+        raise Refused(403, "this key may not make sign-in links: turn that on for it on the API keys card")
+    ttl = options.ttl_seconds
+    if ttl <= 0 or ttl > api_keys.KEY_LOGIN_LINK_TTL_SECONDS:
+        ttl = api_keys.KEY_LOGIN_LINK_TTL_SECONDS
+    return replace(options, max_uses=1, unlimited=False, ttl_seconds=ttl)
+
+
 @route(
     "POST /api/admin/users/{user_id}/reissue-login", summary="A new login link for an account",
     tag="Admin", role=ADMIN, errors=(404,),
@@ -289,6 +306,11 @@ def reissue_login(request: Request, body: ReissueLogin) -> LoginLinkReply:
     if users.get_user(store, body.user_id) is None:
         raise Refused(404, "no such user")
     options = replace(link_options(request, body), actor_id=actor_from(request).user.id)
+    # A key reissuing its own account's link is a key asking for a sign-in
+    # link: the same rules as POST /api/account/login-link (may_sign_in, once,
+    # 15 minutes), or this route would be the way round them.
+    if body.user_id == actor_from(request).user.id:
+        options = key_login_link_options(request, options)
     with act_on_refusals("reissue a login link for"):
         credential, info = login_tokens.issue_login_link(store, body.user_id, options)
     audit(request, KIND_ADMIN, "login link reissued", {"user_id": body.user_id, "max_uses": info["max_uses"], "expires_at": info["expires_at"]})
@@ -536,7 +558,7 @@ class SetUserExpiryReply(Reply):
     description="expires_at is when the account stops working (RFC 3339), or null for never. Once it passes the "
     "account counts as disabled: sign-in, its sessions and its keys stop, and housekeeping disables it and revokes "
     "its access. A later expiry does not re-enable an account housekeeping already disabled. It must be in the "
-    "future. The owner's account never expires; only the owner sets an admin's.",
+    "future. The owner's account never expires, nobody sets their own, and only the owner sets an admin's.",
     mcp="admin_set_user_expiry",
 )
 def set_user_expiry(request: Request, body: SetUserExpiry) -> SetUserExpiryReply:
@@ -551,6 +573,8 @@ def set_user_expiry(request: Request, body: SetUserExpiry) -> SetUserExpiryReply
         raise Refused(400, str(refusal)) from None
     except credentials.OwnerExpiryError as refusal:
         raise Refused(403, str(refusal), code=CODE_OWNER_PROTECTED) from None
+    except credentials.ExpirySelfError as refusal:
+        raise Refused(403, str(refusal)) from None
     except credentials.OwnerProtectedError:
         raise Refused(403, "the owner's account cannot expire", code=CODE_OWNER_PROTECTED) from None
     except credentials.OwnerRequiredError:
