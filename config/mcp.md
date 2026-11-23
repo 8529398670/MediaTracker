@@ -378,7 +378,7 @@ Group invite links, a page at a time: label, places used and left, expiry, and w
 
 ## admin_list_user_sessions
 
-Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner only, and only the owner sees the owner's.
+Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner and service accounts only. Nobody sees the owner's, and only the owner sees another admin's.
 
 |  |  |
 |---|---|

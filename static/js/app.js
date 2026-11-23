@@ -743,9 +743,10 @@ const App = {
         } },
       } );
 
-      // Where they are signed in. The owner's are the owner's own, which the
-      // server would refuse.
-      const sessionsButton = user.owner && !App.currentUser.is_owner ? null : Dom.el( "button" , {
+      // Where they are signed in, on the server's ladder: nobody else sees the
+      // owner's, and only the owner sees another admin's.
+      const seesSessions = App.currentUser.is_owner || user.id === App.currentUser.id || user.role !== "admin";
+      const sessionsButton = !seesSessions ? null : Dom.el( "button" , {
         class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( "admin.sessions_button" ),
         on: { click: () => Sessions.showFor( user ) },

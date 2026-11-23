@@ -500,7 +500,7 @@
             "type": "boolean"
           },
           "capabilities": {
-            "description": "The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in, service_accounts, key_grants, error_codes, key_rotation.",
+            "description": "The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in, service_accounts, key_grants, error_codes, key_rotation, admin_sessions.",
             "items": {
               "type": "string"
             },
@@ -5813,7 +5813,7 @@
     },
     "/api/admin/users/{user_id}/sessions": {
       "get": {
-        "description": "Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner only, and only the owner sees the owner's.",
+        "description": "Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner and service accounts only. Nobody sees the owner's, and only the owner sees another admin's.",
         "operationId": "get_api_admin_users_user_id_sessions",
         "parameters": [
           {

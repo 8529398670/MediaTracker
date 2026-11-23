@@ -470,6 +470,25 @@ class AdminSessionTest(RoutesTestCase):
         self.assertEqual(self.post(f"{self.route(self.owner.id)}/{mine}/revoke", self.owner_cookie), 400)
 
 
+    def test_reading_follows_the_ladder(self) -> None:
+        """Portal contract v3, admin_sessions: nobody reads the owner's, only
+        the owner reads another admin's, any admin reads an ordinary account's,
+        and everyone reads their own."""
+        third = users.create_user(self.store, "Third", users.ROLE_ADMIN)
+        self.session(third.id)
+        for cookie, who, target, status, code in (
+            (self.admin_cookie, "a peer on the owner", self.owner.id, 403, "owner_protected"),
+            (self.admin_cookie, "a peer on another admin", third.id, 403, "owner_required"),
+            (self.admin_cookie, "a peer on an ordinary account", self.user.id, 200, None),
+            (self.admin_cookie, "a peer on itself", self.admin.id, 200, None),
+            (self.owner_cookie, "the owner on an admin", third.id, 200, None),
+            (self.owner_cookie, "the owner on itself", self.owner.id, 200, None),
+            (self.owner_cookie, "no such account", 9999, 404, "not_found"),
+        ):
+            got, reply = self.call("GET", self.route(target), cookie=cookie)
+            self.assertEqual((got, reply.get("code")), (status, code), f"{who}: {reply}")
+
+
 class UserSearchTest(RoutesTestCase):
     def test_searching_keeps_paging_honest(self) -> None:
         for name in ("Zed One", "zed two", "Zed Three"):

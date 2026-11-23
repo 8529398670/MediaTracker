@@ -7,15 +7,16 @@
 # The API key is read from stdin, never from the command line, so it stays out
 # of shell history and the process list. Every call is a GET: /api/health,
 # /api/me, /api/admin/users?limit=1, and, when the app lists key_grants and
-# the key may make keys, the keys of the first account that is not an admin's.
+# the key may make keys, the keys of the first account that is not an admin's;
+# when it lists admin_sessions, that account's signed-in devices.
 #
 # Prints one PASS, WARN or FAIL line per part of the contract, naming the
 # refusal's code on a failure. Exits 1 when any part failed. Needs curl.
 set -euo pipefail
 
 case "${1:-}" in
-	-h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-	"") sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+	-h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	"") sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
 base="${1%/}"
 command -v curl >/dev/null 2>&1 || { echo "ERROR: needs curl" >&2; exit 2; }
@@ -107,16 +108,43 @@ fi
 get '/api/admin/users?limit=1'
 if [ "$status" = "200" ]; then pass "accounts: listed"; else fail "accounts: $( why )"; fi
 
+# The first account that is not an admin's: the one the reads below look at.
+# Only the owner reads another admin's, and the portal is not the owner.
+target="" target_read=""
+first_target() {
+	if [ -z "$target_read" ]; then
+		target_read=1
+		get '/api/admin/users?limit=200'
+		# One account per line: a row ends at its first }, after the fields read here.
+		target="$( printf '%s' "$body" | tr -d '\n' | tr '}' '\n' | grep '"owner":false' | grep -v '"role":"admin"' | head -n 1 | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p' || true )"
+	fi
+}
+
 # One account's keys, the minting routes' read.
 if [ "$mints" = "true" ]; then
-	get '/api/admin/users?limit=200'
-	# One account per line: a row ends at its first }, after the fields read here.
-	target="$( printf '%s' "$body" | tr -d '\n' | tr '}' '\n' | grep '"owner":false' | grep -v '"role":"admin"' | head -n 1 | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p' || true )"
+	first_target
 	if [ -z "$target" ]; then
 		warn "keys: no account but admins' to read"
 	else
 		get "/api/admin/users/$target/keys"
 		if [ "$status" = "200" ]; then pass "keys: account $target's keys listed"; else fail "keys: account $target: $( why )"; fi
+	fi
+fi
+
+# One account's signed-in devices, for matching people across apps.
+if listed admin_sessions; then
+	first_target
+	if [ -z "$target" ]; then
+		warn "sessions: no account but admins' to read"
+	else
+		get "/api/admin/users/$target/sessions"
+		if [ "$status" != "200" ]; then
+			fail "sessions: account $target: $( why )"
+		elif printf '%s' "$body" | grep -q '"id"' && ! printf '%s' "$body" | grep -q '"ip"'; then
+			warn "sessions: account $target's devices listed, without addresses -- only the owner and a service account see them"
+		else
+			pass "sessions: account $target's devices listed"
+		fi
 	fi
 fi
 

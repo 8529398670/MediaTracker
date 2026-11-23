@@ -14,7 +14,6 @@ from starlette.requests import Request
 from app.apidocs import ADMIN, PATH, Reply, route
 from app.apidocs import Request as RequestType
 from app.core.db import Store
-from app.core.error_codes import CODE_OWNER_PROTECTED
 from app.core.logs import KIND_ADMIN, KIND_AUTH
 from app.core.security import actor_from
 from app.models import sessions, to_iso, users
@@ -92,17 +91,20 @@ def list_my_sessions(request: Request, body: Page) -> SessionsReply:
     return SessionsReply(sessions=page.pop("rows"), **page)
 
 
-def _target_of(store: Store, self_id: int, user_id: int) -> bool:
-    """Whether the owner is asking about an account's sessions, raising
-    Refused when the account may not be reached. Nobody but the owner reaches
-    the owner's, the same rule as revoking the owner's access."""
+def _target_of(store: Store, caller: users.User, user_id: int) -> tuple[bool, bool]:
+    """Whether the owner is asking about an account's sessions, and whether the
+    caller sees addresses, raising Refused when the account may not be reached.
+    The ladder every account route follows (users.may_act_on): nobody reaches
+    the owner's, only the owner reaches another admin's (a service account
+    counts as one), and any admin reaches an ordinary or viewer account's, or
+    their own. Addresses go to the owner, and to the owner's service account
+    (ProjectPortal), which matches people across apps by them."""
     if users.get_user(store, user_id) is None:
         raise Refused(404, "no such user")
-    owner_id = users.get_owner_id(store)
-    by_owner = self_id == owner_id
-    if user_id == owner_id and not by_owner:
-        raise Refused(403, "the owner account's sessions are the owner's own", code=CODE_OWNER_PROTECTED)
-    return by_owner
+    with act_on_refusals("see the sessions of"):
+        users.may_act_on(store, caller.id, user_id)
+    by_owner = caller.id == users.get_owner_id(store)
+    return by_owner, by_owner or caller.is_service
 
 
 class ListUserSessions(UserIDPath):
@@ -114,18 +116,21 @@ class ListUserSessions(UserIDPath):
     "GET /api/admin/users/{user_id}/sessions", summary="An account's signed-in devices",
     tag="Admin", role=ADMIN, feature="sessions", errors=(404,),
     description="Where an account is signed in: every session, with when it started and was last seen. "
-    "Addresses are shown to the owner only, and only the owner sees the owner's.",
+    "Addresses are shown to the owner and service accounts only. Nobody sees the owner's, and only the "
+    "owner sees another admin's.",
     mcp="admin_list_user_sessions", read_only=True,
 )
 def list_user_sessions(request: Request, body: ListUserSessions) -> SessionsReply:
     """Where an account is signed in, for ending one device rather than
-    everything with revoke-access, over HTTP and as the MCP
-    admin_list_user_sessions tool. Addresses are for the owner only, as in the
-    activity log, which keeps them from other admins too."""
+    everything with revoke-access, and for ProjectPortal to tell who is who
+    across apps (portal contract v3, admin_sessions), over HTTP and as the MCP
+    admin_list_user_sessions tool. Addresses are for the owner and the owner's
+    service account only: the activity log keeps them from other admins too.
+    What the owner calls an address stays the owner's."""
     store = get_store(request)
-    by_owner = _target_of(store, actor_from(request).user.id, body.user_id)
+    by_owner, shows_ip = _target_of(store, actor_from(request).user, body.user_id)
     rows = [session_row(session, current_session_id(request)) for session in sessions.list_sessions(store, body.user_id)]
-    if not by_owner:
+    if not shows_ip:
         for row in rows:
             row.ip = UNSET
     page = cut_page(rows, body)
@@ -147,7 +152,7 @@ def revoke_user_session(request: Request, body: RevokeUserSession) -> OkReply:
     """Sign one of an account's devices out, and only that: over HTTP or the
     MCP admin_revoke_user_session tool."""
     store = get_store(request)
-    _target_of(store, actor_from(request).user.id, body.user_id)
+    _target_of(store, actor_from(request).user, body.user_id)
     if body.session_id and body.session_id == current_session_id(request):
         raise Refused(400, "use sign out for this device")
     with act_on_refusals("end a session of"):

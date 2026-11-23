@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.models import sessions
+
 from app.core.error_codes import CODE_OWNER_REQUIRED, CODE_SERVICE_ACCOUNT
 from app.models import api_keys, login_tokens, users
 from app.models.login_tokens import LinkOptions
@@ -124,3 +126,27 @@ class PortalAccountTest(RoutesTestCase):
         self.assertIn("ProjectPortal", printed.getvalue())
         with self.assertRaises(manage.ManageError):
             manage.command_portal_connect(self.store, self.holder.get(), Namespace(name="ProjectPortal", days=366))
+
+    def test_the_portal_reads_an_accounts_devices(self) -> None:
+        """admin_sessions: the portal reads an ordinary account's devices to
+        tell who is who across apps. Its service account sees the addresses,
+        which other admins do not, and the rows carry no secret."""
+        credential, _ = self.connect(days=30)
+        device = sessions.list_sessions(self.store, self.user.id)[0].id
+        sessions.remember_client(self.store, device, "10.0.0.7", "Mozilla/5.0 (Test)")
+        status, reply = self.send(self.user_cookie, f"/api/account/sessions/{device}/label", label="Phone")
+        self.assertEqual(status, 200, reply)
+
+        status, me = self.call("GET", "/api/me", key=credential)
+        self.assertEqual(status, 200)
+        self.assertIn("admin_sessions", me["capabilities"])
+
+        status, page = self.call("GET", f"/api/admin/users/{self.user.id}/sessions", key=credential)
+        self.assertEqual((status, len(page["sessions"])), (200, 1), page)
+        row = page["sessions"][0]
+        allowed = {"id", "current", "created_at", "expires_at", "last_seen_at", "ip", "user_agent", "label"}
+        self.assertLessEqual(set(row), allowed, row)
+        self.assertEqual((row["id"], row["ip"], row["user_agent"], row["label"]), (device, "10.0.0.7", "Mozilla/5.0 (Test)", "Phone"))
+        for name in ("created_at", "last_seen_at"):
+            if name in row:
+                self.assertIsNotNone(datetime.fromisoformat(row[name].replace("Z", "+00:00")).tzinfo, f"{name}: {row[name]}")

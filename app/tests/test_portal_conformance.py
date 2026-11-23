@@ -53,6 +53,7 @@ def contract_calls() -> list[ContractCall]:
         ContractCall("POST", "/api/admin/users/{user}/expiry", {"expires_at": soon}, 200, True),
         ContractCall("POST", "/api/admin/users/{user}/disabled", {"disabled": True}, 200, True),
         ContractCall("POST", "/api/admin/users/{user}/disabled", {"disabled": False}, 200, True),
+        ContractCall("GET", "/api/admin/users/{user}/sessions", None, 200, True),
         ContractCall("GET", "/api/admin/users/{user}/keys", None, 200, True),
         ContractCall("POST", "/api/admin/users/{user}/keys", {"name": "for the portal", "role": "user", "expires_in_days": 30}, 201, True),
         ContractCall("POST", "/api/admin/keys/{key}/revoke", {}, 200, True),
@@ -161,6 +162,7 @@ class ContractCheck(PortalConformance):
     def test_the_portals_key_passes(self) -> None:
         output, ok = self.check(self.portal)
         self.assertTrue(ok and "FAIL" not in output and "PASS  keys:" in output, output)
+        self.assertRegex(output, r"(PASS|WARN)  sessions: account \d+.s devices listed")
 
     def test_a_user_key_and_a_bad_key_fail_with_their_codes(self) -> None:
         credential, _ = api_keys.issue_api_key(self.store, self.user.id, "script", users.ROLE_USER, 3600)
