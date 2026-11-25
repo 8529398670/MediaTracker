@@ -132,6 +132,56 @@ class PortingTest(unittest.TestCase):
         self.assertIn("## Movies", body.decode())
         self.assertIn("- Heat (1995)", body.decode())
 
+    TYPES = [{"id": "movie", "label": "Movies"}, {"id": "tv", "label": "TV"}]
+    TITLES = [
+        {"id": "a", "title": "Heat", "year": 1995, "type": "movie", "imdb_id": "tt0113277"},
+        {"id": "b", "title": "Fleabag", "type": "tv"},
+        {"id": "c", "title": "Alien", "year": 1979, "type": "movie"},
+        {"id": "d", "title": "The Wire", "type": "tv"},
+        {"id": "e", "title": "Cats", "type": "movie"},
+        {"id": "f", "title": "Severance", "type": "tv"},
+        {"id": "g", "title": "Unlisted", "type": "movie"},
+    ]
+    STATES = {"a": {"status": "queue", "rating": 9, "heart": True}, "b": {"status": "queue"}, "c": {"status": "watched"},
+              "d": {"status": "watched"}, "e": {"status": "dropped"}, "f": {"status": "watching"}, "g": {}}
+
+    def test_sections_follow_the_sidebar(self) -> None:
+        got = [(heading, [t["title"] for t in chosen]) for heading, chosen in porting.sections(self.TITLES, self.STATES, self.TYPES)]
+        self.assertEqual(got, [("Watching", ["Severance"]), ("Movies", ["Heat"]), ("TV", ["Fleabag"]),
+                               ("Watched – Movies", ["Alien"]), ("Watched – TV", ["The Wire"]), ("Not for me", ["Cats"])])
+
+    def test_markdown_sections_read_back(self) -> None:
+        body, _kind, _ext = porting.export(self.TITLES, self.STATES, self.TYPES, "md", "halo")
+        self.assertNotIn("Unlisted", body.decode())
+        rows = {row["fields"]["title"]: row for row in porting.parse(body.decode(), "outline")["rows"]}
+        expect = {"Severance": ("tv", "watching"), "Heat": ("movie", "queue"), "Fleabag": ("tv", "queue"),
+                  "Alien": ("movie", "watched"), "The Wire": ("tv", "watched"), "Cats": ("movie", "dropped")}
+        for title, (kind, status) in expect.items():
+            self.assertEqual((rows[title]["fields"]["type"], rows[title]["state"]["status"]), (kind, status), title)
+            self.assertEqual(rows[title]["fields"]["tags"], [], title)
+
+    def test_csv_has_sections(self) -> None:
+        body, _kind, _ext = porting.export(self.TITLES, self.STATES, self.TYPES, "csv", "halo")
+        lines = body.decode().splitlines()
+        self.assertTrue(lines[0].startswith("section,title,"))
+        self.assertTrue(lines[1].startswith("Watching,Severance,"))
+        self.assertEqual(len(porting.parse(body.decode(), "csv")["rows"]), 6)
+
+    def test_xlsx_has_a_sheet_per_section(self) -> None:
+        import io
+        import re
+        import zipfile
+        body, kind, ext = porting.export(self.TITLES, self.STATES, self.TYPES, "xlsx", "halo")
+        self.assertEqual(ext, "xlsx")
+        with zipfile.ZipFile(io.BytesIO(body)) as z:
+            self.assertIsNone(z.testzip())
+            names = re.findall(r'<sheet name="([^"]+)"', z.read("xl/workbook.xml").decode())
+            self.assertEqual(names, ["Watching", "Movies", "TV", "Watched – Movies", "Watched – TV", "Not for me"])
+            movies = z.read("xl/worksheets/sheet2.xml").decode()
+            self.assertIn("<t xml:space=\"preserve\">Heat</t>", movies)
+            self.assertIn("<v>1995</v>", movies)
+            self.assertIn("imdb.com/title/tt0113277", z.read("xl/worksheets/_rels/sheet2.xml.rels").decode())
+
 
 if __name__ == "__main__":
     unittest.main()

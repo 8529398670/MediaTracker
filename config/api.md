@@ -3360,7 +3360,7 @@ Forget pairs that dismissing recorded.
 
 Export the library
 
-The library with one person's state, as a JSON, CSV or Markdown outline download.
+One person's list by section (Watching, Movies, TV, Watched – Movies, ...) as an Excel workbook (a sheet per section), CSV or Markdown outline; or the whole library with their state as re-importable JSON.
 
 |  |  |
 |---|---|
@@ -3372,7 +3372,7 @@ The library with one person's state, as a JSON, CSV or Markdown outline download
 
 | Name | In | Type | Required | Limits | Description |
 |---|---|---|---|---|---|
-| `format` | query | string | no | one of `json`, `csv`, `md`; default `json` | Default json. |
+| `format` | query | string | no | one of `json`, `xlsx`, `csv`, `md`; default `json` | Default json. |
 | `user` | query | integer or null | no | at least 1 | Whose lists: a user id, for an admin or someone given Showing. Default: your own. |
 
 **Reply 200**: Success

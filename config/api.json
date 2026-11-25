@@ -9517,7 +9517,7 @@
     },
     "/api/export": {
       "get": {
-        "description": "The library with one person's state, as a JSON, CSV or Markdown outline download.",
+        "description": "One person's list by section (Watching, Movies, TV, Watched – Movies, ...) as an Excel workbook (a sheet per section), CSV or Markdown outline; or the whole library with their state as re-importable JSON.",
         "operationId": "get_api_export",
         "parameters": [
           {
@@ -9528,6 +9528,7 @@
               "default": "json",
               "enum": [
                 "json",
+                "xlsx",
                 "csv",
                 "md"
               ],

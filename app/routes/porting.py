@@ -146,14 +146,14 @@ def export_body(store: Store, subject_id: int, fmt: str) -> tuple[bytes, str, st
 
 
 class Export(RequestType, kw_only=True):
-    format: Annotated[Literal["json", "csv", "md"], QUERY, Meta(description="Default json.", extra={"error": "format must be json, csv or md"})] = "json"
+    format: Annotated[Literal["json", "xlsx", "csv", "md"], QUERY, Meta(description="Default json.", extra={"error": "format must be json, xlsx, csv or md"})] = "json"
     user: User = None
 
 
 @route(
     "GET /api/export", summary="Export the library",
     tag=TAG, reply_type="application/octet-stream",
-    description="The library with one person's state, as a JSON, CSV or Markdown outline download.",
+    description="One person's list by section (Watching, Movies, TV, Watched – Movies, ...) as an Excel workbook (a sheet per section), CSV or Markdown outline; or the whole library with their state as re-importable JSON.",
     mcp_http="a file download",
 )
 async def export(request: Request, body: Export) -> Response:

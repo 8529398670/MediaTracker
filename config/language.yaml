@@ -1424,7 +1424,7 @@ porting:
   importing: "Importing… {done} of {total}"
   done: "{n} titles imported. Details are being filled in in the background."
   export_heading: "Export"
-  export_description: "The whole library with your own status, ratings and hearts. JSON can be imported again; CSV opens in a spreadsheet; Markdown reads as a list."
+  export_description: "Excel, CSV and Markdown are your own list by section: Watching, Movies, TV, Watched – Movies, Watched – TV and Not for me (Excel puts each on its own sheet). JSON is the whole library with your status, ratings and hearts, for importing again."
 
 discover:
   heading: "Discover"

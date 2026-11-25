@@ -121,7 +121,7 @@ def clean(text: str) -> str:
 
 TAG_STOP = {
     "movies", "movie", "films", "film", "tv", "tv-shows", "shows", "show", "series",
-    "watched", "skipped", "queue", "sources", "source", "list", "lists", "misc",
+    "watched", "watching", "skipped", "queue", "up-next", "not-for-me", "sources", "source", "list", "lists", "misc",
     "books", "book", "radio", "podcasts", "podcast", "anime", "games", "game",
 }
 
@@ -164,7 +164,7 @@ def type_hint(text: str) -> str | None:
 
 def status_hint(text: str) -> str | None:
     t = str(text).lower()
-    if re.search(r"skip|drop|abandon|nope", t):
+    if re.search(r"skip|drop|abandon|nope|not for me", t):
         return "dropped"
     if re.search(r"watched|seen|finished|completed", t):
         return "watched"
